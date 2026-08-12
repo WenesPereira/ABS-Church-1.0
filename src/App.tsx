@@ -18,22 +18,37 @@ import { INITIAL_CONFIG, INITIAL_FECHAMENTOS } from './data/mockData';
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('fechamento');
 
-  // Impede que o gesto de toque no topo vaze para o navegador
+  // Bloqueia o evento nativo de pull-to-refresh na janela inteira quando o viewport está no topo
   useEffect(() => {
-    const viewport = document.getElementById('treasury-content-viewport');
-    if (!viewport) return;
+    let startY = 0;
 
-    const handleTouchStart = () => {
-      // Mantém 1px de distância do topo absoluto para desarmar o pull-to-refresh nativo do navegador
-      if (viewport.scrollTop === 0) {
-        viewport.scrollTop = 1;
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        startY = e.touches[0].pageY;
       }
     };
 
-    viewport.addEventListener('touchstart', handleTouchStart, { passive: true });
+    const handleTouchMove = (e: TouchEvent) => {
+      const viewport = document.getElementById('treasury-content-viewport');
+      if (!viewport) return;
+
+      const currentY = e.touches[0].pageY;
+      const isPullingDown = currentY > startY;
+
+      // Se o scroll está no topo e o usuário arrasta para baixo, cancela o evento nativo para evitar reload
+      if (viewport.scrollTop <= 0 && isPullingDown) {
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    document.body.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.body.addEventListener('touchmove', handleTouchMove, { passive: false });
 
     return () => {
-      viewport.removeEventListener('touchstart', handleTouchStart);
+      document.body.removeEventListener('touchstart', handleTouchStart);
+      document.body.removeEventListener('touchmove', handleTouchMove);
     };
   }, []);
 

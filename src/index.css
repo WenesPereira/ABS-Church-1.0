@@ -1,34 +1,40 @@
 @import "tailwindcss";
 
-html,
-body,
-#root {
-  width: 100%;
+html {
+  /* Bloqueia o pull-to-refresh nativo em todos os navegadores móveis (Chrome/Safari) */
+  overscroll-behavior: none !important;
+  overscroll-behavior-y: none !important;
   height: 100%;
-  height: 100dvh;
-  margin: 0;
-  padding: 0;
-  /* Trava a rolagem na página principal para forçar a rolagem interna */
+  width: 100%;
   overflow: hidden;
-  overscroll-behavior-y: none;
-  touch-action: pan-x pan-y;
+}
+
+body {
+  overscroll-behavior: none !important;
+  overscroll-behavior-y: none !important;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  position: fixed; /* Trava a viewport do celular no lugar */
+  left: 0;
+  top: 0;
 }
 
 #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 #treasury-content-viewport {
   flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
+  height: 100%;
+  overflow-y: scroll; /* Força a barra de rolagem nativa interna */
   -webkit-overflow-scrolling: touch;
-  scroll-behavior: smooth;
-  /* Garante que o toque passe e acione a rolagem nativa por toque */
-  touch-action: pan-y !important;
-  pointer-events: auto !important;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
 }
 
 /* Garante que elementos dentro do viewport não bloqueiem o gesto de rolar */
