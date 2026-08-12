@@ -28,18 +28,27 @@ body {
   flex-direction: column;
 }
 
+#treasury-content-viewport::-webkit-scrollbar {
+  display: none;
+}
+
 #treasury-content-viewport {
   flex: 1;
   height: 100%;
   overflow-y: scroll; /* Força a barra de rolagem nativa interna */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  touch-action: pan-y;
+  -ms-overflow-style: none;  /* IE e Edge */
+  scrollbar-width: none;  /* Firefox */
+  pointer-events: auto !important;
+  touch-action: pan-y !important;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
-/* Garante que elementos dentro do viewport não bloqueiem o gesto de rolar */
+/* Força todos os elementos filhos a permitirem a rolagem vertical e não bloquearem o toque */
 #treasury-content-viewport * {
-  touch-action: manipulation;
+  touch-action: pan-y !important;
 }
 
 #mobile-app-nav {
