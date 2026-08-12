@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Sparkles, FileText, CheckCircle2, Copy, Printer, Loader2, AlertCircle, Church, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import html2pdf from 'html2pdf.js';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { FechamentoCulto } from '../types';
 import { generateChurchReport } from '../services/api';
 
@@ -24,15 +25,41 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({ fechamento, se
     const originalWidth = element.style.width;
     try {
       element.style.width = '794px';
-      const opt = {
-        margin: [10, 10, 10, 10],
-        filename: `Relatorio_IA_Tesouraria_${fechamento.data || 'culto'}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, windowWidth: 1024 },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      };
-      const html2pdfModule = (html2pdf as any).default || html2pdf;
-      await html2pdfModule().set(opt).from(element).save();
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        windowWidth: 1024,
+        backgroundColor: '#020617',
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const imgWidth = pdfWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = margin;
+
+      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight - margin * 2;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight + margin;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight - margin * 2;
+      }
+
+      pdf.save(`Relatorio_IA_Tesouraria_${fechamento.data || 'culto'}.pdf`);
     } catch (err) {
       console.error('Erro ao baixar PDF:', err);
       window.print();

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Printer, X, Church, CheckCircle, FileText, Check, Download, Loader2 } from 'lucide-react';
-import html2pdf from 'html2pdf.js';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import { FechamentoCulto, ConfigIgreja, CategoriaEntrada } from '../types';
 import {
   formatCurrency,
@@ -100,28 +101,47 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
       element.style.minWidth = '794px';
       element.style.maxWidth = '794px';
 
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        windowWidth: 1024,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.98);
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+      const margin = 8;
+      const imgWidth = pdfWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = margin;
+
+      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+      heightLeft -= pdfHeight - margin * 2;
+
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeight + margin;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
+        heightLeft -= pdfHeight - margin * 2;
+      }
+
       const dataFormatted = fechamento.data
         ? fechamento.data
         : new Date().toISOString().split('T')[0];
-      
-      const opt = {
-        margin: [10, 8, 10, 8],
-        filename: `Relatorio_Tesouraria_${dataFormatted}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2, 
-          useCORS: true, 
-          logging: false,
-          windowWidth: 1024,
-        },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-      };
 
-      const html2pdfModule = (html2pdf as any).default || html2pdf;
-      await html2pdfModule().set(opt).from(element).save();
+      pdf.save(`Relatorio_Tesouraria_${dataFormatted}.pdf`);
     } catch (err) {
-      console.error('Erro ao gerar PDF com html2pdf:', err);
-      // Fallback print
+      console.error('Erro ao gerar PDF com html2canvas e jsPDF:', err);
       window.print();
     } finally {
       // Restore original responsiveness
