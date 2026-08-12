@@ -212,7 +212,7 @@ export default function App() {
   };
 
   return (
-    <div id="app-root" className="flex flex-col min-h-[100dvh] w-full max-w-full bg-slate-950 font-sans text-slate-100">
+    <div id="app-root" className="flex flex-col h-full h-[100dvh] w-full max-w-full bg-slate-950 font-sans text-slate-100 overflow-hidden">
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}

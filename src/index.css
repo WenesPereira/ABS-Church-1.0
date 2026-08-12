@@ -1,27 +1,26 @@
 @import "tailwindcss";
 
 html,
-body {
+body,
+#root {
   width: 100%;
-  min-height: 100%;
-  min-height: 100dvh;
+  height: 100%;
+  height: 100dvh;
   margin: 0;
   padding: 0;
-  /* Permite a rolagem normal, mas previne o pull-to-refresh nativo */
-  overflow-y: auto;
-  overscroll-behavior-y: contain;
-  -webkit-overflow-scrolling: touch;
+  /* Trava a rolagem na página principal para forçar a rolagem interna */
+  overflow: hidden;
+  overscroll-behavior-y: none;
 }
 
 #root {
-  width: 100%;
-  min-height: 100%;
-  min-height: 100dvh;
   display: flex;
   flex-direction: column;
 }
 
 #treasury-content-viewport {
+  flex: 1;
+  min-height: 0; /* Essencial para o flex child respeitar o overflow no iOS/Chrome */
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
