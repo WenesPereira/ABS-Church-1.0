@@ -1,102 +1,419 @@
 @import "tailwindcss";
 
-html {
-  /* Bloqueia o pull-to-refresh nativo em todos os navegadores móveis (Chrome/Safari) */
-  overscroll-behavior: none !important;
-  overscroll-behavior-y: none !important;
-  height: 100%;
+/* =========================================================
+   RESET DA APLICAÇÃO
+   ========================================================= */
+
+html,
+body,
+#root {
   width: 100%;
-  overflow: hidden;
+  min-width: 0;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
 }
+
+
+/* =========================================================
+   HTML
+   ========================================================= */
+
+html {
+  overscroll-behavior: none;
+  background: #020617;
+}
+
+
+/* =========================================================
+   BODY
+   ========================================================= */
 
 body {
-  overscroll-behavior: none !important;
-  overscroll-behavior-y: none !important;
-  height: 100%;
-  width: 100%;
+  /*
+   * O body NÃO será mais o responsável pelo scroll.
+   * O scroll ficará exclusivamente no app.
+   */
   overflow: hidden;
-  position: fixed; /* Trava a viewport do celular no lugar */
-  left: 0;
-  top: 0;
+
+  background: #020617;
+
+  /*
+   * Removemos position: fixed.
+   * Isso era uma das coisas que poderiam
+   * prender a viewport do celular.
+   */
+  position: relative;
+
+  left: auto;
+  top: auto;
+
+  overscroll-behavior: none;
+
+  /*
+   * Permite gestos normalmente.
+   */
+  touch-action: auto;
 }
 
+
+/* =========================================================
+   ROOT
+   ========================================================= */
+
 #root {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+
+  width: 100%;
+  min-width: 0;
+
+  min-height: 100dvh;
+
+  overflow: hidden;
 }
+
+
+/* =========================================================
+   VIEWPORT PRINCIPAL
+   ========================================================= */
+
+#treasury-content-viewport {
+  /*
+   * Esta é a ÚNICA área principal de rolagem.
+   */
+  width: 100%;
+  min-width: 0;
+
+  height: 100dvh;
+  min-height: 100dvh;
+
+  /*
+   * Importante:
+   * NÃO usar min-h-full nos filhos.
+   */
+  display: flex;
+  flex-direction: column;
+
+  /*
+   * Rolagem vertical.
+   */
+  overflow-y: auto;
+
+  /*
+   * Evita overflow horizontal acidental
+   * causado pelo conteúdo.
+   */
+  overflow-x: hidden;
+
+  /*
+   * Rolagem nativa suave no iPhone/iPad.
+   */
+  -webkit-overflow-scrolling: touch;
+
+  /*
+   * Permite gestos vertical e horizontal.
+   */
+  touch-action: pan-x pan-y;
+
+  /*
+   * Evita pull-to-refresh / overscroll exagerado.
+   */
+  overscroll-behavior-y: contain;
+
+  /*
+   * Barra de rolagem invisível.
+   */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  position: relative;
+
+  background: #020617;
+}
+
 
 #treasury-content-viewport::-webkit-scrollbar {
   display: none;
 }
 
-#treasury-content-viewport {
-  height: 100dvh;
-  width: 100vw;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
-  -ms-overflow-style: none;  /* IE e Edge */
-  scrollbar-width: none;  /* Firefox */
-  pointer-events: auto !important;
-  touch-action: pan-y !important;
-  -webkit-user-select: none;
-  user-select: none;
-  position: relative;
+
+/* =========================================================
+   ELEMENTOS DIRETOS DA VIEWPORT
+   ========================================================= */
+
+#treasury-content-viewport > * {
+  /*
+   * Impede que flex items criem
+   * largura inesperada.
+   */
+  min-width: 0;
 }
 
-/* Força todos os elementos filhos a permitirem a rolagem vertical e não bloquearem o toque */
-#treasury-content-viewport * {
-  touch-action: pan-y !important;
+
+/* =========================================================
+   CONTEÚDO PRINCIPAL
+   ========================================================= */
+
+#treasury-content-viewport main {
+  min-width: 0;
+  width: 100%;
+
+  /*
+   * O conteúdo pode crescer naturalmente.
+   * Não usamos height: 100%.
+   */
+  height: auto;
+
+  overflow: visible;
 }
+
+
+/* =========================================================
+   MENU MOBILE
+   ========================================================= */
+
+/*
+ * Este é o container que adicionamos
+ * no App.tsx em volta do Sidebar.
+ */
 
 #mobile-app-nav {
-  overscroll-behavior-x: contain;
+  width: 100%;
+  min-width: 0;
+
+  /*
+   * Permite que o menu seja maior que
+   * a tela horizontalmente.
+   */
+  overflow-x: auto;
+
+  overflow-y: hidden;
+
+  /*
+   * Não quebra os itens em várias linhas.
+   */
+  white-space: nowrap;
+
+  /*
+   * Gesto horizontal.
+   */
+  touch-action: pan-x;
+
+  /*
+   * Rolagem horizontal suave.
+   */
   -webkit-overflow-scrolling: touch;
+
+  /*
+   * Evita comportamento estranho
+   * ao chegar no limite horizontal.
+   */
+  overscroll-behavior-x: contain;
+
+  /*
+   * Barra invisível.
+   */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
-@media print {
-  body {
-    background-color: white !important;
-    color: black !important;
-  }
-  .print\:hidden {
-    display: none !important;
-  }
+
+#mobile-app-nav::-webkit-scrollbar {
+  display: none;
 }
+
+
+/* =========================================================
+   ELEMENTOS DO MENU
+   ========================================================= */
+
+#mobile-app-nav > * {
+  /*
+   * Impede que o Sidebar tente
+   * encolher para caber na tela.
+   */
+  flex-shrink: 0;
+
+  /*
+   * Não deixa o conteúdo interno
+   * ser cortado pelo wrapper.
+   */
+  max-width: none;
+}
+
+
+/* =========================================================
+   DESKTOP
+   ========================================================= */
+
+@media (min-width: 1024px) {
+
+  #mobile-app-nav {
+    /*
+     * No desktop não queremos um
+     * menu horizontal rolável.
+     */
+    overflow-x: visible;
+    overflow-y: visible;
+
+    width: auto;
+
+    touch-action: auto;
+
+    white-space: normal;
+  }
+
+}
+
+
+/* =========================================================
+   CAMPOS DE FORMULÁRIO
+   ========================================================= */
+
+input,
+textarea,
+select,
+button {
+  /*
+   * Permite interação normal com
+   * campos e botões.
+   */
+  touch-action: manipulation;
+}
+
+
+/* =========================================================
+   NÃO BLOQUEAR GESTOS DOS ELEMENTOS
+   ========================================================= */
+
+/*
+ * IMPORTANTE:
+ *
+ * NÃO adicionar:
+ *
+ * #treasury-content-viewport * {
+ *   touch-action: pan-y !important;
+ * }
+ *
+ * Essa regra bloqueava o gesto horizontal.
+ */
+
+
+/* =========================================================
+   SELEÇÃO DE TEXTO
+   ========================================================= */
+
+body {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+
+/* =========================================================
+   ANIMAÇÃO
+   ========================================================= */
 
 @keyframes fadeIn {
   from {
     opacity: 0;
     transform: translateY(4px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
   }
 }
 
+
 .animate-fadeIn {
-  animation: fadeIn 0.25s ease-out forwards;
+  animation:
+    fadeIn
+    0.25s
+    ease-out
+    forwards;
 }
 
-/* Custom Scrollbars */
+
+/* =========================================================
+   SCROLLBARS
+   ========================================================= */
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
+
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(
+    15,
+    23,
+    42,
+    0.6
+  );
 }
 
+
 ::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.8);
+  background: rgba(
+    51,
+    65,
+    85,
+    0.8
+  );
+
   border-radius: 9999px;
 }
 
+
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(71, 85, 105, 1);
+  background: rgba(
+    71,
+    85,
+    105,
+    1
+  );
+}
+
+
+/* =========================================================
+   IMPRESSÃO
+   ========================================================= */
+
+@media print {
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+
+    overflow: visible !important;
+  }
+
+
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+
+
+  #treasury-content-viewport {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+
+    overflow: visible !important;
+
+    background: white !important;
+  }
+
+
+  .print\:hidden {
+    display: none !important;
+  }
+
 }
