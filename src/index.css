@@ -4,65 +4,55 @@
    RESET
    ========================================================= */
 
-html,
-body,
-#root {
+html {
   width: 100%;
   min-width: 0;
+  min-height: 100%;
   margin: 0;
   padding: 0;
-}
 
-
-/* =========================================================
-   HTML
-   ========================================================= */
-
-html {
-  height: 100%;
   background: #020617;
 
   /*
-   * Impede o navegador de transformar o movimento
-   * no limite da página em pull-to-refresh.
+   * NÃO bloqueamos o scroll vertical da página.
    */
-  overscroll-behavior: none;
+  overflow-x: hidden;
 }
 
-
-/* =========================================================
-   BODY
-   ========================================================= */
-
 body {
-  height: 100%;
+  width: 100%;
+  min-width: 0;
   min-height: 100%;
 
   margin: 0;
+  padding: 0;
 
   background: #020617;
+  color: #f8fafc;
+
+  /*
+   * O navegador controla o scroll vertical.
+   */
+  overflow-x: hidden;
+  overflow-y: auto;
 
   /*
    * NÃO usar position: fixed.
    */
   position: relative;
 
-  overflow: hidden;
+  /*
+   * Permite gestos normais.
+   */
+  touch-action: pan-x pan-y;
 
   /*
-   * Não bloquear gestos.
+   * Evita pull-to-refresh excessivo.
    */
-  touch-action: auto;
+  overscroll-behavior-y: contain;
 
-  /*
-   * Bloqueia overscroll.
-   */
-  overscroll-behavior: none;
-
-  user-select: text;
-  -webkit-user-select: text;
+  -webkit-text-size-adjust: 100%;
 }
-
 
 /* =========================================================
    ROOT
@@ -71,180 +61,140 @@ body {
 #root {
   width: 100%;
   min-width: 0;
-  height: 100dvh;
   min-height: 100dvh;
 
-  display: flex;
-  flex-direction: column;
+  margin: 0;
+  padding: 0;
 
-  overflow: hidden;
+  overflow: visible;
+
+  display: block;
 }
-
 
 /* =========================================================
-   ÁREA PRINCIPAL DO APP
+   APLICAÇÃO
    ========================================================= */
 
-#treasury-content-viewport {
-  position: relative;
-
-  width: 100%;
-  height: 100dvh;
-
-  min-width: 0;
-  min-height: 0;
-
-  display: flex;
-  flex-direction: column;
-
-  background: #020617;
-
-  /*
-   * ÚNICO SCROLL VERTICAL PRINCIPAL.
-   */
-  overflow-y: auto;
-
-  /*
-   * Não permitir que a página fique maior
-   * horizontalmente.
-   */
-  overflow-x: hidden;
-
-  /*
-   * Scroll nativo mobile.
-   */
-  -webkit-overflow-scrolling: touch;
-
-  /*
-   * Impede pull-to-refresh/overscroll.
-   */
-  overscroll-behavior: none;
-
-  /*
-   * Permite os dois tipos de gesto.
-   */
-  touch-action: pan-x pan-y;
-
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-
-#treasury-content-viewport::-webkit-scrollbar {
-  display: none;
-}
-
-
-/* =========================================================
-   FILHOS DA VIEWPORT
-   ========================================================= */
-
-#treasury-content-viewport > * {
-  min-width: 0;
-}
-
-
-/* =========================================================
-   MAIN
-   ========================================================= */
-
-#treasury-content-viewport main {
+.treasury-app {
   width: 100%;
   min-width: 0;
-
-  height: auto;
-  min-height: 0;
+  min-height: 100dvh;
 
   overflow: visible;
 }
 
-
 /* =========================================================
-   MENU DO SIDEBAR
+   MENU MOBILE
    ========================================================= */
 
 #mobile-app-nav {
   width: 100%;
   min-width: 0;
 
-  /*
-   * O menu pode ser mais largo que a tela.
-   */
-  overflow-x: auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 
+  overflow-x: auto;
   overflow-y: hidden;
 
+  white-space: nowrap;
+
   /*
-   * IMPORTANTE:
-   * Não usar touch-action: pan-x aqui.
-   *
-   * Se usarmos pan-x, um movimento vertical
-   * iniciado sobre o menu pode ficar preso.
+   * O menu aceita gesto horizontal.
    */
-  touch-action: pan-x pan-y;
+  touch-action: pan-x;
 
   /*
    * Scroll horizontal nativo.
    */
   -webkit-overflow-scrolling: touch;
 
-  /*
-   * Bloqueia overscroll.
-   */
-  overscroll-behavior: none;
+  overscroll-behavior-x: contain;
 
   /*
-   * Mantém os itens na mesma linha.
+   * Não permite que o navegador
+   * faça pull-to-refresh pelo menu.
    */
-  white-space: nowrap;
+  overscroll-behavior-y: none;
 
-  /*
-   * Esconde a barra.
-   */
   scrollbar-width: none;
   -ms-overflow-style: none;
-
-  /*
-   * O menu não deve crescer verticalmente.
-   */
-  flex: 0 0 auto;
 }
-
 
 #mobile-app-nav::-webkit-scrollbar {
   display: none;
 }
 
-
 /* =========================================================
-   CONTEÚDO DO SIDEBAR
+   BOTÕES DO MENU MOBILE
    ========================================================= */
 
-#mobile-app-nav > * {
-  flex-shrink: 0;
-}
+#mobile-app-nav > button {
+  flex: 0 0 auto;
 
+  width: auto;
+  max-width: none;
 
-/* =========================================================
-   BOTÕES DO SIDEBAR
-   ========================================================= */
-
-#mobile-app-nav button {
-  /*
-   * O botão continua clicável.
-   */
-  touch-action: manipulation;
+  white-space: nowrap;
 
   /*
-   * Não selecionar texto ao arrastar.
+   * Importante para o gesto horizontal.
    */
+  touch-action: pan-x;
+
   user-select: none;
   -webkit-user-select: none;
 }
 
+/* =========================================================
+   SIDEBAR DESKTOP
+   ========================================================= */
+
+#app-sidebar {
+  flex: 0 0 auto;
+
+  width: 18rem;
+
+  /*
+   * No desktop o sidebar não participa
+   * do scroll horizontal.
+   */
+  overflow: visible;
+}
 
 /* =========================================================
-   CAMPOS
+   CONTEÚDO PRINCIPAL
+   ========================================================= */
+
+main {
+  width: 100%;
+  min-width: 0;
+
+  /*
+   * O conteúdo cresce naturalmente.
+   */
+  height: auto;
+
+  overflow: visible;
+}
+
+/* =========================================================
+   NÃO BLOQUEAR TOUCH DOS CONTEÚDOS
+   ========================================================= */
+
+/*
+ * NÃO colocar:
+
+ #treasury-content-viewport * {
+   touch-action: pan-y !important;
+ }
+
+ * Isso bloqueava o menu horizontal.
+ */
+
+/* =========================================================
+   FORMULÁRIOS
    ========================================================= */
 
 input,
@@ -253,53 +203,21 @@ select {
   touch-action: manipulation;
 }
 
-
-/* =========================================================
-   NÃO FAZER
-   ========================================================= */
-
 /*
-   NÃO coloque:
-
-   #treasury-content-viewport * {
-     touch-action: pan-y !important;
-   }
-
-   NÃO coloque:
-
-   body {
-     position: fixed;
-   }
-
-   NÃO coloque:
-
-   #mobile-app-nav {
-     touch-action: pan-x;
-   }
-*/
-
-
-/* =========================================================
-   DESKTOP
-   ========================================================= */
-
-@media (min-width: 1024px) {
-
-  #mobile-app-nav {
-    width: auto;
-
-    overflow-x: visible;
-    overflow-y: visible;
-
-    white-space: normal;
-
-    touch-action: auto;
-
-    overscroll-behavior: auto;
-  }
-
+ * Botões precisam continuar clicáveis.
+ */
+button {
+  touch-action: manipulation;
 }
 
+/* =========================================================
+   SELEÇÃO
+   ========================================================= */
+
+body {
+  user-select: text;
+  -webkit-user-select: text;
+}
 
 /* =========================================================
    ANIMAÇÃO
@@ -317,7 +235,6 @@ select {
   }
 }
 
-
 .animate-fadeIn {
   animation:
     fadeIn
@@ -325,7 +242,6 @@ select {
     ease-out
     forwards;
 }
-
 
 /* =========================================================
    SCROLLBAR
@@ -336,29 +252,24 @@ select {
   height: 6px;
 }
 
-
 ::-webkit-scrollbar-track {
   background: rgba(15, 23, 42, 0.6);
 }
-
 
 ::-webkit-scrollbar-thumb {
   background: rgba(51, 65, 85, 0.8);
   border-radius: 9999px;
 }
 
-
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(71, 85, 105, 1);
 }
-
 
 /* =========================================================
    IMPRESSÃO
    ========================================================= */
 
 @media print {
-
   html,
   body,
   #root {
@@ -374,7 +285,7 @@ select {
     color: black !important;
   }
 
-  #treasury-content-viewport {
+  .treasury-app {
     width: 100%;
     height: auto;
     min-height: 0;
@@ -382,6 +293,11 @@ select {
     overflow: visible !important;
 
     background: white !important;
+  }
+
+  #mobile-app-nav,
+  #app-sidebar {
+    display: none !important;
   }
 
   .print\:hidden {

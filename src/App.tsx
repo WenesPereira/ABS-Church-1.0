@@ -21,11 +21,13 @@ import {
   INITIAL_FECHAMENTOS,
 } from './data/mockData';
 
-
 export default function App() {
+  // =========================================================
+  // ABA ATUAL
+  // =========================================================
+
   const [activeTab, setActiveTab] =
     useState<ActiveTab>('fechamento');
-
 
   // =========================================================
   // CONFIGURAÇÃO DA IGREJA
@@ -51,7 +53,6 @@ export default function App() {
       }
     });
 
-
   // =========================================================
   // HISTÓRICO
   // =========================================================
@@ -76,7 +77,6 @@ export default function App() {
       }
     });
 
-
   // =========================================================
   // FECHAMENTO ATUAL
   // =========================================================
@@ -95,18 +95,17 @@ export default function App() {
           .toISOString()
           .split('T')[0];
 
-
       try {
         const saved = localStorage.getItem(
           'church_treasury_active_culto'
         );
-
 
         if (saved) {
           const parsed = JSON.parse(saved);
 
           return {
             ...parsed,
+
             dataInicio:
               parsed.dataInicio ||
               monthStartStr,
@@ -124,10 +123,12 @@ export default function App() {
         );
       }
 
+      // =====================================================
+      // USA DADOS MOCK, SE EXISTIREM
+      // =====================================================
 
       const firstMock =
         INITIAL_FECHAMENTOS[0];
-
 
       if (firstMock) {
         return {
@@ -144,6 +145,9 @@ export default function App() {
         };
       }
 
+      // =====================================================
+      // NOVO FECHAMENTO PADRÃO
+      // =====================================================
 
       return {
         id: 'culto-' + Date.now(),
@@ -206,6 +210,7 @@ export default function App() {
           c10: 0,
           c5: 0,
           c2: 0,
+
           m100: 0,
           m050: 0,
           m025: 0,
@@ -215,7 +220,6 @@ export default function App() {
       };
     });
 
-
   // =========================================================
   // MODAL DE IMPRESSÃO
   // =========================================================
@@ -223,9 +227,8 @@ export default function App() {
   const [printableCulto, setPrintableCulto] =
     useState<FechamentoCulto | null>(null);
 
-
   // =========================================================
-  // PERSISTÊNCIA - CONFIGURAÇÃO
+  // SALVAR CONFIGURAÇÃO
   // =========================================================
 
   useEffect(() => {
@@ -242,9 +245,8 @@ export default function App() {
     }
   }, [configIgreja]);
 
-
   // =========================================================
-  // PERSISTÊNCIA - HISTÓRICO
+  // SALVAR HISTÓRICO
   // =========================================================
 
   useEffect(() => {
@@ -261,9 +263,8 @@ export default function App() {
     }
   }, [historico]);
 
-
   // =========================================================
-  // PERSISTÊNCIA - FECHAMENTO ATUAL
+  // SALVAR FECHAMENTO ATUAL
   // =========================================================
 
   useEffect(() => {
@@ -279,14 +280,12 @@ export default function App() {
       );
     }
 
-
-    // Atualiza o fechamento dentro do histórico
+    // Atualiza o fechamento no histórico
     setHistorico((prev) => {
       const index = prev.findIndex(
         (f) =>
           f.id === fechamentoAtual.id
       );
-
 
       if (index >= 0) {
         const updated = [...prev];
@@ -297,7 +296,6 @@ export default function App() {
         return updated;
       }
 
-
       return [
         fechamentoAtual,
         ...prev,
@@ -305,6 +303,19 @@ export default function App() {
     });
   }, [fechamentoAtual]);
 
+  // =========================================================
+  // VOLTAR AO TOPO DA PÁGINA
+  // =========================================================
+
+  const scrollToTop = () => {
+    window.requestAnimationFrame(() => {
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: 'smooth',
+      });
+    });
+  };
 
   // =========================================================
   // NOVO FECHAMENTO
@@ -315,20 +326,18 @@ export default function App() {
       fechamentoAtual.status === 'aberto' &&
       fechamentoAtual.lancamentos.length > 0
     ) {
-      const confirmar = window.confirm(
-        'O caixa atual ainda está em aberto. Deseja iniciar o fechamento de um novo culto?'
-      );
-
+      const confirmar =
+        window.confirm(
+          'O caixa atual ainda está em aberto. Deseja iniciar o fechamento de um novo culto?'
+        );
 
       if (!confirmar) {
         return;
       }
     }
 
-
     const todayStr =
       new Date().toISOString().split('T')[0];
-
 
     const monthStartStr =
       new Date(
@@ -338,7 +347,6 @@ export default function App() {
       )
         .toISOString()
         .split('T')[0];
-
 
     const newCulto: FechamentoCulto = {
       id: 'culto-' + Date.now(),
@@ -401,6 +409,7 @@ export default function App() {
         c10: 0,
         c5: 0,
         c2: 0,
+
         m100: 0,
         m050: 0,
         m025: 0,
@@ -409,32 +418,12 @@ export default function App() {
       },
     };
 
+    setFechamentoAtual(newCulto);
 
-    setFechamentoAtual(
-      newCulto
-    );
+    setActiveTab('fechamento');
 
-    setActiveTab(
-      'fechamento'
-    );
-
-
-    // Volta o scroll para o topo
-    requestAnimationFrame(() => {
-      const viewport =
-        document.getElementById(
-          'treasury-content-viewport'
-        );
-
-      if (viewport) {
-        viewport.scrollTo({
-          top: 0,
-          behavior: 'smooth',
-        });
-      }
-    });
+    scrollToTop();
   };
-
 
   // =========================================================
   // SELECIONAR FECHAMENTO DO HISTÓRICO
@@ -447,26 +436,10 @@ export default function App() {
       fechamento
     );
 
-    setActiveTab(
-      'fechamento'
-    );
+    setActiveTab('fechamento');
 
-
-    requestAnimationFrame(() => {
-      const viewport =
-        document.getElementById(
-          'treasury-content-viewport'
-        );
-
-      if (viewport) {
-        viewport.scrollTo({
-          top: 0,
-          behavior: 'smooth',
-        });
-      }
-    });
+    scrollToTop();
   };
-
 
   // =========================================================
   // ABRIR IMPRESSÃO
@@ -480,89 +453,71 @@ export default function App() {
     );
   };
 
-
   // =========================================================
   // RENDER
   // =========================================================
 
   return (
     <div
-      id="treasury-content-viewport"
       className="
         treasury-app
-        flex
-        flex-col
+        min-h-screen
+        w-full
         bg-slate-950
         font-sans
         text-slate-100
       "
     >
 
-      {/* =====================================================
-          CABEÇALHO
-          ===================================================== */}
+      {/* ===================================================
+          HEADER
+          =================================================== */}
 
-      <div className="flex-none">
-        <Header
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          fechamentoAtual={fechamentoAtual}
-          configIgreja={configIgreja}
-          onNovoFechamento={
-            handleNovoFechamento
-          }
-          onOpenPrintModal={() =>
-            setPrintableCulto(
-              fechamentoAtual
-            )
-          }
-        />
-      </div>
+      <Header
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        fechamentoAtual={fechamentoAtual}
+        configIgreja={configIgreja}
+        onNovoFechamento={
+          handleNovoFechamento
+        }
+        onOpenPrintModal={() =>
+          setPrintableCulto(
+            fechamentoAtual
+          )
+        }
+      />
 
-
-      {/* =====================================================
+      {/* ===================================================
           ÁREA PRINCIPAL
-          ===================================================== */}
+          =================================================== */}
 
       <div
         className="
-          flex
           w-full
-          flex-none
+          flex
           flex-col
           lg:flex-row
           items-stretch
-          lg:items-start
+          bg-slate-950
         "
       >
 
-        {/* ===================================================
-            MENU / SIDEBAR
-            =================================================== */}
+        {/* =================================================
+            SIDEBAR / MENU
+            ================================================= */}
 
-        <div
-          id="mobile-app-nav"
-          className="
-            w-full
-            min-w-0
-            flex-none
-            lg:w-auto
-            lg:overflow-visible
-          "
-        >
-          <Sidebar
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            qtdLancamentos={
-              fechamentoAtual.lancamentos.length
-            }
-          />
-        </div>
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          qtdLancamentos={
+            fechamentoAtual.lancamentos.length
+          }
+        />
 
-
-        {/* ===================================================
-            CONTEÚDO
-            =================================================== */}
+        {/* =================================================
+            CONTEÚDO PRINCIPAL
+            ================================================= */}
 
         <main
           className="
@@ -573,29 +528,38 @@ export default function App() {
           "
         >
 
+          {/* ===============================================
+              FECHAMENTO
+              =============================================== */}
+
           {activeTab === 'fechamento' && (
             <FechamentoAtualView
               fechamento={
                 fechamentoAtual
               }
+
               setFechamento={
                 setFechamentoAtual
               }
+
               onGoToLancamentos={() =>
                 setActiveTab(
                   'lancamentos'
                 )
               }
+
               onGoToContagem={() =>
                 setActiveTab(
                   'contagem'
                 )
               }
+
               onGoToRelatorioIA={() =>
                 setActiveTab(
                   'relatorio_ia'
                 )
               }
+
               onOpenPrintModal={() =>
                 setPrintableCulto(
                   fechamentoAtual
@@ -604,63 +568,84 @@ export default function App() {
             />
           )}
 
+          {/* ===============================================
+              LANÇAMENTOS
+              =============================================== */}
 
           {activeTab === 'lancamentos' && (
             <LancamentosView
               fechamento={
                 fechamentoAtual
               }
+
               setFechamento={
                 setFechamentoAtual
               }
             />
           )}
 
+          {/* ===============================================
+              CONTAGEM
+              =============================================== */}
 
           {activeTab === 'contagem' && (
             <ContagemDinheiroView
               fechamento={
                 fechamentoAtual
               }
+
               setFechamento={
                 setFechamentoAtual
               }
             />
           )}
 
+          {/* ===============================================
+              HISTÓRICO
+              =============================================== */}
 
           {activeTab === 'historico' && (
             <HistoricoView
               historico={
                 historico
               }
+
               onSelectFechamento={
                 handleSelectFechamento
               }
+
               onOpenPrintModalFor={
                 handleOpenPrintModalFor
               }
             />
           )}
 
+          {/* ===============================================
+              RELATÓRIO IA
+              =============================================== */}
 
           {activeTab === 'relatorio_ia' && (
             <RelatorioIAView
               fechamento={
                 fechamentoAtual
               }
+
               setFechamento={
                 setFechamentoAtual
               }
             />
           )}
 
+          {/* ===============================================
+              CONFIGURAÇÃO
+              =============================================== */}
 
           {activeTab === 'config' && (
             <ConfigView
               config={
                 configIgreja
               }
+
               setConfig={
                 setConfigIgreja
               }
@@ -670,19 +655,20 @@ export default function App() {
         </main>
       </div>
 
-
-      {/* =====================================================
+      {/* ===================================================
           MODAL DE IMPRESSÃO
-          ===================================================== */}
+          =================================================== */}
 
       {printableCulto && (
         <PrintReceiptModal
           fechamento={
             printableCulto
           }
+
           config={
             configIgreja
           }
+
           onClose={() =>
             setPrintableCulto(null)
           }
