@@ -53,8 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
       className="
         sticky
         top-0
-        z-40
-        w-full
+        z-30
         bg-slate-900/95
         backdrop-blur-md
         border-b
@@ -74,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({
     >
 
       {/* ===================================================
-          IDENTIDADE
+          MARCA
           =================================================== */}
 
       <div
@@ -96,6 +95,7 @@ export const Header: React.FC<HeaderProps> = ({
           className="
             w-10
             h-10
+            shrink-0
             rounded-2xl
             bg-gradient-to-br
             from-amber-500
@@ -111,15 +111,14 @@ export const Header: React.FC<HeaderProps> = ({
             ring-1
             ring-white/20
             cursor-pointer
-            shrink-0
           "
-          aria-label="Ir para fechamento"
         >
 
           <Church
             className="
               w-5
               h-5
+              text-slate-950
             "
           />
 
@@ -150,8 +149,6 @@ export const Header: React.FC<HeaderProps> = ({
                 tracking-tight
                 leading-none
                 truncate
-                max-w-[70vw]
-                md:max-w-none
               "
             >
               {configIgreja.nomeIgreja ||
@@ -168,15 +165,18 @@ export const Header: React.FC<HeaderProps> = ({
                 font-semibold
                 uppercase
                 tracking-wider
-                shrink-0
+
                 ${
-                  fechamentoAtual.status === 'fechado'
+                  fechamentoAtual.status ===
+                  'fechado'
+
                     ? `
                       bg-emerald-500/20
                       text-emerald-300
                       border
                       border-emerald-500/30
                     `
+
                     : `
                       bg-amber-500/20
                       text-amber-300
@@ -218,9 +218,7 @@ export const Header: React.FC<HeaderProps> = ({
               Caixa Tesouraria
             </span>
 
-            <span>
-              •
-            </span>
+            <span>•</span>
 
             <span>
               Data Automática:{' '}
@@ -228,7 +226,7 @@ export const Header: React.FC<HeaderProps> = ({
               {fechamentoAtual.data
                 ? new Date(
                     fechamentoAtual.data +
-                    'T00:00:00'
+                      'T00:00:00'
                   ).toLocaleDateString(
                     'pt-BR'
                   )
@@ -292,6 +290,7 @@ export const Header: React.FC<HeaderProps> = ({
             />
 
           </div>
+
 
           <div>
 
@@ -362,6 +361,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           </div>
 
+
           <div>
 
             <span
@@ -431,6 +431,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           </div>
 
+
           <div>
 
             <span
@@ -499,7 +500,8 @@ export const Header: React.FC<HeaderProps> = ({
             font-bold
             border
             border-slate-700
-            transition-colors
+            transition-all
+            shadow-sm
             active:scale-95
             cursor-pointer
           "
@@ -546,7 +548,7 @@ export const Header: React.FC<HeaderProps> = ({
             text-slate-950
             font-bold
             text-xs
-            transition-colors
+            transition-all
             shadow-lg
             shadow-amber-600/20
             active:scale-95
@@ -559,6 +561,7 @@ export const Header: React.FC<HeaderProps> = ({
             className="
               w-3.5
               h-3.5
+              text-slate-950
             "
           />
 

@@ -33,8 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'fechamento' as ActiveTab,
       label: 'Fechamento de Caixa',
       shortLabel: 'Fechamento',
-      description:
-        'Resumo geral e conferência do caixa',
+      description: 'Resumo geral e conferência do caixa',
       icon: FileCheck,
       badge: 'Principal',
     },
@@ -43,19 +42,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'lancamentos' as ActiveTab,
       label: 'Dízimos & Ofertas',
       shortLabel: 'Dízimos & Ofertas',
-      description:
-        'Lançamento de dízimos, ofertas e despesas',
+      description: 'Lançamento de dízimos, ofertas e despesas',
       icon: PlusCircle,
-      badge:
-        `${qtdLancamentos} itens`,
+      badge: `${qtdLancamentos} itens`,
     },
 
     {
       id: 'contagem' as ActiveTab,
       label: 'Contador de Cédulas',
       shortLabel: 'Calculadora Cédulas',
-      description:
-        'Conferência física de notas e moedas',
+      description: 'Conferência física de notas e moedas',
       icon: Coins,
       badge: 'Espécie',
     },
@@ -64,8 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'historico' as ActiveTab,
       label: 'Histórico & Arquivo',
       shortLabel: 'Histórico',
-      description:
-        'Consultar fechamentos anteriores',
+      description: 'Consultar fechamentos anteriores',
       icon: History,
       badge: 'Arquivo',
     },
@@ -74,8 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'relatorio_ia' as ActiveTab,
       label: 'Relatório IA Tesouraria',
       shortLabel: 'Relatório IA',
-      description:
-        'Auditoria e parecer formal com Gemini',
+      description: 'Auditoria e parecer formal com Gemini',
       icon: Sparkles,
       badge: 'IA Gemini',
     },
@@ -84,12 +78,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'config' as ActiveTab,
       label: 'Dados da Igreja',
       shortLabel: 'Dados Igreja',
-      description:
-        'Configurar igreja, pastor e tesoureiros',
+      description: 'Configurar igreja, pastor e tesoureiros',
       icon: Settings,
       badge: 'Ajustes',
     },
-
   ];
 
 
@@ -101,22 +93,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       <nav
         id="mobile-app-nav"
-        aria-label="Navegação principal"
         className="
           lg:hidden
           w-full
-          min-w-0
-          flex
-          items-center
-          gap-2
-          px-3
-          py-2
           bg-slate-900
           border-b
           border-slate-800
+          px-2
+          py-2
+          flex
+          flex-row
+          items-center
+          gap-2
           overflow-x-auto
           overflow-y-hidden
-          whitespace-nowrap
           shrink-0
           z-20
         "
@@ -142,44 +132,41 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 )
               }
               className={`
-                mobile-nav-button
                 flex
                 items-center
                 gap-2
                 px-3
-                py-2.5
+                py-2
                 rounded-xl
                 text-xs
                 font-bold
                 whitespace-nowrap
+                transition-all
                 shrink-0
                 cursor-pointer
                 select-none
-                transition-colors
-                border
+
                 ${
                   isActive
+
                     ? `
                       bg-amber-500
                       text-slate-950
-                      border-amber-400
+                      shadow-md
+                      shadow-amber-500/20
                     `
+
                     : `
                       bg-slate-950
                       text-slate-400
+                      border
                       border-slate-800
                     `
                 }
               `}
             >
 
-              <Icon
-                className="
-                  w-3.5
-                  h-3.5
-                  shrink-0
-                "
-              />
+              <Icon className="w-3.5 h-3.5 shrink-0" />
 
               <span>
                 {item.shortLabel}
@@ -196,25 +183,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       py-0.5
                       rounded-full
                       font-mono
-                      shrink-0
+
                       ${
                         isActive
-                          ? `
-                            bg-slate-950
-                            text-amber-300
-                          `
-                          : `
-                            bg-slate-800
-                            text-amber-400
-                          `
+                          ? 'bg-slate-950 text-amber-300'
+                          : 'bg-slate-800 text-amber-400'
                       }
                     `}
                   >
                     {qtdLancamentos}
                   </span>
+
                 )}
 
             </button>
+
           );
         })}
 
@@ -230,8 +213,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className="
           hidden
           lg:flex
-          lg:w-72
-          lg:min-w-72
+          w-72
           bg-slate-900
           border-r
           border-slate-800
@@ -239,16 +221,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
           flex-col
           justify-between
           shrink-0
-          self-stretch
         "
       >
 
-        <div
-          className="
-            p-4
-            space-y-1.5
-          "
-        >
+        <div className="p-4 space-y-1.5">
 
           <div
             className="
@@ -280,11 +256,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
 
-          <nav
-            className="
-              space-y-1
-            "
-          >
+          <nav className="space-y-1">
 
             {navItems.map((item) => {
 
@@ -314,20 +286,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     px-3.5
                     py-3
                     rounded-2xl
-                    transition-colors
+                    transition-all
                     text-left
                     group
                     relative
                     cursor-pointer
+
                     ${
                       isActive
+
                         ? `
                           bg-amber-500/15
                           text-white
                           border
                           border-amber-500/30
                           font-semibold
+                          shadow-inner
                         `
+
                         : `
                           hover:bg-slate-800/80
                           hover:text-slate-100
@@ -352,6 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         rounded-r-full
                       "
                     />
+
                   )}
 
 
@@ -360,13 +337,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       p-2
                       rounded-xl
                       transition-colors
-                      shrink-0
+
                       ${
                         isActive
+
                           ? `
                             bg-amber-500
                             text-slate-950
+                            shadow-md
+                            shadow-amber-500/20
                           `
+
                           : `
                             bg-slate-800/80
                             text-slate-400
@@ -387,12 +368,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
 
-                  <div
-                    className="
-                      flex-1
-                      min-w-0
-                    "
-                  >
+                  <div className="flex-1 min-w-0">
 
                     <div
                       className="
@@ -424,15 +400,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             py-0.5
                             rounded
                             font-mono
-                            shrink-0
+
                             ${
                               isActive
+
                                 ? `
                                   bg-amber-500/20
                                   text-amber-300
                                   border
                                   border-amber-500/30
                                 `
+
                                 : `
                                   bg-slate-800
                                   text-slate-500
@@ -464,6 +442,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </div>
 
                 </button>
+
               );
             })}
 
@@ -472,9 +451,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
 
-        {/* =================================================
-            RODAPÉ DE SEGURANÇA
-            ================================================= */}
+        {/* ===================================================
+            AVISO DE SEGURANÇA
+            =================================================== */}
 
         <div
           className="
@@ -508,6 +487,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               "
             />
 
+
             <div
               className="
                 text-xs
@@ -525,6 +505,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 Transparência e Ética
               </p>
 
+
               <p
                 className="
                   mt-0.5
@@ -533,7 +514,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   text-slate-400
                 "
               >
-                Lançamentos com data automática e auditoria de tesouraria.
+                Lançamentos com data automática e
+                auditoria de tesouraria.
               </p>
 
             </div>
