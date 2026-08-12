@@ -18,37 +18,42 @@ import { INITIAL_CONFIG, INITIAL_FECHAMENTOS } from './data/mockData';
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('fechamento');
 
-  // Prevent pull-to-refresh page reload on mobile devices
+  // Impede que o gesto de toque no topo vaze para o navegador
   useEffect(() => {
+    const viewport = document.getElementById('treasury-content-viewport');
+    if (!viewport) return;
+
     let startY = 0;
 
     const handleTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
-        startY = e.touches[0].clientY;
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      const mainEl = document.getElementById('treasury-content-viewport');
-      if (!mainEl) return;
-
-      const currentY = e.touches[0].clientY;
-      const isPullingDown = currentY > startY;
-
-      // When the content area is at the top, prevent dragging down from reloading the page
-      if (mainEl.scrollTop <= 0 && isPullingDown) {
-        if (e.cancelable) {
-          e.preventDefault();
+        startY = e.touches[0].pageY;
+        // Se estiver exatamente no topo absoluto, empurra 1px para baixo
+        // para impedir que o navegador entenda como scroll do body
+        if (viewport.scrollTop === 0) {
+          viewport.scrollTop = 1;
         }
       }
     };
 
-    window.addEventListener('touchstart', handleTouchStart, { passive: true });
-    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const currentY = e.touches[0].pageY;
+        const isPullingDown = currentY > startY;
+
+        // Se tentar puxar para baixo quando já está no topo (scrollTop <= 1), cancela o evento
+        if (isPullingDown && viewport.scrollTop <= 1) {
+          if (e.cancelable) e.preventDefault();
+        }
+      }
+    };
+
+    viewport.addEventListener('touchstart', handleTouchStart, { passive: true });
+    viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
 
     return () => {
-      window.removeEventListener('touchstart', handleTouchStart);
-      window.removeEventListener('touchmove', handleTouchMove);
+      viewport.removeEventListener('touchstart', handleTouchStart);
+      viewport.removeEventListener('touchmove', handleTouchMove);
     };
   }, []);
 
