@@ -16,6 +16,7 @@ import {
   Trash2,
   Printer,
   Sparkles,
+  Download,
   FileText,
   CreditCard,
   QrCode,
@@ -636,21 +637,23 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           </button>
         </div>
 
-        <div className="bg-gradient-to-r from-slate-900 to-amber-950/40 border border-amber-500/30 rounded-3xl p-5 shadow-xl flex items-center justify-between">
+        <div className="bg-gradient-to-r from-slate-900 via-amber-950/30 to-emerald-950/30 border border-emerald-500/30 rounded-3xl p-5 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <Download className="w-4 h-4 text-emerald-400" />
               <Printer className="w-4 h-4 text-amber-400" />
-              <span>Imprimir Recibo de Fechamento</span>
+              <span>Baixar PDF ou Imprimir Recibo</span>
             </h4>
             <p className="text-xs text-slate-400 mt-1">
-              Comprovante físico para arquivamento na pasta financeira da igreja.
+              Gere o PDF oficial para download ou imprima a ata física de fechamento do caixa.
             </p>
           </div>
           <button
             onClick={onOpenPrintModal}
-            className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-amber-600/20 cursor-pointer shrink-0"
+            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition-all shadow-lg shadow-emerald-600/20 cursor-pointer shrink-0 flex items-center gap-2"
           >
-            Imprimir Recibo
+            <Download className="w-4 h-4" />
+            <span>Baixar PDF / Imprimir</span>
           </button>
         </div>
       </div>

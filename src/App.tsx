@@ -18,6 +18,40 @@ import { INITIAL_CONFIG, INITIAL_FECHAMENTOS } from './data/mockData';
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('fechamento');
 
+  // Prevent pull-to-refresh page reload on mobile devices
+  useEffect(() => {
+    let startY = 0;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        startY = e.touches[0].clientY;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const mainEl = document.getElementById('treasury-content-viewport');
+      if (!mainEl) return;
+
+      const currentY = e.touches[0].clientY;
+      const isPullingDown = currentY > startY;
+
+      // When the content area is at the top, prevent dragging down from reloading the page
+      if (mainEl.scrollTop <= 0 && isPullingDown) {
+        if (e.cancelable) {
+          e.preventDefault();
+        }
+      }
+    };
+
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+
+    return () => {
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, []);
+
   // Persistence: Config
   const [configIgreja, setConfigIgreja] = useState<ConfigIgreja>(() => {
     const saved = localStorage.getItem('church_treasury_config');

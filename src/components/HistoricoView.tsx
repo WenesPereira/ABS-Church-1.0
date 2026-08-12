@@ -5,6 +5,7 @@ import {
   Church,
   Search,
   Printer,
+  Download,
   FileCheck,
   TrendingUp,
   DollarSign,
@@ -179,9 +180,10 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => onOpenPrintModalFor(culto)}
-                      className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
-                      title="Imprimir comprovante deste culto"
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer flex items-center gap-1"
+                      title="Baixar PDF ou Imprimir comprovante deste culto"
                     >
+                      <Download className="w-3.5 h-3.5 text-emerald-400" />
                       <Printer className="w-3.5 h-3.5 text-amber-400" />
                     </button>
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Church, FileCheck, DollarSign, ArrowUpRight, ArrowDownRight, Printer, Sparkles, RefreshCw } from 'lucide-react';
+import { Church, FileCheck, DollarSign, ArrowUpRight, ArrowDownRight, Printer, Sparkles, RefreshCw, Download } from 'lucide-react';
 import { ActiveTab, FechamentoCulto, ConfigIgreja } from '../types';
 import { formatCurrency, calcularResumoLancamentos } from '../utils/calculations';
 
@@ -98,11 +98,12 @@ export const Header: React.FC<HeaderProps> = ({
       <div className="flex items-center gap-2 self-end md:self-auto">
         <button
           onClick={onOpenPrintModal}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all shadow-sm active:scale-95 cursor-pointer"
-          title="Imprimir Ata do Culto / Comprovante"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-all shadow-sm active:scale-95 cursor-pointer"
+          title="Baixar Recibo em PDF / Imprimir Ata"
         >
+          <Download className="w-3.5 h-3.5 text-emerald-400" />
           <Printer className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden sm:inline">Imprimir Recibo</span>
+          <span>Baixar PDF / Imprimir</span>
         </button>
 
         <button

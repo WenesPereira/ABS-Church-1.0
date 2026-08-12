@@ -16,17 +16,26 @@ body,
 
 #treasury-content-viewport {
   overflow-y: auto;
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
-  -webkit-overscroll-behavior: none;
+  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  -webkit-overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
+  scroll-behavior: smooth;
 }
 
 #mobile-app-nav {
-  overscroll-behavior-x: none;
+  overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-x;
+}
+
+@media print {
+  body {
+    background-color: white !important;
+    color: black !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
 }
 
 @keyframes fadeIn {

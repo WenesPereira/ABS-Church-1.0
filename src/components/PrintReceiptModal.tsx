@@ -88,25 +88,46 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     if (!element) return;
 
     setIsGeneratingPdf(true);
+
+    // Save original styles for restoration
+    const originalWidth = element.style.width;
+    const originalMaxWidth = element.style.maxWidth;
+    const originalMinWidth = element.style.minWidth;
+
     try {
+      // Force fixed A4 pixel width during capture so mobile screens don't compress layout
+      element.style.width = '794px';
+      element.style.minWidth = '794px';
+      element.style.maxWidth = '794px';
+
       const dataFormatted = fechamento.data
         ? fechamento.data
         : new Date().toISOString().split('T')[0];
       
       const opt = {
-        margin: [8, 8, 8, 8],
+        margin: [10, 8, 10, 8],
         filename: `Relatorio_Tesouraria_${dataFormatted}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, logging: false },
+        html2canvas: { 
+          scale: 2, 
+          useCORS: true, 
+          logging: false,
+          windowWidth: 1024,
+        },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       };
 
       const html2pdfModule = (html2pdf as any).default || html2pdf;
       await html2pdfModule().set(opt).from(element).save();
     } catch (err) {
-      console.error('Erro ao gerar PDF:', err);
+      console.error('Erro ao gerar PDF com html2pdf:', err);
+      // Fallback print
       window.print();
     } finally {
+      // Restore original responsiveness
+      element.style.width = originalWidth;
+      element.style.minWidth = originalMinWidth;
+      element.style.maxWidth = originalMaxWidth;
       setIsGeneratingPdf(false);
     }
   };
@@ -399,6 +420,51 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
 
           <div className="text-center text-[9px] text-slate-500 pt-2 border-t border-slate-200">
             Documento emitido pelo Sistema de Tesouraria em {new Date().toLocaleString('pt-BR')}
+          </div>
+        </div>
+
+        {/* Sticky/Fixed Modal Action Footer (Not Printed) */}
+        <div className="print:hidden pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <p className="text-xs text-slate-400 font-medium text-center sm:text-left">
+            Escolha como deseja obter o recibo oficial:
+          </p>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+              className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white font-black text-xs rounded-xl transition-all shadow-lg shadow-emerald-600/20 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            >
+              {isGeneratingPdf ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Gerando PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>BAIXAR EM PDF</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="flex-1 sm:flex-none px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-black text-xs rounded-xl transition-all shadow-lg shadow-amber-600/20 active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Printer className="w-4 h-4" />
+              <span>IMPRIMIR</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+            >
+              Fechar
+            </button>
           </div>
         </div>
       </div>

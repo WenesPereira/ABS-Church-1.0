@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Sparkles, FileText, CheckCircle2, Copy, Printer, Loader2, AlertCircle, Church } from 'lucide-react';
+import { Sparkles, FileText, CheckCircle2, Copy, Printer, Loader2, AlertCircle, Church, Download } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import html2pdf from 'html2pdf.js';
 import { FechamentoCulto } from '../types';
 import { generateChurchReport } from '../services/api';
 
@@ -12,7 +13,34 @@ interface RelatorioIAViewProps {
 export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({ fechamento, setFechamento }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    const element = document.getElementById('ai-report-content');
+    if (!element) return;
+
+    setIsGeneratingPdf(true);
+    const originalWidth = element.style.width;
+    try {
+      element.style.width = '794px';
+      const opt = {
+        margin: [10, 10, 10, 10],
+        filename: `Relatorio_IA_Tesouraria_${fechamento.data || 'culto'}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, windowWidth: 1024 },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+      const html2pdfModule = (html2pdf as any).default || html2pdf;
+      await html2pdfModule().set(opt).from(element).save();
+    } catch (err) {
+      console.error('Erro ao baixar PDF:', err);
+      window.print();
+    } finally {
+      element.style.width = originalWidth;
+      setIsGeneratingPdf(false);
+    }
+  };
 
   const handleGerarRelatorio = async () => {
     setLoading(true);
@@ -84,13 +112,13 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({ fechamento, se
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl max-w-5xl mx-auto w-full min-h-[400px]">
         {fechamento.relatorioIA ? (
           <div className="space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-wider">
                 <Church className="w-4 h-4" />
                 <span>Parecer Formal do Fechamento do Culto</span>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={handleCopy}
                   className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -100,16 +128,25 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({ fechamento, se
                 </button>
 
                 <button
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  onClick={handleDownloadPdf}
+                  disabled={isGeneratingPdf}
+                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
                 >
-                  <Printer className="w-3.5 h-3.5 text-amber-400" />
+                  {isGeneratingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                  <span>Baixar PDF</span>
+                </button>
+
+                <button
+                  onClick={() => window.print()}
+                  className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+                >
+                  <Printer className="w-3.5 h-3.5" />
                   <span>Imprimir</span>
                 </button>
               </div>
             </div>
 
-            <div className="prose prose-invert max-w-none text-xs md:text-sm leading-relaxed text-slate-200">
+            <div id="ai-report-content" className="prose prose-invert max-w-none text-xs md:text-sm leading-relaxed text-slate-200 bg-slate-950/60 p-5 rounded-2xl border border-slate-800/80">
               <ReactMarkdown>{fechamento.relatorioIA}</ReactMarkdown>
             </div>
           </div>
