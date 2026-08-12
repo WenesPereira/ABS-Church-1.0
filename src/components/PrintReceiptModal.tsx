@@ -1,5 +1,6 @@
 import React from 'react';
-import { Printer, X, Church, CheckCircle, FileText, Check } from 'lucide-react';
+import { Printer, X, Church, CheckCircle, FileText, Check, Download, Loader2 } from 'lucide-react';
+import html2pdf from 'html2pdf.js';
 import { FechamentoCulto, ConfigIgreja, CategoriaEntrada } from '../types';
 import {
   formatCurrency,
@@ -22,6 +23,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
   const [catsRepasse, setCatsRepasse] = React.useState<CategoriaEntrada[]>(
     fechamento.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES
   );
+  const [isGeneratingPdf, setIsGeneratingPdf] = React.useState<boolean>(false);
 
   const resumo = calcularResumoLancamentos(
     fechamento.lancamentos, 
@@ -81,6 +83,34 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     window.print();
   };
 
+  const handleDownloadPdf = async () => {
+    const element = document.getElementById('printable-receipt');
+    if (!element) return;
+
+    setIsGeneratingPdf(true);
+    try {
+      const dataFormatted = fechamento.data
+        ? fechamento.data
+        : new Date().toISOString().split('T')[0];
+      
+      const opt = {
+        margin: [8, 8, 8, 8],
+        filename: `Relatorio_Tesouraria_${dataFormatted}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, logging: false },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      };
+
+      const html2pdfModule = (html2pdf as any).default || html2pdf;
+      await html2pdfModule().set(opt).from(element).save();
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err);
+      window.print();
+    } finally {
+      setIsGeneratingPdf(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 space-y-6 shadow-2xl relative text-slate-100 my-8">
@@ -115,11 +145,29 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
             )}
 
             <button
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 text-white font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1.5"
+            >
+              {isGeneratingPdf ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Gerando PDF...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Baixar PDF</span>
+                </>
+              )}
+            </button>
+
+            <button
               onClick={handlePrint}
               className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1.5"
             >
               <Printer className="w-4 h-4" />
-              <span>Imprimir / Salvar PDF</span>
+              <span>Imprimir</span>
             </button>
             <button
               onClick={onClose}
