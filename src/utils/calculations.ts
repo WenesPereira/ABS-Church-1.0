@@ -1,4 +1,22 @@
-import { Lancamento, ContagemDinheiro } from '../types';
+import { Lancamento, ContagemDinheiro, CategoriaEntrada } from '../types';
+
+export const ALL_ENTRADA_CATEGORIES: CategoriaEntrada[] = [
+  'dizimo',
+  'oferta_culto',
+  'oferta_missoes',
+  'oferta_especial',
+  'doacao',
+  'outros',
+];
+
+export const CATEGORIA_ENTRADA_LABELS: Record<CategoriaEntrada, string> = {
+  dizimo: 'Dízimos',
+  oferta_culto: 'Ofertas de Culto',
+  oferta_missoes: 'Ofertas de Missões',
+  oferta_especial: 'Ofertas Especiais',
+  doacao: 'Doações',
+  outros: 'Outras Entradas',
+};
 
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
@@ -30,7 +48,9 @@ export function calcularTotalContagem(c: ContagemDinheiro): number {
 export function calcularResumoLancamentos(
   lancamentos: Lancamento[], 
   porcentagemMatriz: number = 20,
-  aplicarRepasse: boolean = true
+  aplicarRepasse: boolean = true,
+  tipoBaseRepasse: 'todas' | 'selecionadas' = 'todas',
+  categoriasRepasse: CategoriaEntrada[] = ALL_ENTRADA_CATEGORIES
 ) {
   let totalEntradas = 0;
   let totalSaidas = 0;
@@ -38,7 +58,11 @@ export function calcularResumoLancamentos(
   let totalDizimos = 0;
   let totalOfertasCulto = 0;
   let totalOfertasMissoes = 0;
+  let totalOfertasEspeciais = 0;
+  let totalDoacoes = 0;
   let totalOutrasEntradas = 0;
+
+  let baseCalculoMatriz = 0;
 
   let totalDinheiro = 0;
   let totalPix = 0;
@@ -46,15 +70,26 @@ export function calcularResumoLancamentos(
   let totalCartaoCredito = 0;
   let totalTransferencia = 0;
 
+  const catsAtivas = (tipoBaseRepasse === 'todas' || !categoriasRepasse || categoriasRepasse.length === 0)
+    ? ALL_ENTRADA_CATEGORIES
+    : categoriasRepasse;
+
   lancamentos.forEach((l) => {
     const val = l.valor || 0;
     if (l.tipo === 'entrada') {
       totalEntradas += val;
 
-      if (l.categoria === 'dizimo') totalDizimos += val;
-      else if (l.categoria === 'oferta_culto') totalOfertasCulto += val;
-      else if (l.categoria === 'oferta_missoes') totalOfertasMissoes += val;
+      const cat = l.categoria as CategoriaEntrada;
+      if (cat === 'dizimo') totalDizimos += val;
+      else if (cat === 'oferta_culto') totalOfertasCulto += val;
+      else if (cat === 'oferta_missoes') totalOfertasMissoes += val;
+      else if (cat === 'oferta_especial') totalOfertasEspeciais += val;
+      else if (cat === 'doacao') totalDoacoes += val;
       else totalOutrasEntradas += val;
+
+      if (tipoBaseRepasse === 'todas' || catsAtivas.includes(cat)) {
+        baseCalculoMatriz += val;
+      }
 
       if (l.formaPagamento === 'dinheiro') totalDinheiro += val;
       else if (l.formaPagamento === 'pix') totalPix += val;
@@ -73,7 +108,7 @@ export function calcularResumoLancamentos(
   const saldoLiquido = totalEntradas - totalSaidas;
   const repasseAtivo = aplicarRepasse !== false;
   const pctMatriz = repasseAtivo ? Math.max(0, porcentagemMatriz ?? 20) : 0;
-  const valorMatriz = repasseAtivo ? (totalEntradas * pctMatriz) / 100 : 0;
+  const valorMatriz = repasseAtivo ? (baseCalculoMatriz * pctMatriz) / 100 : 0;
   const saldoCongregacao = saldoLiquido - valorMatriz;
 
   return {
@@ -81,12 +116,17 @@ export function calcularResumoLancamentos(
     totalSaidas,
     saldoLiquido,
     aplicarRepasseMatriz: repasseAtivo,
+    tipoBaseRepasse,
+    categoriasRepasse: catsAtivas,
+    baseCalculoMatriz,
     porcentagemMatriz: pctMatriz,
     valorMatriz,
     saldoCongregacao,
     totalDizimos,
     totalOfertasCulto,
     totalOfertasMissoes,
+    totalOfertasEspeciais,
+    totalDoacoes,
     totalOutrasEntradas,
     totalDinheiro,
     totalPix,

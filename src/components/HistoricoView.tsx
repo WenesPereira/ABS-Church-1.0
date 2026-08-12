@@ -41,7 +41,13 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
 
   // Calculate Chart Data for last cults
   const chartData = historico.slice(0, 10).reverse().map((f) => {
-    const resumo = calcularResumoLancamentos(f.lancamentos, f.porcentagemMatriz ?? 20, f.aplicarRepasseMatriz ?? true);
+    const resumo = calcularResumoLancamentos(
+      f.lancamentos,
+      f.porcentagemMatriz ?? 20,
+      f.aplicarRepasseMatriz ?? true,
+      f.tipoBaseRepasseMatriz || 'todas',
+      f.categoriasRepasseMatriz
+    );
     const dataFormatted = f.data ? new Date(f.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
     return {
       name: `Caixa ${dataFormatted}`,
@@ -113,7 +119,13 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredHistorico.map((culto) => {
-            const resumo = calcularResumoLancamentos(culto.lancamentos, culto.porcentagemMatriz ?? 20, culto.aplicarRepasseMatriz ?? true);
+            const resumo = calcularResumoLancamentos(
+              culto.lancamentos,
+              culto.porcentagemMatriz ?? 20,
+              culto.aplicarRepasseMatriz ?? true,
+              culto.tipoBaseRepasseMatriz || 'todas',
+              culto.categoriasRepasseMatriz
+            );
             return (
               <div
                 key={culto.id}

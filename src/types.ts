@@ -72,6 +72,8 @@ export interface FechamentoCulto {
   segundaTestemunha?: string;
   porcentagemMatriz?: number; // Porcentagem a ser enviada para a matriz / sede (ex: 20%)
   aplicarRepasseMatriz?: boolean; // Se deve ou não aplicar o repasse para a matriz
+  tipoBaseRepasseMatriz?: 'todas' | 'selecionadas'; // Se o repasse é sobre todas as entradas ou apenas categorias selecionadas
+  categoriasRepasseMatriz?: CategoriaEntrada[]; // Lista de categorias que entram na base do repasse (ex: ['dizimo', 'oferta_culto', 'doacao'])
   observacoes?: string;
   lancamentos: Lancamento[];
   contagemDinheiro: ContagemDinheiro;
@@ -91,5 +93,7 @@ export interface ConfigIgreja {
   segundoTesoureiroPadrao?: string;
   porcentagemMatriz?: number; // Porcentagem padrão de repasse para a matriz (ex: 20%)
   aplicarRepasseMatriz?: boolean; // Padrão se aplica ou não repasse para a matriz
+  tipoBaseRepasseMatriz?: 'todas' | 'selecionadas';
+  categoriasRepasseMatriz?: CategoriaEntrada[];
   logoUrl?: string;
 }

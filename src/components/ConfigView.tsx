@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Settings, Church, Check, User, ShieldCheck } from 'lucide-react';
-import { ConfigIgreja } from '../types';
+import { ConfigIgreja, CategoriaEntrada } from '../types';
+import { ALL_ENTRADA_CATEGORIES, CATEGORIA_ENTRADA_LABELS } from '../utils/calculations';
 
 interface ConfigViewProps {
   config: ConfigIgreja;
@@ -10,6 +11,30 @@ interface ConfigViewProps {
 export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig }) => {
   const [form, setForm] = useState<ConfigIgreja>(config);
   const [saved, setSaved] = useState(false);
+
+  const handleToggleCategoriaDefault = (cat: CategoriaEntrada) => {
+    const current = form.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES;
+    let updated: CategoriaEntrada[];
+    if (current.includes(cat)) {
+      updated = current.filter((c) => c !== cat);
+    } else {
+      updated = [...current, cat];
+    }
+    const isAll = updated.length === ALL_ENTRADA_CATEGORIES.length;
+    setForm({
+      ...form,
+      categoriasRepasseMatriz: updated,
+      tipoBaseRepasseMatriz: isAll ? 'todas' : 'selecionadas',
+    });
+  };
+
+  const handleSelectTodaEntradaDefault = () => {
+    setForm({
+      ...form,
+      tipoBaseRepasseMatriz: 'todas',
+      categoriasRepasseMatriz: ALL_ENTRADA_CATEGORIES,
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,7 +165,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig }) => 
               </div>
             </div>
 
-            <div className="md:col-span-2 pt-2 border-t border-slate-800/80">
+            <div className="md:col-span-2 pt-2 border-t border-slate-800/80 space-y-3">
               <label className="flex items-center gap-3 text-xs text-slate-200 cursor-pointer bg-slate-950 p-3 rounded-xl border border-slate-800">
                 <input
                   type="checkbox"
@@ -153,6 +178,47 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig }) => 
                   <span className="text-[11px] text-slate-400 block">Habilita o desconto automático da porcentagem da matriz nos relatórios de fechamento.</span>
                 </div>
               </label>
+
+              {(form.aplicarRepasseMatriz ?? true) && (
+                <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-200">
+                      Categorias de Entrada Padrão para Cálculo do Repasse:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleSelectTodaEntradaDefault}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                        (form.tipoBaseRepasseMatriz || 'todas') === 'todas'
+                          ? 'bg-purple-600 text-white border-purple-400'
+                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      ★ Selecionar Toda a Entrada
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    {ALL_ENTRADA_CATEGORIES.map((cat) => {
+                      const isSel = (form.tipoBaseRepasseMatriz || 'todas') === 'todas' || (form.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES).includes(cat);
+                      return (
+                        <button
+                          key={cat}
+                          type="button"
+                          onClick={() => handleToggleCategoriaDefault(cat)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all cursor-pointer ${
+                            isSel
+                              ? 'bg-purple-950 text-purple-200 border-purple-500'
+                              : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
+                          }`}
+                        >
+                          {isSel ? '✓' : '○'} {CATEGORIA_ENTRADA_LABELS[cat]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

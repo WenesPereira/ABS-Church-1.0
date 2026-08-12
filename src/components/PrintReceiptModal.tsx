@@ -1,7 +1,13 @@
 import React from 'react';
-import { Printer, X, Church, CheckCircle, FileText } from 'lucide-react';
-import { FechamentoCulto, ConfigIgreja } from '../types';
-import { formatCurrency, calcularResumoLancamentos, calcularTotalContagem } from '../utils/calculations';
+import { Printer, X, Church, CheckCircle, FileText, Check } from 'lucide-react';
+import { FechamentoCulto, ConfigIgreja, CategoriaEntrada } from '../types';
+import {
+  formatCurrency,
+  calcularResumoLancamentos,
+  calcularTotalContagem,
+  ALL_ENTRADA_CATEGORIES,
+  CATEGORIA_ENTRADA_LABELS,
+} from '../utils/calculations';
 
 interface PrintReceiptModalProps {
   fechamento: FechamentoCulto;
@@ -12,14 +18,41 @@ interface PrintReceiptModalProps {
 export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento, config, onClose }) => {
   const [exibirDizimistas, setExibirDizimistas] = React.useState<boolean>(true);
   const [aplicarRepasse, setAplicarRepasse] = React.useState<boolean>(fechamento.aplicarRepasseMatriz ?? true);
+  const [tipoBase, setTipoBase] = React.useState<'todas' | 'selecionadas'>(fechamento.tipoBaseRepasseMatriz || 'todas');
+  const [catsRepasse, setCatsRepasse] = React.useState<CategoriaEntrada[]>(
+    fechamento.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES
+  );
 
   const resumo = calcularResumoLancamentos(
     fechamento.lancamentos, 
     fechamento.porcentagemMatriz ?? config.porcentagemMatriz ?? 20,
-    aplicarRepasse
+    aplicarRepasse,
+    tipoBase,
+    catsRepasse
   );
   const totalContagem = calcularTotalContagem(fechamento.contagemDinheiro);
   const diferenca = totalContagem - resumo.totalDinheiro;
+
+  const handleToggleCategoria = (cat: CategoriaEntrada) => {
+    if (catsRepasse.includes(cat)) {
+      const updated = catsRepasse.filter((c) => c !== cat);
+      setCatsRepasse(updated);
+      setTipoBase('selecionadas');
+    } else {
+      const updated = [...catsRepasse, cat];
+      setCatsRepasse(updated);
+      if (updated.length === ALL_ENTRADA_CATEGORIES.length) {
+        setTipoBase('todas');
+      } else {
+        setTipoBase('selecionadas');
+      }
+    }
+  };
+
+  const handleSelectTodaEntrada = () => {
+    setTipoBase('todas');
+    setCatsRepasse(ALL_ENTRADA_CATEGORIES);
+  };
 
   const getCategoryLabel = (cat: string): string => {
     const labels: Record<string, string> = {
@@ -95,6 +128,40 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
               <X className="w-4 h-4" />
             </button>
           </div>
+
+          {aplicarRepasse && (
+            <div className="w-full pt-3 border-t border-slate-800 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-[11px] font-bold text-purple-300">Composição do Repasse p/ Matriz:</span>
+              <button
+                type="button"
+                onClick={handleSelectTodaEntrada}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${
+                  tipoBase === 'todas'
+                    ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                ★ Toda a Entrada
+              </button>
+              {ALL_ENTRADA_CATEGORIES.map((cat) => {
+                const isSel = tipoBase === 'todas' || catsRepasse.includes(cat);
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => handleToggleCategoria(cat)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 border transition-all cursor-pointer ${
+                      isSel
+                        ? 'bg-purple-950 text-purple-200 border-purple-500/80 shadow-sm'
+                        : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-slate-300'
+                    }`}
+                  >
+                    <span>{isSel ? '✓' : '○'} {CATEGORIA_ENTRADA_LABELS[cat]}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* PRINTABLE RECEIPT CONTENT (Styling optimized for both screen and paper) */}
@@ -214,7 +281,12 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                   <>
                     <tr className="border-t border-purple-300 bg-purple-50 font-bold text-purple-950">
                       <td className="py-1.5 px-1">
-                        (-) Repasse para a Matriz / Sede ({resumo.porcentagemMatriz}% das Entradas):
+                        <div>
+                          (-) Repasse para a Matriz / Sede ({resumo.porcentagemMatriz}%):
+                          <span className="block text-[9px] text-purple-800 font-normal">
+                            Base: {tipoBase === 'todas' || catsRepasse.length === ALL_ENTRADA_CATEGORIES.length ? 'Toda a Entrada' : catsRepasse.map(c => CATEGORIA_ENTRADA_LABELS[c]).join(' + ')} ({formatCurrency(resumo.baseCalculoMatriz)})
+                          </span>
+                        </div>
                       </td>
                       <td className="py-1.5 px-1 text-right font-mono font-bold text-purple-900">
                         -{formatCurrency(resumo.valorMatriz)}

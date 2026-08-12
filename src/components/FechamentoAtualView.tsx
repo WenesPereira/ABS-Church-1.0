@@ -21,9 +21,17 @@ import {
   QrCode,
   Wallet,
   Building2,
+  Check,
 } from 'lucide-react';
-import { FechamentoCulto, Lancamento } from '../types';
-import { formatCurrency, calcularResumoLancamentos, calcularTotalContagem, CULTOS_LIST } from '../utils/calculations';
+import { FechamentoCulto, Lancamento, CategoriaEntrada } from '../types';
+import {
+  formatCurrency,
+  calcularResumoLancamentos,
+  calcularTotalContagem,
+  CULTOS_LIST,
+  ALL_ENTRADA_CATEGORIES,
+  CATEGORIA_ENTRADA_LABELS,
+} from '../utils/calculations';
 
 interface FechamentoAtualViewProps {
   fechamento: FechamentoCulto;
@@ -42,10 +50,15 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   onGoToRelatorioIA,
   onOpenPrintModal,
 }) => {
+  const tipoBase = fechamento.tipoBaseRepasseMatriz || 'todas';
+  const catsRepasse = fechamento.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES;
+
   const resumo = calcularResumoLancamentos(
     fechamento.lancamentos, 
     fechamento.porcentagemMatriz ?? 20,
-    fechamento.aplicarRepasseMatriz ?? true
+    fechamento.aplicarRepasseMatriz ?? true,
+    tipoBase,
+    catsRepasse
   );
   const totalContagemFisica = calcularTotalContagem(fechamento.contagemDinheiro);
   const diferencaCaixaDinheiro = totalContagemFisica - resumo.totalDinheiro;
@@ -55,6 +68,27 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
       ...prev,
       [field]: value,
     }));
+  };
+
+  const handleToggleCategoriaRepasse = (cat: CategoriaEntrada) => {
+    const current = fechamento.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES;
+    let updated: CategoriaEntrada[];
+    if (current.includes(cat)) {
+      updated = current.filter((c) => c !== cat);
+    } else {
+      updated = [...current, cat];
+    }
+    handleUpdateMeta('categoriasRepasseMatriz', updated);
+    if (updated.length === ALL_ENTRADA_CATEGORIES.length) {
+      handleUpdateMeta('tipoBaseRepasseMatriz', 'todas');
+    } else {
+      handleUpdateMeta('tipoBaseRepasseMatriz', 'selecionadas');
+    }
+  };
+
+  const handleSelectTodaEntrada = () => {
+    handleUpdateMeta('tipoBaseRepasseMatriz', 'todas');
+    handleUpdateMeta('categoriasRepasseMatriz', ALL_ENTRADA_CATEGORIES);
   };
 
   const handleToggleStatus = () => {
@@ -338,66 +372,116 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
       </div>
 
       {/* Card Repasse para a Matriz (Sede) */}
-      <div className={`border rounded-3xl p-5 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all ${
+      <div className={`border rounded-3xl p-5 shadow-xl flex flex-col space-y-4 transition-all ${
         resumo.aplicarRepasseMatriz
           ? 'bg-gradient-to-r from-purple-950/40 via-slate-900 to-amber-950/30 border-purple-500/40'
           : 'bg-slate-900/80 border-slate-800 opacity-90'
       }`}>
-        <div className="flex items-center gap-3">
-          <div className={`p-3 rounded-2xl shrink-0 ${
-            resumo.aplicarRepasseMatriz
-              ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-              : 'bg-slate-800 text-slate-500 border border-slate-700'
-          }`}>
-            <Building2 className="w-6 h-6" />
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-2xl shrink-0 ${
+              resumo.aplicarRepasseMatriz
+                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                : 'bg-slate-800 text-slate-500 border border-slate-700'
+            }`}>
+              <Building2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <span>Repasse para a Matriz / Sede</span>
+                {resumo.aplicarRepasseMatriz ? (
+                  <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full font-bold border border-purple-500/30">
+                    {resumo.porcentagemMatriz}% sobre Base ({formatCurrency(resumo.baseCalculoMatriz)})
+                  </span>
+                ) : (
+                  <span className="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-0.5 rounded-full font-bold border border-slate-700">
+                    DESATIVADO / ISENTO NESTE CULTO
+                  </span>
+                )}
+              </h4>
+              <div className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                {resumo.aplicarRepasseMatriz ? (
+                  <>
+                    <span>Base do Repasse: <strong className="text-slate-100 font-mono text-xs">{formatCurrency(resumo.baseCalculoMatriz)}</strong></span>
+                    <span className="text-slate-600 hidden sm:inline">|</span>
+                    <span>Valor à Sede: <strong className="text-purple-300 font-mono text-sm font-black">{formatCurrency(resumo.valorMatriz)}</strong></span>
+                    <span className="text-slate-600 hidden sm:inline">|</span>
+                    <span>Saldo Congregação: <strong className="text-emerald-400 font-mono text-sm font-black">{formatCurrency(resumo.saldoCongregacao)}</strong></span>
+                  </>
+                ) : (
+                  <span>Sem repasse para a matriz. Saldo Total da Congregação: <strong className="text-emerald-400 font-mono text-sm font-black">{formatCurrency(resumo.saldoLiquido)}</strong></span>
+                )}
+              </div>
+            </div>
           </div>
-          <div>
-            <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2">
-              <span>Repasse para a Matriz / Sede</span>
-              {resumo.aplicarRepasseMatriz ? (
-                <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full font-bold border border-purple-500/30">
-                  {resumo.porcentagemMatriz}% sobre Entradas ({formatCurrency(resumo.totalEntradas)})
-                </span>
-              ) : (
-                <span className="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-0.5 rounded-full font-bold border border-slate-700">
-                  DESATIVADO / ISENTO NESTE CULTO
-                </span>
-              )}
-            </h4>
-            <div className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-              {resumo.aplicarRepasseMatriz ? (
-                <>
-                  <span>Valor do Repasse à Sede: <strong className="text-purple-300 font-mono text-sm font-black">{formatCurrency(resumo.valorMatriz)}</strong></span>
-                  <span className="text-slate-600 hidden sm:inline">|</span>
-                  <span>Saldo Remanescente da Congregação: <strong className="text-emerald-400 font-mono text-sm font-black">{formatCurrency(resumo.saldoCongregacao)}</strong></span>
-                </>
-              ) : (
-                <span>Sem repasse para a matriz. Saldo Total da Congregação: <strong className="text-emerald-400 font-mono text-sm font-black">{formatCurrency(resumo.saldoLiquido)}</strong></span>
-              )}
+
+          <div className="flex items-center gap-4 shrink-0 justify-between md:justify-end">
+            <button
+              onClick={() => handleUpdateMeta('aplicarRepasseMatriz', !resumo.aplicarRepasseMatriz)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                resumo.aplicarRepasseMatriz
+                  ? 'bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border-purple-500/50'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+            >
+              {resumo.aplicarRepasseMatriz ? 'Repasse Ativado (Clique p/ Desativar)' : 'Repasse Desativado (Clique p/ Ativar)'}
+            </button>
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                {resumo.aplicarRepasseMatriz ? `Envio p/ Matriz (${resumo.porcentagemMatriz}%)` : 'Envio p/ Matriz'}
+              </span>
+              <span className={`text-xl font-black font-mono ${resumo.aplicarRepasseMatriz ? 'text-purple-300' : 'text-slate-500'}`}>
+                {resumo.aplicarRepasseMatriz ? formatCurrency(resumo.valorMatriz) : 'R$ 0,00'}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 shrink-0 justify-between md:justify-end">
-          <button
-            onClick={() => handleUpdateMeta('aplicarRepasseMatriz', !resumo.aplicarRepasseMatriz)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
-              resumo.aplicarRepasseMatriz
-                ? 'bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border-purple-500/50'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
-            }`}
-          >
-            {resumo.aplicarRepasseMatriz ? 'Repasse Ativado (Clique p/ Desativar)' : 'Repasse Desativado (Clique p/ Ativar)'}
-          </button>
-          <div className="text-right">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">
-              {resumo.aplicarRepasseMatriz ? `Envio p/ Matriz (${resumo.porcentagemMatriz}%)` : 'Envio p/ Matriz'}
-            </span>
-            <span className={`text-xl font-black font-mono ${resumo.aplicarRepasseMatriz ? 'text-purple-300' : 'text-slate-500'}`}>
-              {resumo.aplicarRepasseMatriz ? formatCurrency(resumo.valorMatriz) : 'R$ 0,00'}
-            </span>
+        {/* Category Selection for Matrix Repasse */}
+        {resumo.aplicarRepasseMatriz && (
+          <div className="pt-3 border-t border-purple-500/20 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-xs font-bold text-purple-200 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                <span>Categorias de Entrada que compõem o Repasse à Matriz:</span>
+              </span>
+              <button
+                onClick={handleSelectTodaEntrada}
+                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${
+                  (fechamento.tipoBaseRepasseMatriz || 'todas') === 'todas'
+                    ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-600/30'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                ★ Selecionar Toda a Entrada (100%)
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {ALL_ENTRADA_CATEGORIES.map((cat) => {
+                const isSelected = (fechamento.tipoBaseRepasseMatriz || 'todas') === 'todas' || (fechamento.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES).includes(cat);
+                const label = CATEGORIA_ENTRADA_LABELS[cat];
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => handleToggleCategoriaRepasse(cat)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-purple-900/60 border-purple-500/70 text-purple-200 shadow-sm'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[10px] ${
+                      isSelected ? 'bg-purple-500 text-white font-black' : 'border border-slate-700 bg-slate-900'
+                    }`}>
+                      {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                    </div>
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Physical Cash vs System Balance Banner */}
