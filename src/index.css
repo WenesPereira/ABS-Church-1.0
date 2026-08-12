@@ -21,12 +21,19 @@ body,
 
 #treasury-content-viewport {
   flex: 1;
-  min-height: 0; /* Essencial para o flex child respeitar o overflow no iOS/Chrome */
+  min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  touch-action: pan-x pan-y;
+  /* Garante que o toque passe e acione a rolagem nativa por toque */
+  touch-action: pan-y !important;
+  pointer-events: auto !important;
+}
+
+/* Garante que elementos dentro do viewport não bloqueiem o gesto de rolar */
+#treasury-content-viewport * {
+  touch-action: manipulation;
 }
 
 #mobile-app-nav {

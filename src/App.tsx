@@ -23,37 +23,17 @@ export default function App() {
     const viewport = document.getElementById('treasury-content-viewport');
     if (!viewport) return;
 
-    let startY = 0;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        startY = e.touches[0].pageY;
-        // Se estiver exatamente no topo absoluto, empurra 1px para baixo
-        // para impedir que o navegador entenda como scroll do body
-        if (viewport.scrollTop === 0) {
-          viewport.scrollTop = 1;
-        }
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        const currentY = e.touches[0].pageY;
-        const isPullingDown = currentY > startY;
-
-        // Se tentar puxar para baixo quando já está no topo (scrollTop <= 1), cancela o evento
-        if (isPullingDown && viewport.scrollTop <= 1) {
-          if (e.cancelable) e.preventDefault();
-        }
+    const handleTouchStart = () => {
+      // Mantém 1px de distância do topo absoluto para desarmar o pull-to-refresh nativo do navegador
+      if (viewport.scrollTop === 0) {
+        viewport.scrollTop = 1;
       }
     };
 
     viewport.addEventListener('touchstart', handleTouchStart, { passive: true });
-    viewport.addEventListener('touchmove', handleTouchMove, { passive: false });
 
     return () => {
       viewport.removeEventListener('touchstart', handleTouchStart);
-      viewport.removeEventListener('touchmove', handleTouchMove);
     };
   }, []);
 
