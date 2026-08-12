@@ -1,0 +1,6 @@
+{
+  "name": "Fechamento de Caixa de Igreja",
+  "description": "Sistema completo para gestão de entradas, dízimos, ofertas, despesas, contagem de cédulas e fechamento de caixa do culto com relatório para tesouraria.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
