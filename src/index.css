@@ -33,9 +33,9 @@ body {
 }
 
 #treasury-content-viewport {
-  flex: 1;
-  height: 100%;
-  overflow-y: scroll; /* Força a barra de rolagem nativa interna */
+  height: 100dvh;
+  width: 100vw;
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   -ms-overflow-style: none;  /* IE e Edge */
@@ -44,6 +44,7 @@ body {
   touch-action: pan-y !important;
   -webkit-user-select: none;
   user-select: none;
+  position: relative;
 }
 
 /* Força todos os elementos filhos a permitirem a rolagem vertical e não bloquearem o toque */

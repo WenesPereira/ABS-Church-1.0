@@ -212,7 +212,19 @@ export default function App() {
   };
 
   return (
-    <div id="app-root" className="flex flex-col h-full h-[100dvh] w-full max-w-full bg-slate-950 font-sans text-slate-100 overflow-hidden">
+    <div
+      id="treasury-content-viewport"
+      style={{
+        height: '100dvh',
+        width: '100vw',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        overscrollBehaviorY: 'contain',
+        touchAction: 'pan-y',
+        position: 'relative',
+      }}
+      className="flex flex-col bg-slate-950 font-sans text-slate-100"
+    >
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -222,14 +234,14 @@ export default function App() {
         onOpenPrintModal={() => setPrintableCulto(fechamentoAtual)}
       />
 
-      <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden relative">
+      <div className="flex flex-col lg:flex-row flex-1 relative min-h-full">
         <Sidebar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           qtdLancamentos={fechamentoAtual.lancamentos.length}
         />
 
-        <main id="treasury-content-viewport" className="flex-1 h-full min-h-0 overflow-y-auto relative bg-slate-950">
+        <main className="flex-1 w-full bg-slate-950 min-h-full">
           {activeTab === 'fechamento' && (
             <FechamentoAtualView
               fechamento={fechamentoAtual}
