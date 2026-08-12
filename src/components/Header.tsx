@@ -8,13 +8,17 @@ import {
   Printer,
   RefreshCw,
   Download,
+  LogOut,
+  User as UserIcon,
 } from 'lucide-react';
 
 import {
   ActiveTab,
   FechamentoCulto,
   ConfigIgreja,
+  User,
 } from '../types';
+
 
 import {
   formatCurrency,
@@ -29,6 +33,8 @@ interface HeaderProps {
   configIgreja: ConfigIgreja;
   onNovoFechamento: () => void;
   onOpenPrintModal: () => void;
+  currentUser?: User | null;
+  onLogout?: () => void;
 }
 
 
@@ -39,6 +45,8 @@ export const Header: React.FC<HeaderProps> = ({
   configIgreja,
   onNovoFechamento,
   onOpenPrintModal,
+  currentUser,
+  onLogout,
 }) => {
 
   const resumo =
@@ -570,6 +578,25 @@ export const Header: React.FC<HeaderProps> = ({
           </span>
 
         </button>
+
+        {currentUser && onLogout && (
+          <div className="flex items-center gap-2 pl-2 border-l border-slate-800">
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300">
+              <UserIcon className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-semibold max-w-[100px] sm:max-w-[140px] truncate">{currentUser.nome}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 hover:text-rose-200 text-xs font-bold border border-rose-500/30 transition-all cursor-pointer active:scale-95"
+              title="Sair do sistema / Fazer Logout"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sair</span>
+            </button>
+          </div>
+        )}
 
       </div>
 

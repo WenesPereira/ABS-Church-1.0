@@ -9,12 +9,15 @@ import { HistoricoView } from './components/HistoricoView';
 import { RelatorioIAView } from './components/RelatorioIAView';
 import { ConfigView } from './components/ConfigView';
 import { PrintReceiptModal } from './components/PrintReceiptModal';
+import { AuthView } from './components/AuthView';
 
 import {
   ActiveTab,
   FechamentoCulto,
   ConfigIgreja,
+  User,
 } from './types';
+
 
 import {
   INITIAL_CONFIG,
@@ -23,6 +26,46 @@ import {
 
 
 export default function App() {
+
+  /* =========================================================
+     AUTENTICAÇÃO / SESSÃO DO USUÁRIO
+     ========================================================= */
+
+  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('church_treasury_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error('Erro ao carregar sessão do usuário:', e);
+      return null;
+    }
+  });
+
+  const handleLoginSuccess = (user: User, isNewAccount?: boolean, churchName?: string) => {
+    setCurrentUser(user);
+    try {
+      localStorage.setItem('church_treasury_auth_user', JSON.stringify(user));
+    } catch (e) {
+      console.error('Erro ao salvar sessão de usuário:', e);
+    }
+
+    if (churchName && churchName.trim()) {
+      setConfigIgreja((prev) => ({
+        ...prev,
+        nomeIgreja: churchName.trim(),
+        tesoureiroPadrao: user.nome || prev.tesoureiroPadrao,
+      }));
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem('church_treasury_auth_user');
+    } catch (e) {
+      console.error('Erro ao remover sessão de usuário:', e);
+    }
+  };
 
   const [activeTab, setActiveTab] =
     useState<ActiveTab>('fechamento');
@@ -545,6 +588,15 @@ export default function App() {
      RENDER
      ========================================================= */
 
+  if (!currentUser) {
+    return (
+      <AuthView
+        onLoginSuccess={handleLoginSuccess}
+        configIgreja={configIgreja}
+      />
+    );
+  }
+
   return (
 
     <div className="treasury-app">
@@ -571,6 +623,14 @@ export default function App() {
 
           configIgreja={
             configIgreja
+          }
+
+          currentUser={
+            currentUser
+          }
+
+          onLogout={
+            handleLogout
           }
 
           onNovoFechamento={

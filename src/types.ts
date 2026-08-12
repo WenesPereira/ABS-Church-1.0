@@ -97,3 +97,13 @@ export interface ConfigIgreja {
   categoriasRepasseMatriz?: CategoriaEntrada[];
   logoUrl?: string;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  nome: string;
+  cargo?: string;
+  nomeIgreja?: string;
+  createdAt: string;
+}
+
