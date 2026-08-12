@@ -18,40 +18,6 @@ import { INITIAL_CONFIG, INITIAL_FECHAMENTOS } from './data/mockData';
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('fechamento');
 
-  // Bloqueia o evento nativo de pull-to-refresh na janela inteira quando o viewport está no topo
-  useEffect(() => {
-    let startY = 0;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        startY = e.touches[0].pageY;
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      const viewport = document.getElementById('treasury-content-viewport');
-      if (!viewport) return;
-
-      const currentY = e.touches[0].pageY;
-      const isPullingDown = currentY > startY;
-
-      // Se o scroll está no topo e o usuário arrasta para baixo, cancela o evento nativo para evitar reload
-      if (viewport.scrollTop <= 0 && isPullingDown) {
-        if (e.cancelable) {
-          e.preventDefault();
-        }
-      }
-    };
-
-    document.body.addEventListener('touchstart', handleTouchStart, { passive: true });
-    document.body.addEventListener('touchmove', handleTouchMove, { passive: false });
-
-    return () => {
-      document.body.removeEventListener('touchstart', handleTouchStart);
-      document.body.removeEventListener('touchmove', handleTouchMove);
-    };
-  }, []);
-
   // Persistence: Config
   const [configIgreja, setConfigIgreja] = useState<ConfigIgreja>(() => {
     const saved = localStorage.getItem('church_treasury_config');

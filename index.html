@@ -1,6 +1,32 @@
 <!doctype html>
 <html lang="pt-BR">
   <head>
+    <script>
+      // Desativa o pull-to-refresh nativo na camada do navegador/PWA
+      (function() {
+        let lastTouchY = 0;
+        
+        window.addEventListener('touchstart', function(e) {
+          if (e.touches.length === 1) {
+            lastTouchY = e.touches[0].clientY;
+          }
+        }, { passive: false });
+
+        window.addEventListener('touchmove', function(e) {
+          if (e.touches.length !== 1) return;
+          const touchY = e.touches[0].clientY;
+          const touchYDelta = touchY - lastTouchY;
+          
+          // Se o usuário estiver no topo e tentar puxar para baixo (scroll down)
+          const scrollable = document.getElementById('treasury-content-viewport') || document.documentElement;
+          if (scrollable.scrollTop <= 0 && touchYDelta > 0) {
+            if (e.cancelable) {
+              e.preventDefault(); // Mata o recarregamento na raiz do navegador
+            }
+          }
+        }, { passive: false });
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Gestão Financeira & Tesouraria de Igreja</title>
