@@ -21,6 +21,7 @@ import {
   calcularResumoLancamentos,
 } from '../utils/calculations';
 
+
 interface HeaderProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
@@ -30,6 +31,7 @@ interface HeaderProps {
   onOpenPrintModal: () => void;
 }
 
+
 export const Header: React.FC<HeaderProps> = ({
   activeTab,
   setActiveTab,
@@ -38,35 +40,42 @@ export const Header: React.FC<HeaderProps> = ({
   onNovoFechamento,
   onOpenPrintModal,
 }) => {
+
   const resumo =
     calcularResumoLancamentos(
       fechamentoAtual.lancamentos
     );
 
+
   return (
+
     <header
       className="
+        sticky
+        top-0
+        z-40
         w-full
-        flex
-        flex-col
-        md:flex-row
-        md:items-center
-        md:justify-between
-        gap-3
-        bg-slate-900
+        bg-slate-900/95
+        backdrop-blur-md
         border-b
         border-slate-800
         text-slate-100
         px-4
         lg:px-8
         py-3
+        flex
+        flex-col
+        md:flex-row
+        md:items-center
+        justify-between
+        gap-3
         shadow-xl
       "
     >
 
-      {/* =====================================================
-          IDENTIFICAÇÃO DA IGREJA
-          ===================================================== */}
+      {/* ===================================================
+          IDENTIDADE
+          =================================================== */}
 
       <div
         className="
@@ -80,12 +89,13 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           type="button"
           onClick={() =>
-            setActiveTab('fechamento')
+            setActiveTab(
+              'fechamento'
+            )
           }
           className="
             w-10
             h-10
-            shrink-0
             rounded-2xl
             bg-gradient-to-br
             from-amber-500
@@ -101,18 +111,20 @@ export const Header: React.FC<HeaderProps> = ({
             ring-1
             ring-white/20
             cursor-pointer
-            touch-manipulation
+            shrink-0
           "
-          aria-label="Ir para fechamento de caixa"
+          aria-label="Ir para fechamento"
         >
+
           <Church
             className="
               w-5
               h-5
-              text-slate-950
             "
           />
+
         </button>
+
 
         <div
           className="
@@ -125,7 +137,7 @@ export const Header: React.FC<HeaderProps> = ({
               flex
               items-center
               gap-2
-              min-w-0
+              flex-wrap
             "
           >
 
@@ -138,15 +150,17 @@ export const Header: React.FC<HeaderProps> = ({
                 tracking-tight
                 leading-none
                 truncate
+                max-w-[70vw]
+                md:max-w-none
               "
             >
               {configIgreja.nomeIgreja ||
                 'Tesouraria da Igreja'}
             </h1>
 
+
             <span
               className={`
-                shrink-0
                 text-[10px]
                 px-2
                 py-0.5
@@ -154,6 +168,7 @@ export const Header: React.FC<HeaderProps> = ({
                 font-semibold
                 uppercase
                 tracking-wider
+                shrink-0
                 ${
                   fechamentoAtual.status === 'fechado'
                     ? `
@@ -171,12 +186,16 @@ export const Header: React.FC<HeaderProps> = ({
                 }
               `}
             >
-              {fechamentoAtual.status === 'fechado'
+
+              {fechamentoAtual.status ===
+              'fechado'
                 ? 'Caixa Encerrado'
                 : 'Caixa em Aberto'}
+
             </span>
 
           </div>
+
 
           <p
             className="
@@ -189,6 +208,7 @@ export const Header: React.FC<HeaderProps> = ({
               flex-wrap
             "
           >
+
             <span
               className="
                 font-semibold
@@ -198,7 +218,9 @@ export const Header: React.FC<HeaderProps> = ({
               Caixa Tesouraria
             </span>
 
-            <span>•</span>
+            <span>
+              •
+            </span>
 
             <span>
               Data Automática:{' '}
@@ -206,7 +228,7 @@ export const Header: React.FC<HeaderProps> = ({
               {fechamentoAtual.data
                 ? new Date(
                     fechamentoAtual.data +
-                      'T00:00:00'
+                    'T00:00:00'
                   ).toLocaleDateString(
                     'pt-BR'
                   )
@@ -214,14 +236,17 @@ export const Header: React.FC<HeaderProps> = ({
                     'pt-BR'
                   )}
             </span>
+
           </p>
 
         </div>
+
       </div>
 
-      {/* =====================================================
-          TOTAIS - DESKTOP
-          ===================================================== */}
+
+      {/* ===================================================
+          TOTAIS
+          =================================================== */}
 
       <div
         className="
@@ -236,6 +261,7 @@ export const Header: React.FC<HeaderProps> = ({
           border
           border-slate-800/80
           text-xs
+          shrink-0
         "
       >
 
@@ -257,12 +283,18 @@ export const Header: React.FC<HeaderProps> = ({
               text-emerald-400
             "
           >
+
             <ArrowUpRight
-              className="w-4 h-4"
+              className="
+                w-4
+                h-4
+              "
             />
+
           </div>
 
           <div>
+
             <span
               className="
                 text-[10px]
@@ -287,9 +319,11 @@ export const Header: React.FC<HeaderProps> = ({
                 resumo.totalEntradas
               )}
             </span>
+
           </div>
 
         </div>
+
 
         <div
           className="
@@ -298,6 +332,7 @@ export const Header: React.FC<HeaderProps> = ({
             bg-slate-800
           "
         />
+
 
         {/* SAÍDAS */}
 
@@ -317,9 +352,14 @@ export const Header: React.FC<HeaderProps> = ({
               text-rose-400
             "
           >
+
             <ArrowDownRight
-              className="w-4 h-4"
+              className="
+                w-4
+                h-4
+              "
             />
+
           </div>
 
           <div>
@@ -350,7 +390,9 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
 
           </div>
+
         </div>
+
 
         <div
           className="
@@ -359,6 +401,7 @@ export const Header: React.FC<HeaderProps> = ({
             bg-slate-800
           "
         />
+
 
         {/* SALDO */}
 
@@ -378,9 +421,14 @@ export const Header: React.FC<HeaderProps> = ({
               text-amber-400
             "
           >
+
             <DollarSign
-              className="w-4 h-4"
+              className="
+                w-4
+                h-4
+              "
             />
+
           </div>
 
           <div>
@@ -411,13 +459,15 @@ export const Header: React.FC<HeaderProps> = ({
             </span>
 
           </div>
+
         </div>
 
       </div>
 
-      {/* =====================================================
+
+      {/* ===================================================
           BOTÕES
-          ===================================================== */}
+          =================================================== */}
 
       <div
         className="
@@ -430,11 +480,11 @@ export const Header: React.FC<HeaderProps> = ({
         "
       >
 
-        {/* IMPRIMIR */}
-
         <button
           type="button"
-          onClick={onOpenPrintModal}
+          onClick={
+            onOpenPrintModal
+          }
           className="
             flex
             items-center
@@ -449,14 +499,13 @@ export const Header: React.FC<HeaderProps> = ({
             font-bold
             border
             border-slate-700
-            transition-all
-            shadow-sm
+            transition-colors
             active:scale-95
             cursor-pointer
-            touch-manipulation
           "
           title="Baixar Recibo em PDF / Imprimir Ata"
         >
+
           <Download
             className="
               w-3.5
@@ -476,13 +525,15 @@ export const Header: React.FC<HeaderProps> = ({
           <span>
             Baixar PDF / Imprimir
           </span>
+
         </button>
 
-        {/* NOVO CAIXA */}
 
         <button
           type="button"
-          onClick={onNovoFechamento}
+          onClick={
+            onNovoFechamento
+          }
           className="
             flex
             items-center
@@ -495,26 +546,26 @@ export const Header: React.FC<HeaderProps> = ({
             text-slate-950
             font-bold
             text-xs
-            transition-all
+            transition-colors
             shadow-lg
             shadow-amber-600/20
             active:scale-95
             cursor-pointer
-            touch-manipulation
           "
           title="Iniciar Novo Fechamento de Caixa"
         >
+
           <RefreshCw
             className="
               w-3.5
               h-3.5
-              text-slate-950
             "
           />
 
           <span>
             Novo Caixa
           </span>
+
         </button>
 
       </div>

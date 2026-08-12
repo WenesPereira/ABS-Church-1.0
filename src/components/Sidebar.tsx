@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React from 'react';
+
 import {
   FileCheck,
   PlusCircle,
@@ -9,7 +10,9 @@ import {
   Church,
   ShieldCheck,
 } from 'lucide-react';
+
 import { ActiveTab } from '../types';
+
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -17,74 +20,78 @@ interface SidebarProps {
   qtdLancamentos: number;
 }
 
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
   qtdLancamentos,
 }) => {
-  /*
-   * Referência do menu horizontal mobile.
-   *
-   * Não usamos JavaScript para arrastar.
-   * O navegador continuará responsável pelo
-   * scroll horizontal nativo.
-   */
-  const mobileNavRef = useRef<HTMLElement | null>(null);
 
   const navItems = [
+
     {
       id: 'fechamento' as ActiveTab,
       label: 'Fechamento de Caixa',
       shortLabel: 'Fechamento',
-      description: 'Resumo geral e conferência do caixa',
+      description:
+        'Resumo geral e conferência do caixa',
       icon: FileCheck,
       badge: 'Principal',
     },
+
     {
       id: 'lancamentos' as ActiveTab,
       label: 'Dízimos & Ofertas',
       shortLabel: 'Dízimos & Ofertas',
-      description: 'Lançamento de dízimos, ofertas e despesas',
+      description:
+        'Lançamento de dízimos, ofertas e despesas',
       icon: PlusCircle,
-      badge: `${qtdLancamentos} itens`,
+      badge:
+        `${qtdLancamentos} itens`,
     },
+
     {
       id: 'contagem' as ActiveTab,
       label: 'Contador de Cédulas',
       shortLabel: 'Calculadora Cédulas',
-      description: 'Conferência física de notas e moedas',
+      description:
+        'Conferência física de notas e moedas',
       icon: Coins,
       badge: 'Espécie',
     },
+
     {
       id: 'historico' as ActiveTab,
       label: 'Histórico & Arquivo',
       shortLabel: 'Histórico',
-      description: 'Consultar fechamentos anteriores',
+      description:
+        'Consultar fechamentos anteriores',
       icon: History,
       badge: 'Arquivo',
     },
+
     {
       id: 'relatorio_ia' as ActiveTab,
       label: 'Relatório IA Tesouraria',
       shortLabel: 'Relatório IA',
-      description: 'Auditoria e parecer formal com Gemini',
+      description:
+        'Auditoria e parecer formal com Gemini',
       icon: Sparkles,
       badge: 'IA Gemini',
     },
+
     {
       id: 'config' as ActiveTab,
       label: 'Dados da Igreja',
       shortLabel: 'Dados Igreja',
-      description: 'Configurar igreja, pastor e tesoureiros',
+      description:
+        'Configurar igreja, pastor e tesoureiros',
       icon: Settings,
       badge: 'Ajustes',
     },
+
   ];
 
-  const handleTabClick = (tab: ActiveTab) => {
-    setActiveTab(tab);
-  };
 
   return (
     <>
@@ -93,90 +100,126 @@ export const Sidebar: React.FC<SidebarProps> = ({
           ===================================================== */}
 
       <nav
-        ref={mobileNavRef}
         id="mobile-app-nav"
         aria-label="Navegação principal"
         className="
           lg:hidden
           w-full
+          min-w-0
           flex
-          flex-row
           items-center
           gap-2
-          p-2
-          shrink-0
-          overflow-x-auto
-          overflow-y-hidden
+          px-3
+          py-2
           bg-slate-900
           border-b
           border-slate-800
+          overflow-x-auto
+          overflow-y-hidden
+          whitespace-nowrap
+          shrink-0
           z-20
         "
       >
+
         {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
+
+          const Icon =
+            item.icon;
+
+          const isActive =
+            activeTab === item.id;
+
 
           return (
+
             <button
               key={item.id}
               type="button"
-              onClick={() => handleTabClick(item.id)}
-              aria-current={isActive ? 'page' : undefined}
+              onClick={() =>
+                setActiveTab(
+                  item.id
+                )
+              }
               className={`
+                mobile-nav-button
                 flex
-                flex-none
                 items-center
                 gap-2
                 px-3
-                py-2
+                py-2.5
                 rounded-xl
                 text-xs
                 font-bold
                 whitespace-nowrap
+                shrink-0
                 cursor-pointer
                 select-none
                 transition-colors
-                duration-150
-                outline-none
-                focus-visible:ring-2
-                focus-visible:ring-amber-400
+                border
                 ${
                   isActive
-                    ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                    : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200'
+                    ? `
+                      bg-amber-500
+                      text-slate-950
+                      border-amber-400
+                    `
+                    : `
+                      bg-slate-950
+                      text-slate-400
+                      border-slate-800
+                    `
                 }
               `}
             >
-              <Icon className="w-3.5 h-3.5 shrink-0" />
+
+              <Icon
+                className="
+                  w-3.5
+                  h-3.5
+                  shrink-0
+                "
+              />
 
               <span>
                 {item.shortLabel}
               </span>
 
-              {item.id === 'lancamentos' && qtdLancamentos > 0 && (
-                <span
-                  className={`
-                    text-[9px]
-                    px-1.5
-                    py-0.5
-                    rounded-full
-                    font-mono
-                    shrink-0
-                    ${
-                      isActive
-                        ? 'bg-slate-950 text-amber-300'
-                        : 'bg-slate-800 text-amber-400'
-                    }
-                  `}
-                >
-                  {qtdLancamentos}
-                </span>
-              )}
+
+              {item.id === 'lancamentos' &&
+                qtdLancamentos > 0 && (
+
+                  <span
+                    className={`
+                      text-[9px]
+                      px-1.5
+                      py-0.5
+                      rounded-full
+                      font-mono
+                      shrink-0
+                      ${
+                        isActive
+                          ? `
+                            bg-slate-950
+                            text-amber-300
+                          `
+                          : `
+                            bg-slate-800
+                            text-amber-400
+                          `
+                      }
+                    `}
+                  >
+                    {qtdLancamentos}
+                  </span>
+                )}
+
             </button>
           );
         })}
+
       </nav>
+
 
       {/* =====================================================
           SIDEBAR DESKTOP
@@ -187,19 +230,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className="
           hidden
           lg:flex
-          w-72
-          shrink-0
+          lg:w-72
+          lg:min-w-72
           bg-slate-900
           border-r
           border-slate-800
           text-slate-300
           flex-col
           justify-between
+          shrink-0
+          self-stretch
         "
       >
-        <div className="p-4 space-y-1.5">
 
-          {/* Título */}
+        <div
+          className="
+            p-4
+            space-y-1.5
+          "
+        >
+
           <div
             className="
               px-3
@@ -214,29 +264,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
               gap-1.5
             "
           >
-            <Church className="w-3.5 h-3.5 text-amber-400" />
+
+            <Church
+              className="
+                w-3.5
+                h-3.5
+                text-amber-400
+              "
+            />
 
             <span>
               Módulos da Tesouraria
             </span>
+
           </div>
 
-          {/* Navegação */}
+
           <nav
-            className="space-y-1"
-            aria-label="Módulos da tesouraria"
+            className="
+              space-y-1
+            "
           >
+
             {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
+
+              const Icon =
+                item.icon;
+
+              const isActive =
+                activeTab === item.id;
+
 
               return (
+
                 <button
                   key={item.id}
                   id={`nav-item-${item.id}`}
                   type="button"
-                  onClick={() => handleTabClick(item.id)}
-                  aria-current={isActive ? 'page' : undefined}
+                  onClick={() =>
+                    setActiveTab(
+                      item.id
+                    )
+                  }
                   className={`
                     w-full
                     flex
@@ -245,23 +314,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     px-3.5
                     py-3
                     rounded-2xl
-                    transition-all
+                    transition-colors
                     text-left
                     group
                     relative
                     cursor-pointer
-                    outline-none
-                    focus-visible:ring-2
-                    focus-visible:ring-amber-400
                     ${
                       isActive
-                        ? 'bg-amber-500/15 text-white border border-amber-500/30 font-semibold shadow-inner'
-                        : 'hover:bg-slate-800/80 hover:text-slate-100 text-slate-400 border border-transparent'
+                        ? `
+                          bg-amber-500/15
+                          text-white
+                          border
+                          border-amber-500/30
+                          font-semibold
+                        `
+                        : `
+                          hover:bg-slate-800/80
+                          hover:text-slate-100
+                          text-slate-400
+                          border
+                          border-transparent
+                        `
                     }
                   `}
                 >
-                  {/* Indicador ativo */}
+
                   {isActive && (
+
                     <div
                       className="
                         absolute
@@ -275,7 +354,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                   )}
 
-                  {/* Ícone */}
+
                   <div
                     className={`
                       p-2
@@ -284,24 +363,60 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       shrink-0
                       ${
                         isActive
-                          ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                          : 'bg-slate-800/80 text-slate-400 group-hover:bg-slate-700/80 group-hover:text-slate-200'
+                          ? `
+                            bg-amber-500
+                            text-slate-950
+                          `
+                          : `
+                            bg-slate-800/80
+                            text-slate-400
+                            group-hover:bg-slate-700/80
+                            group-hover:text-slate-200
+                          `
                       }
                     `}
                   >
-                    <Icon className="w-4 h-4" />
+
+                    <Icon
+                      className="
+                        w-4
+                        h-4
+                      "
+                    />
+
                   </div>
 
-                  {/* Texto */}
-                  <div className="flex-1 min-w-0">
 
-                    <div className="flex items-center justify-between gap-1">
+                  <div
+                    className="
+                      flex-1
+                      min-w-0
+                    "
+                  >
 
-                      <span className="text-xs md:text-sm truncate font-medium">
+                    <div
+                      className="
+                        flex
+                        items-center
+                        justify-between
+                        gap-1
+                      "
+                    >
+
+                      <span
+                        className="
+                          text-xs
+                          md:text-sm
+                          truncate
+                          font-medium
+                        "
+                      >
                         {item.label}
                       </span>
 
+
                       {item.badge && (
+
                         <span
                           className={`
                             text-[9px]
@@ -312,16 +427,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             shrink-0
                             ${
                               isActive
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                                : 'bg-slate-800 text-slate-500 border border-slate-700/60'
+                                ? `
+                                  bg-amber-500/20
+                                  text-amber-300
+                                  border
+                                  border-amber-500/30
+                                `
+                                : `
+                                  bg-slate-800
+                                  text-slate-500
+                                  border
+                                  border-slate-700/60
+                                `
                             }
                           `}
                         >
                           {item.badge}
                         </span>
+
                       )}
 
                     </div>
+
 
                     <p
                       className="
@@ -335,15 +462,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </p>
 
                   </div>
+
                 </button>
               );
             })}
+
           </nav>
+
         </div>
 
-        {/* =====================================================
-            AVISO DE SEGURANÇA
-            ===================================================== */}
+
+        {/* =================================================
+            RODAPÉ DE SEGURANÇA
+            ================================================= */}
 
         <div
           className="
@@ -353,6 +484,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             bg-slate-950/50
           "
         >
+
           <div
             className="
               bg-slate-800/50
@@ -365,6 +497,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               gap-2.5
             "
           >
+
             <ShieldCheck
               className="
                 w-4
@@ -375,7 +508,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
               "
             />
 
-            <div className="text-xs text-slate-400">
+            <div
+              className="
+                text-xs
+                text-slate-400
+              "
+            >
 
               <p
                 className="
@@ -399,8 +537,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </p>
 
             </div>
+
           </div>
+
         </div>
+
       </aside>
     </>
   );
