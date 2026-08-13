@@ -107,3 +107,75 @@ export interface User {
   createdAt: string;
 }
 
+/* =========================================================
+   SUPABASE DATABASE TYPES (Mapeamento de Tabelas do Banco)
+   ========================================================= */
+
+export interface SupabasePerfilUsuarioRow {
+  id: string;
+  email: string;
+  nome: string;
+  cargo: string | null;
+  nome_igreja: string | null;
+  created_at: string;
+}
+
+export interface SupabaseConfiguracaoIgrejaRow {
+  id: string;
+  nome_igreja: string;
+  cnpj: string | null;
+  cidade_uf: string | null;
+  pastor_presidente: string;
+  pastor_local: string | null;
+  tesoureiro_padrao: string;
+  segundo_tesoureiro_padrao: string | null;
+  porcentagem_matriz: number | null;
+  aplicar_repasse_matriz: boolean | null;
+  tipo_base_repasse_matriz: string | null;
+  categorias_repasse_matriz: string[] | null;
+  logo_url: string | null;
+  updated_at: string;
+}
+
+export interface SupabaseFechamentoCultoRow {
+  id: string;
+  nome_igreja: string;
+  data: string;
+  data_inicio: string | null;
+  data_fim: string | null;
+  hora: string;
+  tipo_culto: string;
+  pregador: string | null;
+  passagem_biblica: string | null;
+  qtd_membros: number | null;
+  qtd_visitantes: number | null;
+  pastor_presidente: string | null;
+  tesoureiro: string;
+  pastor_local: string | null;
+  segunda_testemunha: string | null;
+  porcentagem_matriz: number | null;
+  aplicar_repasse_matriz: boolean | null;
+  tipo_base_repasse_matriz: string | null;
+  categorias_repasse_matriz: string[] | null;
+  observacoes: string | null;
+  contagem_dinheiro: ContagemDinheiro;
+  status: 'aberto' | 'fechado';
+  criado_em: string;
+  fechado_em: string | null;
+  relatorio_ia: string | null;
+  user_id: string | null;
+}
+
+export interface SupabaseLancamentoRow {
+  id: string;
+  fechamento_id: string;
+  tipo: TipoLancamento;
+  categoria: string;
+  descricao: string;
+  valor: number;
+  forma_pagamento: FormaPagamento;
+  nome_pessoa: string | null;
+  data: string;
+  created_at: string;
+}
+

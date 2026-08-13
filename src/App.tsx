@@ -24,6 +24,14 @@ import {
   INITIAL_FECHAMENTOS,
 } from './data/mockData';
 
+import {
+  fetchConfiguracaoIgreja,
+  saveConfiguracaoIgreja,
+  fetchFechamentos,
+  saveFechamento,
+  syncUserProfile,
+} from './services/treasuryService';
+
 
 export default function App() {
 
@@ -48,6 +56,9 @@ export default function App() {
     } catch (e) {
       console.error('Erro ao salvar sessão de usuário:', e);
     }
+
+    // Sincroniza o perfil do usuário no Supabase
+    syncUserProfile(user);
 
     if (churchName && churchName.trim()) {
       setConfigIgreja((prev) => ({
@@ -306,26 +317,46 @@ export default function App() {
 
 
   /* =========================================================
+     SINCRONIZAÇÃO INICIAL DE DADOS COM SUPABASE
+     ========================================================= */
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSupabaseData() {
+      // Carrega configuração
+      const configRes = await fetchConfiguracaoIgreja();
+      if (isMounted && configRes.data) {
+        setConfigIgreja(configRes.data);
+      }
+
+      // Carrega histórico de fechamentos e lançamentos
+      const fechamentosRes = await fetchFechamentos();
+      if (isMounted && fechamentosRes.data && fechamentosRes.data.length > 0) {
+        setHistorico(fechamentosRes.data);
+      }
+    }
+
+    loadSupabaseData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  /* =========================================================
      SALVAR CONFIGURAÇÃO
      ========================================================= */
 
   useEffect(() => {
-
     try {
-
-      localStorage.setItem(
-        'church_treasury_config',
-        JSON.stringify(configIgreja)
-      );
-
+      localStorage.setItem('church_treasury_config', JSON.stringify(configIgreja));
     } catch (error) {
-
-      console.error(
-        'Erro ao salvar configuração:',
-        error
-      );
+      console.error('Erro ao salvar configuração:', error);
     }
 
+    // Salva no Supabase
+    saveConfiguracaoIgreja(configIgreja);
   }, [configIgreja]);
 
 
@@ -334,22 +365,11 @@ export default function App() {
      ========================================================= */
 
   useEffect(() => {
-
     try {
-
-      localStorage.setItem(
-        'church_treasury_historico',
-        JSON.stringify(historico)
-      );
-
+      localStorage.setItem('church_treasury_historico', JSON.stringify(historico));
     } catch (error) {
-
-      console.error(
-        'Erro ao salvar histórico:',
-        error
-      );
+      console.error('Erro ao salvar histórico:', error);
     }
-
   }, [historico]);
 
 
@@ -358,52 +378,27 @@ export default function App() {
      ========================================================= */
 
   useEffect(() => {
-
     try {
-
-      localStorage.setItem(
-        'church_treasury_active_culto',
-        JSON.stringify(fechamentoAtual)
-      );
-
+      localStorage.setItem('church_treasury_active_culto', JSON.stringify(fechamentoAtual));
     } catch (error) {
-
-      console.error(
-        'Erro ao salvar fechamento atual:',
-        error
-      );
+      console.error('Erro ao salvar fechamento atual:', error);
     }
 
+    // Salva/Sincroniza fechamento no Supabase
+    saveFechamento(fechamentoAtual, currentUser?.id);
 
     setHistorico((prev) => {
-
-      const index =
-        prev.findIndex(
-          (f) =>
-            f.id ===
-            fechamentoAtual.id
-        );
-
+      const index = prev.findIndex((f) => f.id === fechamentoAtual.id);
 
       if (index >= 0) {
-
-        const updated =
-          [...prev];
-
-        updated[index] =
-          fechamentoAtual;
-
+        const updated = [...prev];
+        updated[index] = fechamentoAtual;
         return updated;
       }
 
-
-      return [
-        fechamentoAtual,
-        ...prev,
-      ];
+      return [fechamentoAtual, ...prev];
     });
-
-  }, [fechamentoAtual]);
+  }, [fechamentoAtual, currentUser?.id]);
 
 
   /* =========================================================

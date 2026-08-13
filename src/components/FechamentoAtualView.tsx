@@ -21,6 +21,7 @@ import {
 import {
   FechamentoCulto,
   CategoriaEntrada,
+  ContagemDinheiro,
 } from '../types';
 
 import {
@@ -56,9 +57,13 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
     ? fechamento.lancamentos
     : [];
 
-  const contagemDinheiro = Array.isArray(fechamento.contagemDinheiro)
-    ? fechamento.contagemDinheiro
-    : [];
+  const contagemDinheiro: ContagemDinheiro =
+    fechamento.contagemDinheiro && typeof fechamento.contagemDinheiro === 'object' && !Array.isArray(fechamento.contagemDinheiro)
+      ? fechamento.contagemDinheiro
+      : {
+          c200: 0, c100: 0, c50: 0, c20: 0, c10: 0, c5: 0, c2: 0,
+          m100: 0, m050: 0, m025: 0, m010: 0, m005: 0,
+        };
 
   const tipoBase = fechamento.tipoBaseRepasseMatriz || 'todas';
 
