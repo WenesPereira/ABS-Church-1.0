@@ -96,7 +96,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     const originalMinWidth = element.style.minWidth;
 
     try {
-      // Force fixed A4 pixel width during capture so mobile screens don't compress layout
+      // Force fixed A4 pixel width (210mm equivalent at 96dpi) during capture
       element.style.width = '794px';
       element.style.minWidth = '794px';
       element.style.maxWidth = '794px';
@@ -116,24 +116,24 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
         format: 'a4',
       });
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const margin = 8;
-      const imgWidth = pdfWidth - margin * 2;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+      const margin = 8; // 8mm margin
+      const maxWidth = pdfWidth - margin * 2; // 194mm
+      const maxHeight = pdfHeight - margin * 2; // 281mm
 
-      let heightLeft = imgHeight;
-      let position = margin;
+      // Calculate dimensions so it fits on 1 SINGLE A4 page without spilling over
+      let imgWidth = maxWidth;
+      let imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight - margin * 2;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight + margin;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight - margin * 2;
+      if (imgHeight > maxHeight) {
+        imgHeight = maxHeight;
+        imgWidth = (canvas.width * imgHeight) / canvas.height;
       }
+
+      const xOffset = (pdfWidth - imgWidth) / 2;
+
+      pdf.addImage(imgData, 'JPEG', xOffset, margin, imgWidth, imgHeight);
 
       const dataFormatted = fechamento.data
         ? fechamento.data

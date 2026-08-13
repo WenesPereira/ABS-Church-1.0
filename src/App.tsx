@@ -1,23 +1,10 @@
-import React, { useEffect, useState } from 'react';
-
-import { Header } from './components/Header';
-import { Sidebar } from './components/Sidebar';
-import { FechamentoAtualView } from './components/FechamentoAtualView';
-import { LancamentosView } from './components/LancamentosView';
-import { ContagemDinheiroView } from './components/ContagemDinheiroView';
-import { HistoricoView } from './components/HistoricoView';
-import { RelatorioIAView } from './components/RelatorioIAView';
-import { ConfigView } from './components/ConfigView';
-import { PrintReceiptModal } from './components/PrintReceiptModal';
-import { AuthView } from './components/AuthView';
-
+import React, { useState, useEffect } from 'react';
 import {
   ActiveTab,
   FechamentoCulto,
   ConfigIgreja,
   User,
 } from './types';
-
 
 import {
   INITIAL_CONFIG,
@@ -29,30 +16,104 @@ import {
   saveConfiguracaoIgreja,
   fetchFechamentos,
   saveFechamento,
+  deleteFechamento,
   syncUserProfile,
+  fetchUserProfile,
 } from './services/treasuryService';
+import { supabase, isSupabaseConfigured } from './services/supabase';
 
+import { Header } from './components/Header';
+import { Sidebar } from './components/Sidebar';
+import { AuthView } from './components/AuthView';
+import { FechamentoAtualView } from './components/FechamentoAtualView';
+import { LancamentosView } from './components/LancamentosView';
+import { ContagemDinheiroView } from './components/ContagemDinheiroView';
+import { RelatorioIAView } from './components/RelatorioIAView';
+import { HistoricoView } from './components/HistoricoView';
+import { ConfigView } from './components/ConfigView';
+import { PrintReceiptModal } from './components/PrintReceiptModal';
+
+function createNewFechamento(config: ConfigIgreja): FechamentoCulto {
+  const today = new Date().toISOString().split('T')[0];
+  return {
+    id: `culto-${Date.now()}`,
+    nomeIgreja: config.nomeIgreja,
+    data: today,
+    hora: '19:00',
+    tipoCulto: 'Fechamento de Caixa',
+    tesoureiro: config.tesoureiroPadrao,
+    segundaTestemunha: config.segundoTesoureiroPadrao,
+    porcentagemMatriz: config.porcentagemMatriz ?? 20,
+    status: 'aberto',
+    criadoEm: new Date().toISOString(),
+    contagemDinheiro: {
+      c200: 0, c100: 0, c50: 0, c20: 0, c10: 0, c5: 0, c2: 0,
+      m100: 0, m050: 0, m025: 0, m010: 0, m005: 0,
+    },
+    lancamentos: [],
+  };
+}
 
 export default function App() {
-
-  /* =========================================================
-     AUTENTICAÇÃO / SESSÃO DO USUÁRIO
-     ========================================================= */
-
+  // Authentication State
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
-      const saved = localStorage.getItem('church_treasury_auth_user');
+      const saved = localStorage.getItem('church_treasury_user');
       return saved ? JSON.parse(saved) : null;
-    } catch (e) {
-      console.error('Erro ao carregar sessão do usuário:', e);
+    } catch {
       return null;
     }
   });
 
-  const handleLoginSuccess = (user: User, isNewAccount?: boolean, churchName?: string) => {
+  // Navigation State
+  const [activeTab, setActiveTab] = useState<ActiveTab>('fechamento');
+
+  // Config State
+  const [configIgreja, setConfigIgreja] = useState<ConfigIgreja>(() => {
+    try {
+      const saved = localStorage.getItem('church_treasury_config');
+      return saved ? JSON.parse(saved) : INITIAL_CONFIG;
+    } catch {
+      return INITIAL_CONFIG;
+    }
+  });
+
+  // History State
+  const [historico, setHistorico] = useState<FechamentoCulto[]>(() => {
+    try {
+      const saved = localStorage.getItem('church_treasury_historico');
+      return saved ? JSON.parse(saved) : INITIAL_FECHAMENTOS;
+    } catch {
+      return INITIAL_FECHAMENTOS;
+    }
+  });
+
+  // Active Closing State
+  const [fechamentoAtual, setFechamentoAtual] = useState<FechamentoCulto>(() => {
+    try {
+      const saved = localStorage.getItem('church_treasury_active_culto');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // Fallback
+    }
+    return INITIAL_FECHAMENTOS[0] || createNewFechamento(configIgreja);
+  });
+
+  // Modal Print State
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  /* =========================================================
+     AUTH HANDLERS
+     ========================================================= */
+
+  const handleLoginSuccess = (
+    user: User,
+    _isNewAccount?: boolean,
+    churchName?: string
+  ) => {
     setCurrentUser(user);
     try {
-      localStorage.setItem('church_treasury_auth_user', JSON.stringify(user));
+      localStorage.setItem('church_treasury_user', JSON.stringify(user));
     } catch (e) {
       console.error('Erro ao salvar sessão de usuário:', e);
     }
@@ -64,7 +125,6 @@ export default function App() {
       setConfigIgreja((prev) => ({
         ...prev,
         nomeIgreja: churchName.trim(),
-        tesoureiroPadrao: user.nome || prev.tesoureiroPadrao,
       }));
     }
   };
@@ -72,249 +132,64 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null);
     try {
-      localStorage.removeItem('church_treasury_auth_user');
+      localStorage.removeItem('church_treasury_user');
     } catch (e) {
-      console.error('Erro ao remover sessão de usuário:', e);
+      console.error('Erro ao encerrar sessão:', e);
+    }
+    if (isSupabaseConfigured) {
+      supabase.auth.signOut().catch((err) => console.warn('Erro ao sair do Supabase Auth:', err));
     }
   };
 
-  const [activeTab, setActiveTab] =
-    useState<ActiveTab>('fechamento');
-
-
   /* =========================================================
-     CONFIGURAÇÃO
+     SUPABASE AUTH SESSION INITIALIZATION & LISTENER
      ========================================================= */
 
-  const [configIgreja, setConfigIgreja] =
-    useState<ConfigIgreja>(() => {
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
 
-      try {
-
-        const saved =
-          localStorage.getItem(
-            'church_treasury_config'
-          );
-
-        return saved
-          ? JSON.parse(saved)
-          : INITIAL_CONFIG;
-
-      } catch (error) {
-
-        console.error(
-          'Erro ao carregar configuração:',
-          error
-        );
-
-        return INITIAL_CONFIG;
-      }
-    });
-
-
-  /* =========================================================
-     HISTÓRICO
-     ========================================================= */
-
-  const [historico, setHistorico] =
-    useState<FechamentoCulto[]>(() => {
-
-      try {
-
-        const saved =
-          localStorage.getItem(
-            'church_treasury_historico'
-          );
-
-        return saved
-          ? JSON.parse(saved)
-          : INITIAL_FECHAMENTOS;
-
-      } catch (error) {
-
-        console.error(
-          'Erro ao carregar histórico:',
-          error
-        );
-
-        return INITIAL_FECHAMENTOS;
-      }
-    });
-
-
-  /* =========================================================
-     FECHAMENTO ATUAL
-     ========================================================= */
-
-  const [fechamentoAtual, setFechamentoAtual] =
-    useState<FechamentoCulto>(() => {
-
-      const todayStr =
-        new Date()
-          .toISOString()
-          .split('T')[0];
-
-      const monthStartStr =
-        new Date(
-          new Date().getFullYear(),
-          new Date().getMonth(),
-          1
-        )
-          .toISOString()
-          .split('T')[0];
-
-
-      try {
-
-        const saved =
-          localStorage.getItem(
-            'church_treasury_active_culto'
-          );
-
-
-        if (saved) {
-
-          const parsed =
-            JSON.parse(saved);
-
-          return {
-            ...parsed,
-
-            dataInicio:
-              parsed.dataInicio ||
-              monthStartStr,
-
-            dataFim:
-              parsed.dataFim ||
-              parsed.data ||
-              todayStr,
-          };
-        }
-
-      } catch (error) {
-
-        console.error(
-          'Erro ao carregar fechamento atual:',
-          error
-        );
-      }
-
-
-      /* =====================================================
-         MOCK INICIAL
-         ===================================================== */
-
-      const firstMock =
-        INITIAL_FECHAMENTOS[0];
-
-
-      if (firstMock) {
-
-        return {
-          ...firstMock,
-
-          dataInicio:
-            firstMock.dataInicio ||
-            '2026-08-01',
-
-          dataFim:
-            firstMock.dataFim ||
-            firstMock.data ||
-            todayStr,
+    // Monitora sessão ativa do Supabase Auth
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const profile = await fetchUserProfile(session.user.id);
+        const meta = session.user.user_metadata || {};
+        const u: User = {
+          id: session.user.id,
+          email: session.user.email || '',
+          nome: profile?.nome || meta.nome || 'Tesoureiro',
+          cargo: profile?.cargo || meta.cargo || 'Tesoureiro Principal',
+          nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || configIgreja.nomeIgreja,
+          createdAt: session.user.created_at || new Date().toISOString(),
         };
+        setCurrentUser(u);
+        localStorage.setItem('church_treasury_user', JSON.stringify(u));
       }
-
-
-      /* =====================================================
-         NOVO FECHAMENTO
-         ===================================================== */
-
-      return {
-
-        id:
-          'culto-' +
-          Date.now(),
-
-        nomeIgreja:
-          configIgreja.nomeIgreja,
-
-        data:
-          todayStr,
-
-        dataInicio:
-          monthStartStr,
-
-        dataFim:
-          todayStr,
-
-        hora:
-          '19:00',
-
-        tipoCulto:
-          'Fechamento de Caixa por Período',
-
-        pastorPresidente:
-          configIgreja.pastorPresidente ||
-          'Pastor Presidente',
-
-        tesoureiro:
-          configIgreja.tesoureiroPadrao ||
-          'Tesoureiro Responsável',
-
-        pastorLocal:
-          configIgreja.pastorLocal ||
-          'Pastor Local',
-
-        porcentagemMatriz:
-          configIgreja.porcentagemMatriz ||
-          20,
-
-        aplicarRepasseMatriz:
-          configIgreja.aplicarRepasseMatriz ??
-          true,
-
-        tipoBaseRepasseMatriz:
-          configIgreja.tipoBaseRepasseMatriz ||
-          'todas',
-
-        categoriasRepasseMatriz:
-          configIgreja.categoriasRepasseMatriz,
-
-        status:
-          'aberto',
-
-        criadoEm:
-          new Date().toISOString(),
-
-        lancamentos: [],
-
-        contagemDinheiro: {
-
-          c200: 0,
-          c100: 0,
-          c50: 0,
-          c20: 0,
-          c10: 0,
-          c5: 0,
-          c2: 0,
-
-          m100: 0,
-          m050: 0,
-          m025: 0,
-          m010: 0,
-          m005: 0,
-        },
-      };
     });
 
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const profile = await fetchUserProfile(session.user.id);
+        const meta = session.user.user_metadata || {};
+        const u: User = {
+          id: session.user.id,
+          email: session.user.email || '',
+          nome: profile?.nome || meta.nome || 'Tesoureiro',
+          cargo: profile?.cargo || meta.cargo || 'Tesoureiro Principal',
+          nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || configIgreja.nomeIgreja,
+          createdAt: session.user.created_at || new Date().toISOString(),
+        };
+        setCurrentUser(u);
+        localStorage.setItem('church_treasury_user', JSON.stringify(u));
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        localStorage.removeItem('church_treasury_user');
+      }
+    });
 
-  /* =========================================================
-     MODAL DE IMPRESSÃO
-     ========================================================= */
-
-  const [printableCulto, setPrintableCulto] =
-    useState<FechamentoCulto | null>(null);
-
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, [isSupabaseConfigured]);
 
   /* =========================================================
      SINCRONIZAÇÃO INICIAL DE DADOS COM SUPABASE
@@ -324,16 +199,17 @@ export default function App() {
     let isMounted = true;
 
     async function loadSupabaseData() {
-      // Carrega configuração
       const configRes = await fetchConfiguracaoIgreja();
       if (isMounted && configRes.data) {
         setConfigIgreja(configRes.data);
       }
 
-      // Carrega histórico de fechamentos e lançamentos
       const fechamentosRes = await fetchFechamentos();
       if (isMounted && fechamentosRes.data && fechamentosRes.data.length > 0) {
         setHistorico(fechamentosRes.data);
+        if (fechamentosRes.data[0]) {
+          setFechamentoAtual(fechamentosRes.data[0]);
+        }
       }
     }
 
@@ -345,7 +221,7 @@ export default function App() {
   }, []);
 
   /* =========================================================
-     SALVAR CONFIGURAÇÃO
+     PERSISTÊNCIA DA CONFIGURAÇÃO
      ========================================================= */
 
   useEffect(() => {
@@ -359,9 +235,8 @@ export default function App() {
     saveConfiguracaoIgreja(configIgreja);
   }, [configIgreja]);
 
-
   /* =========================================================
-     SALVAR HISTÓRICO
+     PERSISTÊNCIA DO HISTÓRICO
      ========================================================= */
 
   useEffect(() => {
@@ -372,9 +247,8 @@ export default function App() {
     }
   }, [historico]);
 
-
   /* =========================================================
-     SALVAR FECHAMENTO ATUAL
+     PERSISTÊNCIA E SINCRONIZAÇÃO DO FECHAMENTO ATUAL
      ========================================================= */
 
   useEffect(() => {
@@ -400,184 +274,34 @@ export default function App() {
     });
   }, [fechamentoAtual, currentUser?.id]);
 
-
   /* =========================================================
-     FUNÇÃO PARA VOLTAR AO TOPO
-     ========================================================= */
-
-  const voltarAoTopo = () => {
-
-    /*
-     * Agora quem rola é o documento.
-     *
-     * Não usamos mais:
-     * #treasury-content-viewport.scrollTo()
-     */
-
-    window.scrollTo({
-      top: 0,
-      behavior: 'smooth',
-    });
-  };
-
-
-  /* =========================================================
-     NOVO FECHAMENTO
+     AÇÕES DO FECHAMENTO
      ========================================================= */
 
   const handleNovoFechamento = () => {
+    const novo = createNewFechamento(configIgreja);
+    setFechamentoAtual(novo);
+    setActiveTab('fechamento');
+  };
 
-    if (
-      fechamentoAtual.status === 'aberto' &&
-      fechamentoAtual.lancamentos.length > 0
-    ) {
+  const handleSelectFechamento = (fechamento: FechamentoCulto) => {
+    setFechamentoAtual(fechamento);
+    setActiveTab('fechamento');
+  };
 
-      const confirmar =
-        window.confirm(
-          'O caixa atual ainda está em aberto. Deseja iniciar o fechamento de um novo culto?'
-        );
+  const handleDeleteFechamentoItem = async (id: string) => {
+    setHistorico((prev) => prev.filter((f) => f.id !== id));
+    deleteFechamento(id);
 
-      if (!confirmar) {
-        return;
+    if (fechamentoAtual.id === id) {
+      const remaining = historico.filter((f) => f.id !== id);
+      if (remaining.length > 0) {
+        setFechamentoAtual(remaining[0]);
+      } else {
+        setFechamentoAtual(createNewFechamento(configIgreja));
       }
     }
-
-
-    const todayStr =
-      new Date()
-        .toISOString()
-        .split('T')[0];
-
-
-    const monthStartStr =
-      new Date(
-        new Date().getFullYear(),
-        new Date().getMonth(),
-        1
-      )
-        .toISOString()
-        .split('T')[0];
-
-
-    const newCulto: FechamentoCulto = {
-
-      id:
-        'culto-' +
-        Date.now(),
-
-      nomeIgreja:
-        configIgreja.nomeIgreja,
-
-      data:
-        todayStr,
-
-      dataInicio:
-        monthStartStr,
-
-      dataFim:
-        todayStr,
-
-      hora:
-        '19:00',
-
-      tipoCulto:
-        'Fechamento de Caixa por Período',
-
-      pastorPresidente:
-        configIgreja.pastorPresidente ||
-        'Pastor Presidente',
-
-      tesoureiro:
-        configIgreja.tesoureiroPadrao ||
-        'Tesoureiro Responsável',
-
-      pastorLocal:
-        configIgreja.pastorLocal ||
-        'Pastor Local',
-
-      porcentagemMatriz:
-        configIgreja.porcentagemMatriz ||
-        20,
-
-      aplicarRepasseMatriz:
-        configIgreja.aplicarRepasseMatriz ??
-        true,
-
-      tipoBaseRepasseMatriz:
-        configIgreja.tipoBaseRepasseMatriz ||
-        'todas',
-
-      categoriasRepasseMatriz:
-        configIgreja.categoriasRepasseMatriz,
-
-      status:
-        'aberto',
-
-      criadoEm:
-        new Date().toISOString(),
-
-      lancamentos: [],
-
-      contagemDinheiro: {
-
-        c200: 0,
-        c100: 0,
-        c50: 0,
-        c20: 0,
-        c10: 0,
-        c5: 0,
-        c2: 0,
-
-        m100: 0,
-        m050: 0,
-        m025: 0,
-        m010: 0,
-        m005: 0,
-      },
-    };
-
-
-    setFechamentoAtual(newCulto);
-
-    setActiveTab('fechamento');
-
-    voltarAoTopo();
   };
-
-
-  /* =========================================================
-     SELECIONAR HISTÓRICO
-     ========================================================= */
-
-  const handleSelectFechamento = (
-    fechamento: FechamentoCulto
-  ) => {
-
-    setFechamentoAtual(
-      fechamento
-    );
-
-    setActiveTab(
-      'fechamento'
-    );
-
-    voltarAoTopo();
-  };
-
-
-  /* =========================================================
-     ABRIR IMPRESSÃO
-     ========================================================= */
-
-  const handleOpenPrintModalFor = (
-    fechamento: FechamentoCulto
-  ) => {
-
-    setPrintableCulto(
-      fechamento
-    );
-  };
-
 
   /* =========================================================
      RENDER
@@ -593,245 +317,91 @@ export default function App() {
   }
 
   return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* Header Fixo no topo */}
+      <Header
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        fechamentoAtual={fechamentoAtual}
+        configIgreja={configIgreja}
+        onNovoFechamento={handleNovoFechamento}
+        onOpenPrintModal={() => setIsPrintModalOpen(true)}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+      />
 
-    <div className="treasury-app">
-
-      {/* ===================================================
-          HEADER
-          =================================================== */}
-
-      <div className="flex-none">
-
-        <Header
-
-          activeTab={
-            activeTab
-          }
-
-          setActiveTab={
-            setActiveTab
-          }
-
-          fechamentoAtual={
-            fechamentoAtual
-          }
-
-          configIgreja={
-            configIgreja
-          }
-
-          currentUser={
-            currentUser
-          }
-
-          onLogout={
-            handleLogout
-          }
-
-          onNovoFechamento={
-            handleNovoFechamento
-          }
-
-          onOpenPrintModal={() =>
-            setPrintableCulto(
-              fechamentoAtual
-            )
-          }
-        />
-
-      </div>
-
-
-      {/* ===================================================
-          ÁREA PRINCIPAL
-          =================================================== */}
-
-      <div className="treasury-main">
-
-        {/* =================================================
-            SIDEBAR / MENU
-            ================================================= */}
-
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0">
+        {/* Sidebar Lateral */}
         <Sidebar
-
-          activeTab={
-            activeTab
-          }
-
-          setActiveTab={
-            setActiveTab
-          }
-
-          qtdLancamentos={
-            fechamentoAtual
-              .lancamentos.length
-          }
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          qtdLancamentos={fechamentoAtual.lancamentos.length}
         />
 
+        {/* Conteúdo Principal */}
+        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 min-w-0 transition-all duration-300">
+          <div className="max-w-7xl mx-auto space-y-6">
+            {activeTab === 'fechamento' && (
+              <FechamentoAtualView
+                fechamento={fechamentoAtual}
+                setFechamento={setFechamentoAtual}
+                onGoToLancamentos={() => setActiveTab('lancamentos')}
+                onGoToContagem={() => setActiveTab('contagem')}
+                onGoToRelatorioIA={() => setActiveTab('relatorio_ia')}
+                onOpenPrintModal={() => setIsPrintModalOpen(true)}
+              />
+            )}
 
-        {/* =================================================
-            CONTEÚDO
-            ================================================= */}
+            {activeTab === 'lancamentos' && (
+              <LancamentosView
+                fechamento={fechamentoAtual}
+                setFechamento={setFechamentoAtual}
+              />
+            )}
 
-        <main className="w-full min-w-0 bg-slate-950">
+            {activeTab === 'contagem' && (
+              <ContagemDinheiroView
+                fechamento={fechamentoAtual}
+                setFechamento={setFechamentoAtual}
+              />
+            )}
 
-          {activeTab === 'fechamento' && (
+            {activeTab === 'relatorio_ia' && (
+              <RelatorioIAView
+                fechamento={fechamentoAtual}
+                setFechamento={setFechamentoAtual}
+              />
+            )}
 
-            <FechamentoAtualView
+            {activeTab === 'historico' && (
+              <HistoricoView
+                historico={historico}
+                onSelectFechamento={handleSelectFechamento}
+                onOpenPrintModalFor={(f) => {
+                  setFechamentoAtual(f);
+                  setIsPrintModalOpen(true);
+                }}
+              />
+            )}
 
-              fechamento={
-                fechamentoAtual
-              }
-
-              setFechamento={
-                setFechamentoAtual
-              }
-
-              onGoToLancamentos={() =>
-                setActiveTab(
-                  'lancamentos'
-                )
-              }
-
-              onGoToContagem={() =>
-                setActiveTab(
-                  'contagem'
-                )
-              }
-
-              onGoToRelatorioIA={() =>
-                setActiveTab(
-                  'relatorio_ia'
-                )
-              }
-
-              onOpenPrintModal={() =>
-                setPrintableCulto(
-                  fechamentoAtual
-                )
-              }
-            />
-
-          )}
-
-
-          {activeTab === 'lancamentos' && (
-
-            <LancamentosView
-
-              fechamento={
-                fechamentoAtual
-              }
-
-              setFechamento={
-                setFechamentoAtual
-              }
-
-            />
-
-          )}
-
-
-          {activeTab === 'contagem' && (
-
-            <ContagemDinheiroView
-
-              fechamento={
-                fechamentoAtual
-              }
-
-              setFechamento={
-                setFechamentoAtual
-              }
-
-            />
-
-          )}
-
-
-          {activeTab === 'historico' && (
-
-            <HistoricoView
-
-              historico={
-                historico
-              }
-
-              onSelectFechamento={
-                handleSelectFechamento
-              }
-
-              onOpenPrintModalFor={
-                handleOpenPrintModalFor
-              }
-
-            />
-
-          )}
-
-
-          {activeTab === 'relatorio_ia' && (
-
-            <RelatorioIAView
-
-              fechamento={
-                fechamentoAtual
-              }
-
-              setFechamento={
-                setFechamentoAtual
-              }
-
-            />
-
-          )}
-
-
-          {activeTab === 'config' && (
-
-            <ConfigView
-
-              config={
-                configIgreja
-              }
-
-              setConfig={
-                setConfigIgreja
-              }
-
-            />
-
-          )}
-
+            {activeTab === 'config' && (
+              <ConfigView
+                config={configIgreja}
+                setConfig={setConfigIgreja}
+              />
+            )}
+          </div>
         </main>
-
       </div>
 
-
-      {/* ===================================================
-          MODAL DE IMPRESSÃO
-          =================================================== */}
-
-      {printableCulto && (
-
+      {/* Modal de Impressão / Recibo */}
+      {isPrintModalOpen && (
         <PrintReceiptModal
-
-          fechamento={
-            printableCulto
-          }
-
-          config={
-            configIgreja
-          }
-
-          onClose={() =>
-            setPrintableCulto(null)
-          }
-
+          fechamento={fechamentoAtual}
+          config={configIgreja}
+          onClose={() => setIsPrintModalOpen(false)}
         />
-
       )}
-
     </div>
   );
 }

@@ -1,16 +1,56 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const env = (import.meta as unknown as { env: Record<string, string> }).env || {};
-const rawUrl = (env.VITE_SUPABASE_URL || '').trim();
-const rawKey = (env.VITE_SUPABASE_PUBLISHABLE_KEY || '').trim();
+
+const rawUrlInput = (
+  env.VITE_SUPABASE_URL ||
+  env.SUPABASE_URL ||
+  ''
+).trim();
+
+const rawKeyInput = (
+  env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  env.VITE_SUPABASE_ANON_KEY ||
+  env.SUPABASE_ANON_KEY ||
+  env.SUPABASE_KEY ||
+  ''
+).trim();
+
+export function sanitizeSupabaseUrl(urlStr: string): string {
+  if (!urlStr) return '';
+  let cleaned = urlStr.trim();
+
+  // Adiciona https:// se o usuário forneceu a URL sem o protocolo
+  if (!/^https?:\/\//i.test(cleaned)) {
+    cleaned = 'https://' + cleaned;
+  }
+
+  try {
+    const parsed = new URL(cleaned);
+    // Retorna apenas o origin (protocolo + host + porta), removendo caminhos como /rest/v1 ou /auth/v1
+    return parsed.origin;
+  } catch {
+    cleaned = cleaned
+      .replace(/\/rest\/v1\/?$/i, '')
+      .replace(/\/auth\/v1\/?$/i, '')
+      .replace(/\/+$/, '');
+    return cleaned;
+  }
+}
+
+export function sanitizeSupabaseKey(keyStr: string): string {
+  if (!keyStr) return '';
+  return keyStr.trim().replace(/[\r\n\s]/g, '');
+}
+
+const cleanedUrl = sanitizeSupabaseUrl(rawUrlInput);
+const cleanedKey = sanitizeSupabaseKey(rawKeyInput);
 
 function validateSupabaseConfig(url: string, key: string): boolean {
   if (!url || !key) return false;
 
-  const lowerUrl = url.toLowerCase().trim();
-  const lowerKey = key.toLowerCase().trim();
+  const lowerUrl = url.toLowerCase();
 
-  // Rejeita URLs/Chaves com palavras genéricas, placeholders ou caminhos não configurados
   if (
     lowerUrl.includes('placeholder') ||
     lowerUrl.includes('your-supabase') ||
@@ -22,18 +62,18 @@ function validateSupabaseConfig(url: string, key: string): boolean {
     return false;
   }
 
-  // Uma URL do Supabase válida deve conter um domínio do Supabase ou localhost para dev
   const isSupabaseHost =
     lowerUrl.includes('.supabase.co') ||
     lowerUrl.includes('.supabase.in') ||
     lowerUrl.includes('.supabase.net') ||
-    lowerUrl.includes('localhost:54321') ||
-    lowerUrl.includes('127.0.0.1:54321');
+    lowerUrl.includes('localhost') ||
+    lowerUrl.includes('127.0.0.1');
 
   if (!isSupabaseHost) {
     return false;
   }
 
+  const lowerKey = key.toLowerCase();
   if (
     lowerKey.includes('placeholder') ||
     lowerKey.includes('your_supabase') ||
@@ -51,7 +91,7 @@ function validateSupabaseConfig(url: string, key: string): boolean {
   }
 }
 
-export const isSupabaseConfigured = validateSupabaseConfig(rawUrl, rawKey);
+export const isSupabaseConfigured = validateSupabaseConfig(cleanedUrl, cleanedKey);
 
 if (!isSupabaseConfigured) {
   console.info(
@@ -59,9 +99,15 @@ if (!isSupabaseConfigured) {
   );
 }
 
-// Fallback de URL/Key para evitar exceções do SDK
-const safeUrl = isSupabaseConfigured ? rawUrl : 'https://unconfigured-project.supabase.co';
-const safeKey = isSupabaseConfigured ? rawKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.unconfigured';
+const safeUrl = isSupabaseConfigured ? cleanedUrl : 'https://unconfigured-project.supabase.co';
+const safeKey = isSupabaseConfigured ? cleanedKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.unconfigured';
 
-export const supabase: SupabaseClient = createClient(safeUrl, safeKey);
+export const supabase: SupabaseClient = createClient(safeUrl, safeKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+});
+
 

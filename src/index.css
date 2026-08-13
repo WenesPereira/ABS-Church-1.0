@@ -261,13 +261,19 @@ select {
    ========================================================= */
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
   html,
   body,
   #root {
-    width: 100%;
-    height: auto;
-    min-height: 0;
-
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: visible !important;
   }
 
@@ -287,5 +293,18 @@ select {
 
   .print\:hidden {
     display: none !important;
+  }
+
+  #printable-receipt {
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: white !important;
+    color: black !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 }

@@ -351,18 +351,64 @@ export async function syncUserProfile(user: User): Promise<boolean> {
       created_at: user.createdAt || new Date().toISOString(),
     };
 
-    const { error } = await supabase
-      .from('perfis_usuarios')
+    // Tenta salvar na tabela 'profiles' (padrão)
+    const { error: profileError } = await supabase
+      .from('profiles')
       .upsert(row, { onConflict: 'id' });
 
-    if (error) {
-      console.warn('Erro ao salvar perfil de usuário no Supabase:', error.message);
-      return false;
+    if (profileError) {
+      // Tenta fallback para 'perfis_usuarios' caso a tabela tenha o nome antigo
+      const { error: fallbackError } = await supabase
+        .from('perfis_usuarios')
+        .upsert(row, { onConflict: 'id' });
+
+      if (fallbackError) {
+        console.warn('Erro ao salvar perfil de usuário no Supabase:', profileError.message);
+        return false;
+      }
     }
 
     return true;
   } catch (err) {
     console.warn('Erro ao sincronizar perfil do usuário com Supabase:', err);
     return false;
+  }
+}
+
+export async function fetchUserProfile(userId: string): Promise<User | null> {
+  if (!isSupabaseConfigured) return null;
+
+  try {
+    // Tenta buscar da tabela 'profiles'
+    let { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error || !data) {
+      // Fallback para 'perfis_usuarios'
+      const fallback = await supabase
+        .from('perfis_usuarios')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      data = fallback.data;
+    }
+
+    if (data) {
+      return {
+        id: data.id,
+        email: data.email,
+        nome: data.nome,
+        cargo: data.cargo || undefined,
+        nomeIgreja: data.nome_igreja || undefined,
+        createdAt: data.created_at || new Date().toISOString(),
+      };
+    }
+    return null;
+  } catch (err) {
+    console.warn('Erro ao carregar perfil do usuário no Supabase:', err);
+    return null;
   }
 }

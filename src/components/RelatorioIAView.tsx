@@ -40,24 +40,23 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({ fechamento, se
         format: 'a4',
       });
 
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = pdf.internal.pageSize.getHeight();
-      const margin = 10;
-      const imgWidth = pdfWidth - margin * 2;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pdfWidth = pdf.internal.pageSize.getWidth(); // 210mm
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297mm
+      const margin = 10; // 10mm margin
+      const maxWidth = pdfWidth - margin * 2; // 190mm
+      const maxHeight = pdfHeight - margin * 2; // 277mm
 
-      let heightLeft = imgHeight;
-      let position = margin;
+      let imgWidth = maxWidth;
+      let imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-      heightLeft -= pdfHeight - margin * 2;
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight + margin;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', margin, position, imgWidth, imgHeight);
-        heightLeft -= pdfHeight - margin * 2;
+      if (imgHeight > maxHeight) {
+        imgHeight = maxHeight;
+        imgWidth = (canvas.width * imgHeight) / canvas.height;
       }
+
+      const xOffset = (pdfWidth - imgWidth) / 2;
+
+      pdf.addImage(imgData, 'JPEG', xOffset, margin, imgWidth, imgHeight);
 
       pdf.save(`Relatorio_IA_Tesouraria_${fechamento.data || 'culto'}.pdf`);
     } catch (err) {
