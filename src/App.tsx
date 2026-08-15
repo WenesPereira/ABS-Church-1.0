@@ -173,7 +173,7 @@ export default function App() {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') && session?.user) {
         const profile = await fetchUserProfile(session.user.id);
         const meta = session.user.user_metadata || {};
         const u: User = {
@@ -309,6 +309,11 @@ export default function App() {
     }
   };
 
+  /* Rolar suavemente para o topo ao alternar de aba */
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab]);
+
   /* =========================================================
      RENDER
      ========================================================= */
@@ -323,7 +328,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-x-hidden">
       {/* Header Fixo no topo */}
       <Header
         activeTab={activeTab}
@@ -345,8 +350,8 @@ export default function App() {
           fechamentoAtual={fechamentoAtual}
         />
 
-        {/* Conteúdo Principal */}
-        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 min-w-0 transition-all duration-300 pb-24 lg:pb-8">
+        {/* Conteúdo Principal com espaço extra para Bottom Nav e Safe Area */}
+        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 min-w-0 transition-all duration-300 pb-[calc(6rem+env(safe-area-inset-bottom,0px))] lg:pb-8">
           <div className="max-w-7xl mx-auto space-y-6">
             {activeTab === 'fechamento' && (
               <FechamentoAtualView

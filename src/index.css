@@ -1,8 +1,15 @@
 @import "tailwindcss";
 
 /* =========================================================
-   RESET
+   RESET & VIEWPORT OPTIMIZATION
    ========================================================= */
+
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
 
 html,
 body,
@@ -12,6 +19,7 @@ body,
   min-height: 100%;
   margin: 0;
   padding: 0;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* =========================================================
@@ -20,17 +28,8 @@ body,
 
 html {
   background: #020617;
-
-  /*
-   * Impede o navegador de transformar o excesso
-   * de rolagem vertical em pull-to-refresh.
-   */
-  overscroll-behavior-y: none;
-
-  /*
-   * Evita overflow horizontal da aplicação.
-   */
   overflow-x: hidden;
+  scroll-behavior: smooth;
 }
 
 /* =========================================================
@@ -40,28 +39,12 @@ html {
 body {
   background: #020617;
   color: #f8fafc;
-
-  /*
-   * IMPORTANTE:
-   * O BODY volta a participar da rolagem.
-   *
-   * Não usar:
-   * position: fixed;
-   * overflow: hidden;
-   */
   position: relative;
-
   min-height: 100dvh;
-
   overflow-x: hidden;
   overflow-y: auto;
-
-  overscroll-behavior-y: none;
-
-  /*
-   * Permite rolagem normal.
-   */
-  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y pinch-zoom;
 }
 
 /* =========================================================
@@ -72,150 +55,47 @@ body {
   width: 100%;
   min-width: 0;
   min-height: 100dvh;
-
   display: flex;
   flex-direction: column;
-
   overflow-x: hidden;
 }
 
 /* =========================================================
-   APLICAÇÃO
+   TOUCH SCROLLING UTILITIES
    ========================================================= */
 
-.treasury-app {
-  width: 100%;
-  min-width: 0;
-  min-height: 100dvh;
-
-  display: flex;
-  flex-direction: column;
-
-  overflow-x: hidden;
-
-  background: #020617;
-}
-
-/* =========================================================
-   CONTEÚDO PRINCIPAL
-   ========================================================= */
-
-.treasury-main {
-  width: 100%;
-  min-width: 0;
-
-  display: flex;
-  flex-direction: column;
-
-  overflow: visible;
-}
-
-/* =========================================================
-   MENU MOBILE
-   ========================================================= */
-
-#mobile-app-nav {
-  width: 100%;
-  min-width: 0;
-
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-
-  /*
-   * O menu pode ser maior que a tela.
-   */
-  overflow-x: auto;
-  overflow-y: hidden;
-
-  white-space: nowrap;
-
-  /*
-   * IMPORTANTE:
-   * Esse elemento recebe somente gesto horizontal.
-   */
-  touch-action: pan-x;
-
+.scroll-touch {
   -webkit-overflow-scrolling: touch;
-
-  overscroll-behavior-x: contain;
-  overscroll-behavior-y: none;
-
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  flex-shrink: 0;
-
-  position: relative;
-  z-index: 20;
-}
-
-#mobile-app-nav::-webkit-scrollbar {
-  display: none;
+  overscroll-behavior: contain;
 }
 
 /* =========================================================
-   ITENS DO MENU MOBILE
-   ========================================================= */
-
-#mobile-app-nav > * {
-  flex-shrink: 0;
-}
-
-/*
- * O nav interno do Sidebar não deve criar
- * outro scroll horizontal.
- */
-#mobile-app-nav nav {
-  flex-shrink: 0;
-}
-
-/* =========================================================
-   BOTÕES
+   FORM CONTROLS & TOUCH TARGETS
    ========================================================= */
 
 button {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
-
-/*
- * Não aplicar touch-action globalmente
- * em todos os elementos.
- *
- * Isso é importante para não quebrar
- * os gestos do navegador.
- */
-
-/* =========================================================
-   INPUTS
-   ========================================================= */
 
 input,
 textarea,
 select {
   touch-action: manipulation;
+  /* Prevent iOS zoom on focus while maintaining clean typography */
+  font-size: 16px;
 }
 
-/* =========================================================
-   DESKTOP
-   ========================================================= */
-
-@media (min-width: 1024px) {
-  body {
-    overflow-x: hidden;
-    overflow-y: auto;
-    touch-action: auto;
-  }
-
-  #mobile-app-nav {
-    overflow: visible;
-    width: auto;
-    touch-action: auto;
+@media (min-width: 640px) {
+  input,
+  textarea,
+  select {
+    font-size: inherit;
   }
 }
 
 /* =========================================================
-   ANIMAÇÃO
+   ANIMATIONS
    ========================================================= */
 
 @keyframes fadeIn {
@@ -223,7 +103,6 @@ select {
     opacity: 0;
     transform: translateY(4px);
   }
-
   to {
     opacity: 1;
     transform: translateY(0);
@@ -231,11 +110,11 @@ select {
 }
 
 .animate-fadeIn {
-  animation: fadeIn 0.25s ease-out forwards;
+  animation: fadeIn 0.2s ease-out forwards;
 }
 
 /* =========================================================
-   SCROLLBAR
+   SCROLLBAR STYLING
    ========================================================= */
 
 ::-webkit-scrollbar {
@@ -257,7 +136,7 @@ select {
 }
 
 /* =========================================================
-   IMPRESSÃO
+   PRINT STYLES
    ========================================================= */
 
 @media print {
@@ -275,20 +154,8 @@ select {
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
-  }
-
-  body {
     background: white !important;
     color: black !important;
-  }
-
-  .treasury-app {
-    width: 100%;
-    min-height: 0;
-
-    overflow: visible !important;
-
-    background: white !important;
   }
 
   .print\:hidden {

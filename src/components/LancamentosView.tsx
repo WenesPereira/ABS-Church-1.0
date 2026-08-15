@@ -417,7 +417,7 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
   return (
     <div
       id="lancamentos-view-container"
-      className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-3 sm:p-4 md:p-6 space-y-5"
+      className="space-y-6 w-full"
     >
       {/* Barra de Navegação Contextual */}
       {onNavigate && (
@@ -761,9 +761,89 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
         </div>
 
         {/* =====================================================
-            TABELA
+            LISTAGEM / TABELA RESPONSIVA
         ====================================================== */}
-        <div className="overflow-x-auto">
+        {/* Visualização em Cartões para Mobile */}
+        <div className="block md:hidden space-y-3">
+          {filteredLancamentos.length === 0 ? (
+            <div className="p-8 text-center text-slate-500 text-xs bg-slate-950/60 rounded-2xl border border-slate-800">
+              Nenhum lançamento encontrado com os filtros aplicados.
+            </div>
+          ) : (
+            filteredLancamentos.map((l) => {
+              const tipoLancamento = l.tipo === 'saida' ? 'saida' : 'entrada';
+              const valor = typeof l.valor === 'number' ? l.valor : Number(l.valor) || 0;
+              const forma = l.formaPagamento || 'dinheiro';
+
+              return (
+                <div
+                  key={l.id}
+                  className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3.5 space-y-2.5 shadow-sm"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${
+                          tipoLancamento === 'entrada'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        }`}
+                      >
+                        {tipoLancamento === 'entrada' ? 'Entrada' : 'Saída'}
+                      </span>
+                      <span className="font-semibold text-xs text-slate-200">
+                        {getCategoryLabel(l.categoria)}
+                      </span>
+                    </div>
+
+                    <span
+                      className={`font-bold font-mono text-sm shrink-0 ${
+                        tipoLancamento === 'entrada' ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {tipoLancamento === 'entrada' ? '+' : '-'} {formatCurrency(valor)}
+                    </span>
+                  </div>
+
+                  {l.descricao && (
+                    <p className="text-xs text-slate-300">
+                      {l.descricao}
+                    </p>
+                  )}
+
+                  {l.nomePessoa && (
+                    <div className="text-[11px] text-amber-400/90 font-medium flex items-center gap-1">
+                      <User className="w-3 h-3 shrink-0" />
+                      <span>{l.nomePessoa}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[11px] text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono">{l.data || 'Data não informada'}</span>
+                      <span>•</span>
+                      <span className="capitalize font-mono text-slate-400">
+                        {String(forma).replace(/_/g, ' ')}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLancamento(l.id)}
+                      className="p-1.5 hover:bg-rose-500/20 rounded-lg text-slate-500 hover:text-rose-400 transition-colors"
+                      title="Remover lançamento"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Visualização em Tabela para Tablets e Desktops */}
+        <div className="hidden md:block overflow-x-auto scroll-touch">
           <table className="w-full text-left text-xs text-slate-300">
             <thead className="bg-slate-950 text-slate-400 uppercase font-bold text-[10px] tracking-wider border-b border-slate-800">
               <tr>

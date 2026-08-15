@@ -68,7 +68,7 @@ export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fech
   ];
 
   return (
-    <div id="contagem-dinheiro-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-3 sm:p-4 md:p-6 space-y-5">
+    <div id="contagem-dinheiro-container" className="space-y-6 w-full">
       {/* Barra de Navegação Contextual */}
       {onNavigate && (
         <div className="flex items-center justify-between gap-3 max-w-5xl mx-auto w-full">
@@ -168,16 +168,16 @@ export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fech
               const qty = c[item.key] || 0;
               const subtotal = qty * item.valor;
               return (
-                <div key={item.key} className="flex items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
-                  <div className="w-24 shrink-0">
-                    <span className="font-bold text-xs text-amber-400">{item.label}</span>
+                <div key={item.key} className="flex items-center justify-between gap-2 sm:gap-3 bg-slate-950 p-2.5 sm:p-3 rounded-2xl border border-slate-800/80">
+                  <div className="w-16 sm:w-24 shrink-0">
+                    <span className="font-bold text-xs sm:text-sm text-amber-400">{item.label}</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <button
                       type="button"
                       onClick={() => handleUpdate(item.key, qty - 1)}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+                      className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-sm transition-all cursor-pointer flex items-center justify-center"
                     >
                       -
                     </button>
@@ -187,18 +187,18 @@ export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fech
                       value={qty || ''}
                       onChange={(e) => handleUpdate(item.key, parseInt(e.target.value) || 0)}
                       placeholder="0"
-                      className="w-16 bg-slate-900 border border-slate-700 rounded-lg py-1 text-center font-mono font-bold text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      className="w-14 sm:w-16 bg-slate-900 border border-slate-700 rounded-xl py-1 text-center font-mono font-bold text-xs sm:text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     />
                     <button
                       type="button"
                       onClick={() => handleUpdate(item.key, qty + 1)}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+                      className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-sm transition-all cursor-pointer flex items-center justify-center"
                     >
                       +
                     </button>
                   </div>
 
-                  <div className="w-28 text-right font-mono font-bold text-xs text-emerald-400">
+                  <div className="w-20 sm:w-28 text-right font-mono font-bold text-xs sm:text-sm text-emerald-400 truncate">
                     {formatCurrency(subtotal)}
                   </div>
                 </div>
@@ -219,16 +219,16 @@ export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fech
               const qty = c[item.key] || 0;
               const subtotal = qty * item.valor;
               return (
-                <div key={item.key} className="flex items-center justify-between gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
-                  <div className="w-24 shrink-0">
-                    <span className="font-bold text-xs text-blue-300">{item.label}</span>
+                <div key={item.key} className="flex items-center justify-between gap-2 sm:gap-3 bg-slate-950 p-2.5 sm:p-3 rounded-2xl border border-slate-800/80">
+                  <div className="w-16 sm:w-24 shrink-0">
+                    <span className="font-bold text-xs sm:text-sm text-blue-300">{item.label}</span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 sm:gap-2">
                     <button
                       type="button"
                       onClick={() => handleUpdate(item.key, qty - 1)}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+                      className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-sm transition-all cursor-pointer flex items-center justify-center"
                     >
                       -
                     </button>
@@ -238,18 +238,18 @@ export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fech
                       value={qty || ''}
                       onChange={(e) => handleUpdate(item.key, parseInt(e.target.value) || 0)}
                       placeholder="0"
-                      className="w-16 bg-slate-900 border border-slate-700 rounded-lg py-1 text-center font-mono font-bold text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      className="w-14 sm:w-16 bg-slate-900 border border-slate-700 rounded-xl py-1 text-center font-mono font-bold text-xs sm:text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     />
                     <button
                       type="button"
                       onClick={() => handleUpdate(item.key, qty + 1)}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-colors cursor-pointer"
+                      className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 font-bold text-sm transition-all cursor-pointer flex items-center justify-center"
                     >
                       +
                     </button>
                   </div>
 
-                  <div className="w-28 text-right font-mono font-bold text-xs text-emerald-400">
+                  <div className="w-20 sm:w-28 text-right font-mono font-bold text-xs sm:text-sm text-emerald-400 truncate">
                     {formatCurrency(subtotal)}
                   </div>
                 </div>

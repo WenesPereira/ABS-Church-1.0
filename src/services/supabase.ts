@@ -2,10 +2,15 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const env = (import.meta as unknown as { env: Record<string, string> }).env || {};
 
+// Credenciais padrão fornecidas para o projeto
+export const DEFAULT_SUPABASE_URL = 'https://ikizzszskfpafdppupgc.supabase.co';
+export const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlraXp6c3pza2ZwYWZkcHB1cGdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMzM0NzksImV4cCI6MjEwMTcwOTQ3OX0.pPlhTo9toQzbrA8b_mGJdDJd10KBcSp4f8L8W3_oK10';
+
 const rawUrlInput = (
   env.VITE_SUPABASE_URL ||
   env.SUPABASE_URL ||
-  ''
+  DEFAULT_SUPABASE_URL
 ).trim();
 
 const rawKeyInput = (
@@ -13,7 +18,7 @@ const rawKeyInput = (
   env.VITE_SUPABASE_ANON_KEY ||
   env.SUPABASE_ANON_KEY ||
   env.SUPABASE_KEY ||
-  ''
+  DEFAULT_SUPABASE_ANON_KEY
 ).trim();
 
 export function sanitizeSupabaseUrl(urlStr: string): string {
@@ -93,21 +98,18 @@ function validateSupabaseConfig(url: string, key: string): boolean {
 
 export const isSupabaseConfigured = validateSupabaseConfig(cleanedUrl, cleanedKey);
 
-if (!isSupabaseConfigured) {
-  console.info(
-    'ℹ️ Supabase não configurado com credenciais válidas. O aplicativo operará normalmente utilizando o armazenamento local (LocalStorage).'
-  );
-}
+export const supabase: SupabaseClient = createClient(
+  isSupabaseConfigured ? cleanedUrl : DEFAULT_SUPABASE_URL,
+  isSupabaseConfigured ? cleanedKey : DEFAULT_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storage: window.localStorage,
+    },
+  }
+);
 
-const safeUrl = isSupabaseConfigured ? cleanedUrl : 'https://unconfigured-project.supabase.co';
-const safeKey = isSupabaseConfigured ? cleanedKey : 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.unconfigured';
-
-export const supabase: SupabaseClient = createClient(safeUrl, safeKey, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-  },
-});
 
 

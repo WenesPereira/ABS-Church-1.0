@@ -238,7 +238,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   return (
     <div
       id="fechamento-atual-container"
-      className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-4 md:p-6 space-y-6"
+      className="space-y-6 w-full"
     >
       {/* =========================================================
           CABEÇALHO / DADOS DO CULTO

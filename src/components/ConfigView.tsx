@@ -45,7 +45,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
   };
 
   return (
-    <div id="config-view-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-3 sm:p-4 md:p-6 space-y-5">
+    <div id="config-view-container" className="space-y-6 w-full">
       {/* Barra de Navegação Contextual */}
       {onNavigate && (
         <div className="flex items-center justify-between gap-3 max-w-4xl mx-auto w-full">

@@ -153,8 +153,8 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-6 space-y-6 shadow-2xl relative text-slate-100 my-8">
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-4 md:p-6 flex justify-center items-start scroll-touch">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-6 shadow-2xl relative text-slate-100 my-4 sm:my-8">
         {/* Modal Header Actions (Not Printed) */}
         <div className="print:hidden flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-400">

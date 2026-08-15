@@ -12,7 +12,9 @@ import {
   AlertCircle,
   KeyRound,
   ShieldCheck,
-  UserCheck
+  UserCheck,
+  CloudCheck,
+  ArrowLeft
 } from 'lucide-react';
 import { User, ConfigIgreja } from '../types';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
@@ -27,8 +29,38 @@ interface StoredUserAccount extends User {
   passwordHash: string;
 }
 
+function parseSupabaseAuthError(error: { message?: string; status?: number } | null): string {
+  if (!error || !error.message) return 'Ocorreu um erro inesperado ao autenticar.';
+  
+  const msg = error.message.toLowerCase();
+
+  if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+    return 'E-mail ou senha incorretos. Por favor, verifique seus dados.';
+  }
+  if (msg.includes('email not confirmed')) {
+    return 'E-mail ainda não confirmado no Supabase. Verifique sua caixa de entrada para confirmar antes de entrar.';
+  }
+  if (msg.includes('user already registered') || msg.includes('already exists') || msg.includes('unique constraint')) {
+    return 'Este e-mail já possui cadastro. Clique na aba "Entrar" para acessar.';
+  }
+  if (msg.includes('password should be at least') || msg.includes('weak password')) {
+    return 'A senha fornecida é muito curta. Crie uma senha com pelo menos 6 caracteres.';
+  }
+  if (msg.includes('rate limit') || msg.includes('too many requests') || msg.includes('over_email_send_rate_limit')) {
+    return 'Muitas tentativas em pouco tempo. Por segurança, aguarde alguns instantes antes de tentar novamente.';
+  }
+  if (msg.includes('signup disabled') || msg.includes('signups not allowed')) {
+    return 'Novos cadastros estão desativados temporariamente no painel do Supabase.';
+  }
+  if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch')) {
+    return 'Falha de conexão com os servidores do Supabase. Verifique sua conexão com a internet.';
+  }
+
+  return `Erro de autenticação: ${error.message}`;
+}
+
 export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja }) => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
 
   // Form State - Login
   const [loginEmail, setLoginEmail] = useState('');
@@ -42,6 +74,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
   const [regCargo, setRegCargo] = useState('Tesoureiro Principal');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
+
+  // Form State - Forgot Password
+  const [forgotEmail, setForgotEmail] = useState('');
 
   // UI States
   const [showPassword, setShowPassword] = useState(false);
@@ -95,7 +130,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
     setIsLoading(true);
 
-    // Tenta autenticação via Supabase Auth oficial se estiver configurado
+    // Tenta autenticação via Supabase Auth oficial
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -120,23 +155,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
           setTimeout(() => {
             setIsLoading(false);
             onLoginSuccess(sessionUser, false);
-          }, 400);
+          }, 350);
           return;
         }
 
         if (error) {
-          if (error.message.includes('Invalid login credentials')) {
-            setErrorMessage('E-mail ou senha incorretos no Supabase. Verifique suas credenciais.');
-          } else if (error.message.includes('Email not confirmed')) {
-            setErrorMessage('E-mail pendente de confirmação no Supabase. Verifique sua caixa de entrada.');
-          } else {
-            setErrorMessage(`Erro ao autenticar: ${error.message}`);
-          }
+          setErrorMessage(parseSupabaseAuthError(error));
           setIsLoading(false);
           return;
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.warn('Erro na autenticação Supabase Auth:', err);
+        const errObj = err as { message?: string };
+        setErrorMessage(parseSupabaseAuthError(errObj));
+        setIsLoading(false);
+        return;
       }
     }
 
@@ -166,7 +199,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
       setTimeout(() => {
         setIsLoading(false);
         onLoginSuccess(sessionUser, false);
-      }, 400);
+      }, 350);
     }, 300);
   };
 
@@ -217,18 +250,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         });
 
         if (error) {
-          if (error.message.includes('User already registered')) {
-            setErrorMessage('Este e-mail já está cadastrado no Supabase Authentication. Faça login para acessar.');
-          } else {
-            setErrorMessage(`Erro ao cadastrar no Supabase: ${error.message}`);
-          }
+          setErrorMessage(parseSupabaseAuthError(error));
           setIsLoading(false);
           return;
         }
 
         if (data?.user) {
           if (data.user.identities && data.user.identities.length === 0) {
-            setErrorMessage('Este e-mail já está cadastrado no Supabase Authentication. Faça login para acessar.');
+            setErrorMessage('Este e-mail já está cadastrado no Supabase. Faça login para acessar.');
             setIsLoading(false);
             return;
           }
@@ -244,27 +273,43 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
           };
 
           // 2. Salva na tabela public.profiles
-          await supabase.from('profiles').upsert({
-            id: newUserId,
-            email: emailTrimmed,
-            nome: nomeTrimmed,
-            cargo: regCargo || 'Tesoureiro',
-            nome_igreja: igrejaTrimmed || 'Minha Igreja',
-            created_at: new Date().toISOString(),
-          });
+          try {
+            await supabase.from('profiles').upsert({
+              id: newUserId,
+              email: emailTrimmed,
+              nome: nomeTrimmed,
+              cargo: regCargo || 'Tesoureiro',
+              nome_igreja: igrejaTrimmed || 'Minha Igreja',
+              created_at: new Date().toISOString(),
+            });
+          } catch (profileErr) {
+            console.warn('Perfil criado via trigger ou erro silencioso:', profileErr);
+          }
 
           // Backup local
           saveLocalUserBackup({ ...newUser, passwordHash: '***' });
 
-          setSuccessMessage('Conta registrada no Supabase com sucesso!');
+          // Verifica se requer confirmação de e-mail
+          if (!data.session) {
+            setSuccessMessage(
+              'Conta criada com sucesso no Supabase! Verifique sua caixa de entrada caso a confirmação por e-mail esteja ativada.'
+            );
+          } else {
+            setSuccessMessage('Conta registrada no Supabase com sucesso!');
+          }
+
           setTimeout(() => {
             setIsLoading(false);
             onLoginSuccess(newUser, true, newUser.nomeIgreja);
           }, 500);
           return;
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.warn('Erro ao registrar no Supabase Auth:', err);
+        const errObj = err as { message?: string };
+        setErrorMessage(parseSupabaseAuthError(errObj));
+        setIsLoading(false);
+        return;
       }
     }
 
@@ -313,6 +358,51 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
     }, 400);
   };
 
+  const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const emailTrimmed = forgotEmail.trim().toLowerCase();
+    if (!emailTrimmed || !emailTrimmed.includes('@')) {
+      setErrorMessage('Por favor, informe um e-mail válido.');
+      return;
+    }
+
+    setIsLoading(true);
+
+    if (isSupabaseConfigured) {
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(emailTrimmed, {
+          redirectTo: window.location.origin,
+        });
+
+        setIsLoading(false);
+        if (error) {
+          setErrorMessage(parseSupabaseAuthError(error));
+        } else {
+          setSuccessMessage(
+            'Link de recuperação de senha enviado com sucesso! Verifique sua caixa de entrada e pasta de spam.'
+          );
+        }
+        return;
+      } catch (err: unknown) {
+        setIsLoading(false);
+        const errObj = err as { message?: string };
+        setErrorMessage(parseSupabaseAuthError(errObj));
+        return;
+      }
+    }
+
+    // Fallback local
+    setTimeout(() => {
+      setIsLoading(false);
+      setSuccessMessage(
+        'Instruções de redefinição enviadas para o e-mail informado. (Modo Local/Offline)'
+      );
+    }, 400);
+  };
+
   const fillDemoAccount = () => {
     setLoginEmail('tesouraria@igreja.com');
     setLoginPassword('123456');
@@ -327,7 +417,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
       <div className="w-full max-w-md relative z-10 my-auto">
         {/* LOGO & HEADING */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 text-slate-950 font-bold shadow-2xl shadow-amber-500/30 ring-4 ring-amber-500/20 mb-4">
             <Church className="w-9 h-9 text-slate-950" />
           </div>
@@ -337,46 +427,72 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
           <p className="text-sm text-slate-400 mt-1">
             Sistema Integrado de Fechamento & Gestão de Caixa
           </p>
+
+          {/* Supabase Status Indicator */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+            <CloudCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Supabase Auth & Nuvem Ativos</span>
+          </div>
         </div>
 
         {/* CARD CONTAINER */}
         <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800/90 rounded-3xl p-6 sm:p-8 shadow-2xl ring-1 ring-white/5">
           {/* TABS FOR TOGGLING MODE */}
-          <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800/80 mb-6">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('login');
-                setErrorMessage(null);
-                setSuccessMessage(null);
-              }}
-              className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
-                mode === 'login'
-                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <Lock className="w-4 h-4" />
-              <span>Entrar</span>
-            </button>
+          {mode !== 'forgot' ? (
+            <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800/80 mb-6">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                }}
+                className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+                  mode === 'login'
+                    ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <Lock className="w-4 h-4" />
+                <span>Entrar</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setMode('register');
-                setErrorMessage(null);
-                setSuccessMessage(null);
-              }}
-              className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
-                mode === 'register'
-                  ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <UserCheck className="w-4 h-4" />
-              <span>Criar Conta</span>
-            </button>
-          </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                }}
+                className={`py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer flex items-center justify-center gap-2 ${
+                  mode === 'register'
+                    ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/20'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+                }`}
+              >
+                <UserCheck className="w-4 h-4" />
+                <span>Criar Conta</span>
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between mb-6 pb-2 border-b border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                }}
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Voltar ao login</span>
+              </button>
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Recuperação
+              </span>
+            </div>
+          )}
 
           {/* ALERTS */}
           {errorMessage && (
@@ -420,6 +536,18 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
                     Senha
                   </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setForgotEmail(loginEmail);
+                      setErrorMessage(null);
+                      setSuccessMessage(null);
+                    }}
+                    className="text-xs text-amber-400 hover:text-amber-300 transition-colors cursor-pointer"
+                  >
+                    Esqueceu a senha?
+                  </button>
                 </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
@@ -616,11 +744,54 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
               </button>
             </form>
           )}
+
+          {/* FORM: FORGOT PASSWORD */}
+          {mode === 'forgot' && (
+            <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Digite o endereço de e-mail cadastrado na sua conta do Supabase. Enviaremos um link seguro para você redefinir sua senha.
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                  E-mail Cadastrado
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="email"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="ex: tesouraria@igreja.com"
+                    required
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-2xl pl-10 pr-4 py-3 text-sm text-slate-100 placeholder-slate-600 outline-none transition-all"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm shadow-xl shadow-amber-500/20 transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
+              >
+                {isLoading ? (
+                  <span className="inline-block w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <span>Enviar Link de Recuperação</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
         </div>
 
         {/* FOOTER TEXT */}
         <p className="text-center text-xs text-slate-500 mt-6">
-          Gestão de Tesouraria Eclesiástica &bull; Seguro e Armazenado Localmente
+          Gestão de Tesouraria Eclesiástica &bull; Sincronização em Nuvem Supabase
         </p>
       </div>
     </div>

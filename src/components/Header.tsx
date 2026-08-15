@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Church,
   DollarSign,
@@ -44,6 +44,18 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close mobile menu on Escape key press
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isMobileMenuOpen) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileMenuOpen]);
 
   const resumo = calcularResumoLancamentos(
     fechamentoAtual.lancamentos,
@@ -86,33 +98,43 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100 shadow-md">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4">
+      <header className="sticky top-0 z-40 w-full bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100 shadow-lg">
+        <div className="max-w-[1600px] mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3 md:gap-6">
           {/* ===================================================
-              MARCA E DADOS DO CULTO
+              1. MARCA, LOGO E DADOS DO CULTO (ESQUERDA)
               =================================================== */}
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-3 min-w-0 flex-1 sm:flex-initial">
             <button
               type="button"
               onClick={() => handleSelectTab('fechamento')}
-              className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 flex items-center justify-center text-slate-950 font-bold shadow-md shadow-amber-500/20 ring-1 ring-white/20 cursor-pointer hover:scale-105 active:scale-95 transition-all"
+              className="w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl bg-gradient-to-br from-amber-500 via-amber-600 to-amber-700 flex items-center justify-center text-slate-950 font-bold shadow-md shadow-amber-500/20 ring-1 ring-white/20 cursor-pointer hover:scale-105 active:scale-95 transition-all overflow-hidden"
               title="Ir para o Fechamento de Caixa"
             >
-              <Church className="w-5 h-5 text-slate-950" />
+              {configIgreja.logoUrl ? (
+                <img
+                  src={configIgreja.logoUrl}
+                  alt="Logo da Igreja"
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <Church className="w-5 h-5 text-slate-950" />
+              )}
             </button>
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
+            <div className="min-w-0 flex flex-col justify-center">
+              <div className="flex items-center gap-2 min-w-0">
                 <button
                   type="button"
                   onClick={() => handleSelectTab('fechamento')}
-                  className="font-bold text-xs sm:text-sm md:text-base text-white tracking-tight leading-tight truncate hover:text-amber-400 text-left transition-colors cursor-pointer"
+                  className="font-bold text-xs sm:text-sm md:text-base text-white tracking-tight leading-tight truncate hover:text-amber-400 text-left transition-colors cursor-pointer max-w-[150px] xs:max-w-[220px] sm:max-w-[300px] md:max-w-[400px] lg:max-w-[500px] xl:max-w-[650px]"
+                  title={configIgreja.nomeIgreja || 'Tesouraria da Igreja'}
                 >
                   {configIgreja.nomeIgreja || 'Tesouraria da Igreja'}
                 </button>
 
                 <span
-                  className={`text-[9px] sm:text-[10px] px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full font-semibold uppercase tracking-wider flex items-center gap-1 border shrink-0 ${
+                  className={`text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider flex items-center gap-1 border shrink-0 ${
                     isClosed
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
                       : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
@@ -132,72 +154,30 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               </div>
 
-              <div className="text-[10px] sm:text-[11px] text-slate-400 flex items-center gap-1 flex-wrap mt-0.5">
-                <span className="font-medium text-slate-300 truncate max-w-[100px] sm:max-w-none">
+              <div className="text-[10px] sm:text-[11px] text-slate-400 flex items-center gap-1.5 truncate mt-0.5">
+                <span className="font-medium text-slate-300 truncate max-w-[120px] sm:max-w-[200px]">
                   {fechamentoAtual.tipoCulto || 'Culto Geral'}
                 </span>
-                <span>•</span>
-                <span>{formattedDate}</span>
+                <span className="text-slate-600">•</span>
+                <span className="shrink-0">{formattedDate}</span>
               </div>
             </div>
           </div>
 
           {/* ===================================================
-              NAVEGAÇÃO RÁPIDA NO TOPO (DESKTOP)
+              2. RESUMO FINANCEIRO COMPACTO (TABLET / DESKTOP)
               =================================================== */}
-          <nav
-            aria-label="Abas Principais"
-            className="hidden xl:flex items-center gap-1 bg-slate-950/80 p-1 rounded-2xl border border-slate-800/80 shrink-0"
-          >
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => handleSelectTab(item.id)}
-                  className={`
-                    flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none
-                    ${
-                      isActive
-                        ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                        : 'text-slate-400 hover:text-slate-100 hover:bg-slate-850'
-                    }
-                  `}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-slate-950' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
-                  {item.badge && (
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                        isActive
-                          ? 'bg-slate-950 text-amber-400'
-                          : 'bg-slate-800 text-amber-400 border border-slate-700'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* ===================================================
-              RESUMO CONSOLIDADO (ENTRADAS, SAÍDAS, SALDO)
-              =================================================== */}
-          <div className="hidden sm:flex items-center gap-2 md:gap-3 bg-slate-950/90 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs shrink-0">
+          <div className="hidden md:flex items-center gap-2 lg:gap-3 bg-slate-950/90 px-3 py-1.5 rounded-2xl border border-slate-800 text-xs shrink-0 shadow-inner">
             {/* ENTRADAS */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5" title="Total de Entradas">
               <div className="p-1 rounded-md bg-emerald-500/10 text-emerald-400">
-                <ArrowUpRight className="w-3 h-3" />
+                <ArrowUpRight className="w-3.5 h-3.5" />
               </div>
               <div>
                 <span className="text-[8px] uppercase text-slate-500 font-semibold block leading-none">
                   Entradas
                 </span>
-                <span className="font-bold font-mono text-emerald-400 text-xs">
+                <span className="font-bold font-mono text-emerald-400 text-xs lg:text-sm">
                   {formatCurrency(resumo.totalEntradas)}
                 </span>
               </div>
@@ -206,15 +186,15 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="w-[1px] h-5 bg-slate-800 shrink-0" />
 
             {/* SAÍDAS */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5" title="Total de Saídas">
               <div className="p-1 rounded-md bg-rose-500/10 text-rose-400">
-                <ArrowDownRight className="w-3 h-3" />
+                <ArrowDownRight className="w-3.5 h-3.5" />
               </div>
               <div>
                 <span className="text-[8px] uppercase text-slate-500 font-semibold block leading-none">
                   Saídas
                 </span>
-                <span className="font-bold font-mono text-rose-400 text-xs">
+                <span className="font-bold font-mono text-rose-400 text-xs lg:text-sm">
                   {formatCurrency(resumo.totalSaidas)}
                 </span>
               </div>
@@ -223,15 +203,15 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="w-[1px] h-5 bg-slate-800 shrink-0" />
 
             {/* SALDO */}
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5" title="Saldo Líquido">
               <div className="p-1 rounded-md bg-amber-500/10 text-amber-400">
-                <DollarSign className="w-3 h-3" />
+                <DollarSign className="w-3.5 h-3.5" />
               </div>
               <div>
                 <span className="text-[8px] uppercase text-slate-500 font-semibold block leading-none">
                   Saldo
                 </span>
-                <span className="font-bold font-mono text-amber-300 text-xs">
+                <span className="font-bold font-mono text-amber-300 text-xs lg:text-sm">
                   {formatCurrency(resumo.saldoLiquido)}
                 </span>
               </div>
@@ -239,13 +219,14 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
 
           {/* ===================================================
-              AÇÕES DO TOPO & MENU MOBILE
+              3. AÇÕES RÁPIDAS & MENU MOBILE (DIREITA)
               =================================================== */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* BOTÃO IMPRIMIR / PDF */}
             <button
               type="button"
               onClick={onOpenPrintModal}
-              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-all shadow-sm active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 hover:border-slate-600 transition-all shadow-sm active:scale-95 cursor-pointer"
               title="Baixar Recibo em PDF / Imprimir Ata"
             >
               <Download className="w-3.5 h-3.5 text-emerald-400 hidden xs:inline" />
@@ -253,21 +234,23 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="hidden sm:inline">PDF / Imprimir</span>
             </button>
 
+            {/* BOTÃO NOVO CAIXA */}
             <button
               type="button"
               onClick={onNovoFechamento}
-              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer"
               title="Iniciar Novo Fechamento de Caixa"
             >
               <RefreshCw className="w-3.5 h-3.5 text-slate-950" />
               <span className="hidden md:inline">Novo Caixa</span>
             </button>
 
+            {/* BOTÃO LOGOUT */}
             {currentUser && onLogout && (
               <button
                 type="button"
                 onClick={onLogout}
-                className="hidden md:flex items-center gap-1 px-2.5 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/30 transition-all cursor-pointer active:scale-95"
+                className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/30 transition-all cursor-pointer active:scale-95"
                 title="Sair da Conta"
               >
                 <LogOut className="w-3.5 h-3.5" />
@@ -275,12 +258,13 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
-            {/* Botão Hambúrguer Mobile */}
+            {/* BOTÃO HAMBÚRGUER MOBILE */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
               className="lg:hidden p-2 rounded-xl bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 active:scale-95 cursor-pointer"
-              title="Abrir Menu de Navegação"
+              title={isMobileMenuOpen ? 'Fechar Menu' : 'Abrir Menu de Navegação'}
+              aria-label={isMobileMenuOpen ? 'Fechar Menu' : 'Abrir Menu de Navegação'}
             >
               {isMobileMenuOpen ? <X className="w-4 h-4 text-amber-400" /> : <Menu className="w-4 h-4 text-amber-400" />}
             </button>
@@ -288,75 +272,112 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* ===================================================
-            MENU EXPANSÍVEL MOBILE (DRAWER SUSPENSO)
+            5. MENU EXPANSÍVEL MOBILE (DRAWER COM BACKDROP)
             =================================================== */}
         {isMobileMenuOpen && (
-          <div className="lg:hidden bg-slate-900 border-t border-slate-800 px-4 py-4 space-y-3 animate-in fade-in slide-in-from-top-3 duration-200 shadow-2xl">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
-              Navegação do Aplicativo
-            </div>
+          <>
+            {/* Backdrop que escurece o fundo e fecha ao clicar */}
+            <div
+              className="lg:hidden fixed inset-0 top-16 bg-slate-950/70 backdrop-blur-sm z-30 animate-in fade-in duration-200"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-hidden="true"
+            />
 
-            <div className="grid grid-cols-2 gap-2">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelectTab(item.id)}
-                    className={`
-                      flex items-center justify-between p-2.5 rounded-xl text-xs font-semibold transition-all text-left border cursor-pointer
-                      ${
-                        isActive
-                          ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md'
-                          : 'bg-slate-950/70 text-slate-300 border-slate-800 hover:bg-slate-800'
-                      }
-                    `}
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-slate-950' : 'text-amber-400'}`} />
-                      <span className="truncate">{item.label}</span>
-                    </div>
-
-                    {item.badge && (
-                      <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shrink-0 ${
-                          isActive ? 'bg-slate-950 text-amber-400' : 'bg-slate-800 text-amber-400'
-                        }`}
-                      >
-                        {item.badge}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {currentUser && (
-              <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs text-slate-300">
-                  <UserIcon className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="font-semibold">{currentUser.nome}</span>
-                </div>
-                {onLogout && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      onLogout();
-                    }}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 text-xs font-bold"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    <span>Sair</span>
-                  </button>
-                )}
+            {/* Painel do menu */}
+            <div
+              ref={menuRef}
+              className="lg:hidden relative z-40 bg-slate-900 border-t border-slate-800 px-4 py-4 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200 shadow-2xl max-h-[calc(100vh-5rem)] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                <span>Navegação Rápida</span>
+                <span className="text-amber-400 font-mono">Gestão Eclesiástica</span>
               </div>
-            )}
-          </div>
+
+              {/* Resumo Financeiro Mobile no Menu */}
+              <div className="grid grid-cols-3 gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800 text-center">
+                <div>
+                  <span className="text-[9px] text-slate-400 block">Entradas</span>
+                  <span className="text-xs font-bold font-mono text-emerald-400">
+                    {formatCurrency(resumo.totalEntradas)}
+                  </span>
+                </div>
+                <div className="border-x border-slate-800">
+                  <span className="text-[9px] text-slate-400 block">Saídas</span>
+                  <span className="text-xs font-bold font-mono text-rose-400">
+                    {formatCurrency(resumo.totalSaidas)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[9px] text-slate-400 block">Saldo</span>
+                  <span className="text-xs font-bold font-mono text-amber-300">
+                    {formatCurrency(resumo.saldoLiquido)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleSelectTab(item.id)}
+                      className={`
+                        flex items-center justify-between p-2.5 rounded-xl text-xs font-semibold transition-all text-left border cursor-pointer
+                        ${
+                          isActive
+                            ? 'bg-amber-500 text-slate-950 font-bold border-amber-400 shadow-md'
+                            : 'bg-slate-950/70 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-slate-950' : 'text-amber-400'}`} />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+
+                      {item.badge && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold shrink-0 ${
+                            isActive ? 'bg-slate-950 text-amber-400' : 'bg-slate-800 text-amber-400'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {currentUser && (
+                <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-xs text-slate-300">
+                    <UserIcon className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="font-semibold">{currentUser.nome}</span>
+                  </div>
+                  {onLogout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        onLogout();
+                      }}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30 text-xs font-bold hover:bg-rose-500/25 transition-all"
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      <span>Sair</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </header>
     </>
   );
 };
+
