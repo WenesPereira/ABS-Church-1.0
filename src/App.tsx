@@ -336,6 +336,7 @@ export default function App() {
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           qtdLancamentos={fechamentoAtual.lancamentos.length}
+          fechamentoAtual={fechamentoAtual}
         />
 
         {/* Conteúdo Principal */}
