@@ -24,6 +24,7 @@ import { supabase, isSupabaseConfigured } from './services/supabase';
 
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
+import { MobileBottomNav } from './components/MobileBottomNav';
 import { AuthView } from './components/AuthView';
 import { FechamentoAtualView } from './components/FechamentoAtualView';
 import { LancamentosView } from './components/LancamentosView';
@@ -67,6 +68,11 @@ export default function App() {
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<ActiveTab>('fechamento');
+
+  // Automatic scroll to top when changing active tab
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [activeTab]);
 
   // Config State
   const [configIgreja, setConfigIgreja] = useState<ConfigIgreja>(() => {
@@ -340,7 +346,7 @@ export default function App() {
         />
 
         {/* Conteúdo Principal */}
-        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 min-w-0 transition-all duration-300">
+        <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 min-w-0 transition-all duration-300 pb-24 lg:pb-8">
           <div className="max-w-7xl mx-auto space-y-6">
             {activeTab === 'fechamento' && (
               <FechamentoAtualView
@@ -357,6 +363,7 @@ export default function App() {
               <LancamentosView
                 fechamento={fechamentoAtual}
                 setFechamento={setFechamentoAtual}
+                onNavigate={setActiveTab}
               />
             )}
 
@@ -364,6 +371,7 @@ export default function App() {
               <ContagemDinheiroView
                 fechamento={fechamentoAtual}
                 setFechamento={setFechamentoAtual}
+                onNavigate={setActiveTab}
               />
             )}
 
@@ -371,6 +379,8 @@ export default function App() {
               <RelatorioIAView
                 fechamento={fechamentoAtual}
                 setFechamento={setFechamentoAtual}
+                onNavigate={setActiveTab}
+                onOpenPrintModal={() => setIsPrintModalOpen(true)}
               />
             )}
 
@@ -382,6 +392,7 @@ export default function App() {
                   setFechamentoAtual(f);
                   setIsPrintModalOpen(true);
                 }}
+                onNavigate={setActiveTab}
               />
             )}
 
@@ -389,11 +400,19 @@ export default function App() {
               <ConfigView
                 config={configIgreja}
                 setConfig={setConfigIgreja}
+                onNavigate={setActiveTab}
               />
             )}
           </div>
         </main>
       </div>
+
+      {/* Barra de Navegação Fixa Inferior Mobile */}
+      <MobileBottomNav
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        qtdLancamentos={fechamentoAtual.lancamentos.length}
+      />
 
       {/* Modal de Impressão / Recibo */}
       {isPrintModalOpen && (

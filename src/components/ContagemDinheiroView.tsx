@@ -1,14 +1,15 @@
 import React from 'react';
-import { Coins, CheckCircle, AlertCircle, RefreshCw, DollarSign, Calculator } from 'lucide-react';
-import { FechamentoCulto, ContagemDinheiro } from '../types';
+import { Coins, CheckCircle, AlertCircle, RefreshCw, DollarSign, Calculator, ArrowLeft, PlusCircle } from 'lucide-react';
+import { FechamentoCulto, ContagemDinheiro, ActiveTab } from '../types';
 import { formatCurrency, calcularTotalContagem, calcularResumoLancamentos } from '../utils/calculations';
 
 interface ContagemDinheiroViewProps {
   fechamento: FechamentoCulto;
   setFechamento: React.Dispatch<React.SetStateAction<FechamentoCulto>>;
+  onNavigate?: (tab: ActiveTab) => void;
 }
 
-export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fechamento, setFechamento }) => {
+export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fechamento, setFechamento, onNavigate }) => {
   const c = fechamento.contagemDinheiro;
   const resumo = calcularResumoLancamentos(fechamento.lancamentos);
   const totalContagem = calcularTotalContagem(c);
@@ -67,7 +68,32 @@ export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fech
   ];
 
   return (
-    <div id="contagem-dinheiro-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-4 md:p-6 space-y-6">
+    <div id="contagem-dinheiro-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-3 sm:p-4 md:p-6 space-y-5">
+      {/* Barra de Navegação Contextual */}
+      {onNavigate && (
+        <div className="flex items-center justify-between gap-3 max-w-5xl mx-auto w-full">
+          <button
+            type="button"
+            onClick={() => onNavigate('fechamento')}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+          >
+            <ArrowLeft className="w-4 h-4 text-amber-400" />
+            <span>Voltar ao Fechamento</span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onNavigate('lancamentos')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition-all cursor-pointer"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Lançar Dízimos & Ofertas</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header Banner */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-5xl mx-auto w-full">
         <div className="flex items-center gap-3">

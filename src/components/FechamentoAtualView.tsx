@@ -487,17 +487,22 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
       </div>
 
       {/* =========================================================
-          CARDS DE TOTAIS
+          CARDS DE TOTAIS (CLIQUE PARA VER / LANÇAR)
       ========================================================== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Entradas */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg flex flex-col justify-between space-y-2 relative overflow-hidden">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <button
+          type="button"
+          onClick={onGoToLancamentos}
+          className="bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-emerald-500/50 rounded-3xl p-5 shadow-lg flex flex-col justify-between space-y-2 relative overflow-hidden text-left transition-all group cursor-pointer active:scale-[0.99]"
+          title="Ver e lançar entradas / dízimos"
+        >
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-emerald-300 transition-colors">
               Total Entradas
             </span>
 
-            <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+            <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 group-hover:scale-110 transition-transform">
               <ArrowUpRight className="w-4 h-4" />
             </div>
           </div>
@@ -507,23 +512,33 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               {formatCurrency(resumo.totalEntradas)}
             </h3>
 
-            <p className="text-[11px] text-slate-400 mt-1">
-              Dízimos:{' '}
-              <strong className="text-slate-200">
-                {formatCurrency(resumo.totalDizimos)}
-              </strong>
+            <p className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>
+                Dízimos:{' '}
+                <strong className="text-slate-200">
+                  {formatCurrency(resumo.totalDizimos)}
+                </strong>
+              </span>
+              <span className="text-[10px] text-emerald-400/80 font-medium group-hover:underline">
+                Ver detalhes →
+              </span>
             </p>
           </div>
-        </div>
+        </button>
 
         {/* Ofertas */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg flex flex-col justify-between space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <button
+          type="button"
+          onClick={onGoToLancamentos}
+          className="bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-blue-500/50 rounded-3xl p-5 shadow-lg flex flex-col justify-between space-y-2 text-left transition-all group cursor-pointer active:scale-[0.99]"
+          title="Ver e lançar ofertas"
+        >
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-blue-300 transition-colors">
               Total Ofertas
             </span>
 
-            <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
+            <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30 group-hover:scale-110 transition-transform">
               <Wallet className="w-4 h-4" />
             </div>
           </div>
@@ -537,28 +552,32 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               )}
             </h3>
 
-            <p className="text-[11px] text-slate-400 mt-1">
-              Culto:{' '}
-              <strong className="text-slate-200">
-                {formatCurrency(resumo.totalOfertasCulto)}
-              </strong>
-              {' | '}
-              Missões:{' '}
-              <strong className="text-slate-200">
-                {formatCurrency(resumo.totalOfertasMissoes)}
-              </strong>
+            <p className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>
+                Culto: <strong className="text-slate-200">{formatCurrency(resumo.totalOfertasCulto)}</strong>
+                {' | '}
+                Missões: <strong className="text-slate-200">{formatCurrency(resumo.totalOfertasMissoes)}</strong>
+              </span>
+              <span className="text-[10px] text-blue-400/80 font-medium group-hover:underline">
+                Ver →
+              </span>
             </p>
           </div>
-        </div>
+        </button>
 
         {/* Saídas */}
-        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-lg flex flex-col justify-between space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+        <button
+          type="button"
+          onClick={onGoToLancamentos}
+          className="bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-rose-500/50 rounded-3xl p-5 shadow-lg flex flex-col justify-between space-y-2 text-left transition-all group cursor-pointer active:scale-[0.99]"
+          title="Ver e lançar saídas / despesas"
+        >
+          <div className="flex items-center justify-between w-full">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 group-hover:text-rose-300 transition-colors">
               Total Saídas / Despesas
             </span>
 
-            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30">
+            <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/30 group-hover:scale-110 transition-transform">
               <ArrowDownRight className="w-4 h-4" />
             </div>
           </div>
@@ -568,11 +587,14 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               {formatCurrency(resumo.totalSaidas)}
             </h3>
 
-            <p className="text-[11px] text-slate-400 mt-1">
-              Pagamentos realizados durante o período
+            <p className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>Pagamentos realizados no período</span>
+              <span className="text-[10px] text-rose-400/80 font-medium group-hover:underline">
+                Lançar saída →
+              </span>
             </p>
           </div>
-        </div>
+        </button>
 
         {/* Saldo */}
         <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 border border-amber-500/30 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-2">

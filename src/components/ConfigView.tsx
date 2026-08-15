@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { Settings, Church, Check, User, ShieldCheck } from 'lucide-react';
-import { ConfigIgreja, CategoriaEntrada } from '../types';
+import { Settings, Church, Check, User, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { ConfigIgreja, CategoriaEntrada, ActiveTab } from '../types';
 import { ALL_ENTRADA_CATEGORIES, CATEGORIA_ENTRADA_LABELS } from '../utils/calculations';
 
 interface ConfigViewProps {
   config: ConfigIgreja;
   setConfig: React.Dispatch<React.SetStateAction<ConfigIgreja>>;
+  onNavigate?: (tab: ActiveTab) => void;
 }
 
-export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig }) => {
+export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNavigate }) => {
   const [form, setForm] = useState<ConfigIgreja>(config);
   const [saved, setSaved] = useState(false);
 
@@ -44,7 +45,21 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig }) => 
   };
 
   return (
-    <div id="config-view-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-4 md:p-6 space-y-6">
+    <div id="config-view-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-3 sm:p-4 md:p-6 space-y-5">
+      {/* Barra de Navegação Contextual */}
+      {onNavigate && (
+        <div className="flex items-center justify-between gap-3 max-w-4xl mx-auto w-full">
+          <button
+            type="button"
+            onClick={() => onNavigate('fechamento')}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+          >
+            <ArrowLeft className="w-4 h-4 text-amber-400" />
+            <span>Voltar ao Fechamento Atual</span>
+          </button>
+        </div>
+      )}
+
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl max-w-4xl mx-auto w-full space-y-6">
         <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
           <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">

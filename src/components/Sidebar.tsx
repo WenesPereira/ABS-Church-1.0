@@ -6,13 +6,10 @@ import {
   History,
   Sparkles,
   Settings,
-  Church,
   ShieldCheck,
-  CheckCircle2,
-  Clock,
   Database,
   Layers,
-  ArrowUpRight,
+  ChevronRight,
 } from 'lucide-react';
 import { ActiveTab, FechamentoCulto } from '../types';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -62,19 +59,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {
           id: 'lancamentos',
           label: 'Dízimos & Ofertas',
-          shortLabel: 'Dízimos & Ofertas',
+          shortLabel: 'Lançamentos',
           description: 'Lançamento de dízimos, ofertas e despesas',
           icon: PlusCircle,
-          badge: `${qtdLancamentos} ${qtdLancamentos === 1 ? 'item' : 'itens'}`,
-          badgeColor:
-            qtdLancamentos > 0
-              ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-              : 'bg-slate-800 text-slate-400 border-slate-700',
+          badge: qtdLancamentos > 0 ? `${qtdLancamentos}` : undefined,
+          badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
         },
         {
           id: 'contagem',
           label: 'Contador de Cédulas',
-          shortLabel: 'Contador Cédulas',
+          shortLabel: 'Cédulas',
           description: 'Conferência física de notas e moedas',
           icon: Coins,
           badge: 'Espécie',
@@ -112,7 +106,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {
           id: 'config',
           label: 'Dados da Igreja',
-          shortLabel: 'Dados Igreja',
+          shortLabel: 'Igreja',
           description: 'Configurar igreja, pastores e tesoureiros',
           icon: Settings,
           badge: 'Ajustes',
@@ -122,76 +116,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
-  // Flattened items for mobile navigation
   const allItems = navGroups.flatMap((g) => g.items);
 
   return (
-    <>
-      {/* =====================================================
-          NAVEGAÇÃO MOBILE / TABLET (HORIZONTAL ROBUSTA)
-          ===================================================== */}
-      <nav
-        id="mobile-app-nav"
-        aria-label="Navegação Principal Mobile"
-        className="lg:hidden w-full bg-slate-900/95 backdrop-blur-md border-b border-slate-800 px-3 py-2.5 flex flex-row items-center gap-2 overflow-x-auto overflow-y-hidden shrink-0 z-20 shadow-sm scrollbar-none"
-      >
-        {allItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activeTab === item.id;
-
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setActiveTab(item.id)}
-              className={`
-                flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all shrink-0 cursor-pointer select-none
-                ${
-                  isActive
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20 ring-1 ring-amber-400'
-                    : 'bg-slate-950/80 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-800'
-                }
-              `}
-            >
-              <Icon className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-slate-950' : 'text-amber-400'}`} />
-              <span>{item.shortLabel}</span>
-
-              {item.id === 'lancamentos' && qtdLancamentos > 0 && (
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
-                    isActive ? 'bg-slate-950 text-amber-300' : 'bg-slate-800 text-amber-400 border border-slate-700'
-                  }`}
-                >
-                  {qtdLancamentos}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      {/* =====================================================
-          SIDEBAR DESKTOP (ORGANIZADA POR SEÇÕES)
-          ===================================================== */}
-      <aside
-        id="app-sidebar"
-        className="hidden lg:flex w-72 bg-slate-900 border-r border-slate-800 text-slate-300 flex-col justify-between shrink-0 shadow-lg"
-      >
-        <div className="p-4 space-y-6 overflow-y-auto">
-          {/* Header da Barra Lateral */}
-          <div className="flex items-center justify-between px-2 pt-1 pb-1">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                <Layers className="w-4 h-4" />
-              </div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
-                Menu de Gestão
-              </span>
+    <aside
+      id="app-sidebar"
+      className="hidden lg:flex w-72 bg-slate-900 border-r border-slate-800 text-slate-300 flex-col justify-between shrink-0 shadow-lg"
+    >
+      <div className="p-4 space-y-6 overflow-y-auto">
+        {/* Header da Barra Lateral */}
+        <div className="flex items-center justify-between px-2 pt-1 pb-1">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <Layers className="w-4 h-4" />
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-950 text-amber-400 border border-slate-800">
-              v2.0
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              Menu de Gestão
             </span>
           </div>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-950 text-amber-400 border border-slate-800">
+            v2.0
+          </span>
+        </div>
 
           {/* Grupos de Navegação */}
           <div className="space-y-5">
@@ -264,6 +210,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             {item.description}
                           </p>
                         </div>
+
+                        <ChevronRight
+                          className={`w-3.5 h-3.5 shrink-0 transition-transform ${
+                            isActive ? 'text-amber-400 translate-x-0.5' : 'text-slate-600 opacity-0 group-hover:opacity-100'
+                          }`}
+                        />
                       </button>
                     );
                   })}
@@ -273,11 +225,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* =====================================================
-            RODAPÉ DA SIDEBAR: STATUS DE CONEXÃO E AUDITORIA
-            ===================================================== */}
+        {/* Rodapé da Barra Lateral */}
         <div className="p-4 border-t border-slate-800/80 bg-slate-950/60 space-y-3">
-          {/* Card de Status da Nuvem */}
           <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs">
             <div className="flex items-center gap-2">
               <div
@@ -292,7 +241,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <Database className="w-3.5 h-3.5 text-slate-500" />
           </div>
 
-          {/* Selo de Segurança & Transparência */}
           <div className="bg-slate-900/80 rounded-xl p-2.5 border border-slate-800/80 flex items-start gap-2">
             <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <div className="text-[10px] text-slate-400 leading-tight">
@@ -302,6 +250,5 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
       </aside>
-    </>
   );
 };

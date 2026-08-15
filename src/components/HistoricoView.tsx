@@ -12,21 +12,24 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Eye,
+  ArrowLeft,
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
-import { FechamentoCulto } from '../types';
+import { FechamentoCulto, ActiveTab } from '../types';
 import { formatCurrency, calcularResumoLancamentos } from '../utils/calculations';
 
 interface HistoricoViewProps {
   historico: FechamentoCulto[];
   onSelectFechamento: (f: FechamentoCulto) => void;
   onOpenPrintModalFor: (f: FechamentoCulto) => void;
+  onNavigate?: (tab: ActiveTab) => void;
 }
 
 export const HistoricoView: React.FC<HistoricoViewProps> = ({
   historico,
   onSelectFechamento,
   onOpenPrintModalFor,
+  onNavigate,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -60,7 +63,21 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
   });
 
   return (
-    <div id="historico-view-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-4 md:p-6 space-y-6">
+    <div id="historico-view-container" className="flex flex-col min-h-full bg-slate-950 text-slate-100 p-3 sm:p-4 md:p-6 space-y-5">
+      {/* Barra de Navegação Contextual */}
+      {onNavigate && (
+        <div className="flex items-center justify-between gap-3 max-w-6xl mx-auto w-full">
+          <button
+            type="button"
+            onClick={() => onNavigate('fechamento')}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-850 text-slate-300 hover:text-white border border-slate-800 text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95"
+          >
+            <ArrowLeft className="w-4 h-4 text-amber-400" />
+            <span>Voltar ao Fechamento Atual</span>
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-6xl mx-auto w-full">
         <div className="flex items-center gap-3">
