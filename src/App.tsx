@@ -205,12 +205,13 @@ export default function App() {
     let isMounted = true;
 
     async function loadSupabaseData() {
-      const configRes = await fetchConfiguracaoIgreja();
+      const uid = currentUser?.id;
+      const configRes = await fetchConfiguracaoIgreja(uid);
       if (isMounted && configRes.data) {
         setConfigIgreja(configRes.data);
       }
 
-      const fechamentosRes = await fetchFechamentos();
+      const fechamentosRes = await fetchFechamentos(uid);
       if (isMounted && fechamentosRes.data && fechamentosRes.data.length > 0) {
         setHistorico(fechamentosRes.data);
         if (fechamentosRes.data[0]) {
@@ -224,7 +225,7 @@ export default function App() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [currentUser?.id]);
 
   /* =========================================================
      PERSISTÊNCIA DA CONFIGURAÇÃO
@@ -237,9 +238,11 @@ export default function App() {
       console.error('Erro ao salvar configuração:', error);
     }
 
-    // Salva no Supabase
-    saveConfiguracaoIgreja(configIgreja);
-  }, [configIgreja]);
+    // Salva no Supabase vinculado ao usuário logado
+    if (currentUser?.id) {
+      saveConfiguracaoIgreja(configIgreja, currentUser.id);
+    }
+  }, [configIgreja, currentUser?.id]);
 
   /* =========================================================
      PERSISTÊNCIA DO HISTÓRICO
@@ -264,8 +267,10 @@ export default function App() {
       console.error('Erro ao salvar fechamento atual:', error);
     }
 
-    // Salva/Sincroniza fechamento no Supabase
-    saveFechamento(fechamentoAtual, currentUser?.id);
+    // Salva/Sincroniza fechamento no Supabase vinculado ao usuário logado
+    if (currentUser?.id) {
+      saveFechamento(fechamentoAtual, currentUser.id);
+    }
 
     setHistorico((prev) => {
       const index = prev.findIndex((f) => f.id === fechamentoAtual.id);
@@ -297,7 +302,7 @@ export default function App() {
 
   const handleDeleteFechamentoItem = async (id: string) => {
     setHistorico((prev) => prev.filter((f) => f.id !== id));
-    deleteFechamento(id);
+    deleteFechamento(id, currentUser?.id);
 
     if (fechamentoAtual.id === id) {
       const remaining = historico.filter((f) => f.id !== id);

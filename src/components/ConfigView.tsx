@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Settings, Church, Check, User, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { Settings, Church, Check, User, ShieldCheck, ArrowLeft, Database, Copy, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
 import { ConfigIgreja, CategoriaEntrada, ActiveTab } from '../types';
 import { ALL_ENTRADA_CATEGORIES, CATEGORIA_ENTRADA_LABELS } from '../utils/calculations';
 
@@ -9,9 +9,210 @@ interface ConfigViewProps {
   onNavigate?: (tab: ActiveTab) => void;
 }
 
+const SUPABASE_FULL_SQL = `-- ==============================================================================
+-- SCRIPT DE CRIAÇÃO DO BANCO DE DADOS SUPABASE - TESOURARIA DA IGREJA
+-- ==============================================================================
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- TABELA 1: public.profiles
+CREATE TABLE IF NOT EXISTS public.profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    email TEXT NOT NULL,
+    nome TEXT NOT NULL DEFAULT 'Tesoureiro',
+    cargo TEXT DEFAULT 'Tesoureiro Principal',
+    nome_igreja TEXT DEFAULT 'Igreja Evangélica',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem visualizar seu próprio perfil" ON public.profiles;
+CREATE POLICY "Usuários podem visualizar seu próprio perfil"
+    ON public.profiles FOR SELECT USING (auth.uid() = user_id OR auth.uid() = id);
+
+DROP POLICY IF EXISTS "Usuários podem criar seu próprio perfil" ON public.profiles;
+CREATE POLICY "Usuários podem criar seu próprio perfil"
+    ON public.profiles FOR INSERT WITH CHECK (auth.uid() = user_id OR auth.uid() = id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar seu próprio perfil" ON public.profiles;
+CREATE POLICY "Usuários podem atualizar seu próprio perfil"
+    ON public.profiles FOR UPDATE USING (auth.uid() = user_id OR auth.uid() = id) WITH CHECK (auth.uid() = user_id OR auth.uid() = id);
+
+DROP POLICY IF EXISTS "Usuários podem excluir seu próprio perfil" ON public.profiles;
+CREATE POLICY "Usuários podem excluir seu próprio perfil"
+    ON public.profiles FOR DELETE USING (auth.uid() = user_id OR auth.uid() = id);
+
+-- TABELA 2: public.configuracao_igreja
+CREATE TABLE IF NOT EXISTS public.configuracao_igreja (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    nome_igreja TEXT NOT NULL DEFAULT 'Tesouraria da Igreja',
+    cnpj TEXT,
+    cidade_uf TEXT,
+    pastor_presidente TEXT NOT NULL DEFAULT 'Pastor Presidente',
+    pastor_local TEXT,
+    tesoureiro_padrao TEXT NOT NULL DEFAULT 'Tesoureiro Principal',
+    segundo_tesoureiro_padrao TEXT,
+    porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
+    aplicar_repasse_matriz BOOLEAN DEFAULT true,
+    tipo_base_repasse_matriz TEXT DEFAULT 'todas',
+    categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    logo_url TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.configuracao_igreja ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem visualizar suas configurações" ON public.configuracao_igreja;
+CREATE POLICY "Usuários podem visualizar suas configurações"
+    ON public.configuracao_igreja FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem cadastrar suas configurações" ON public.configuracao_igreja;
+CREATE POLICY "Usuários podem cadastrar suas configurações"
+    ON public.configuracao_igreja FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar suas configurações" ON public.configuracao_igreja;
+CREATE POLICY "Usuários podem atualizar suas configurações"
+    ON public.configuracao_igreja FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem excluir suas configurações" ON public.configuracao_igreja;
+CREATE POLICY "Usuários podem excluir suas configurações"
+    ON public.configuracao_igreja FOR DELETE USING (auth.uid() = user_id);
+
+-- TABELA 3: public.fechamentos_culto
+CREATE TABLE IF NOT EXISTS public.fechamentos_culto (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    nome_igreja TEXT NOT NULL DEFAULT 'Tesouraria da Igreja',
+    data DATE NOT NULL DEFAULT CURRENT_DATE,
+    data_inicio DATE,
+    data_fim DATE,
+    hora TEXT NOT NULL DEFAULT '19:00',
+    tipo_culto TEXT NOT NULL DEFAULT 'Fechamento de Caixa',
+    pregador TEXT,
+    passagem_biblica TEXT,
+    qtd_membros INTEGER DEFAULT 0,
+    qtd_visitantes INTEGER DEFAULT 0,
+    pastor_presidente TEXT,
+    tesoureiro TEXT NOT NULL DEFAULT 'Tesoureiro Principal',
+    pastor_local TEXT,
+    segunda_testemunha TEXT,
+    porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
+    aplicar_repasse_matriz BOOLEAN DEFAULT true,
+    tipo_base_repasse_matriz TEXT DEFAULT 'todas',
+    categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    observacoes TEXT,
+    contagem_dinheiro JSONB NOT NULL DEFAULT '{"c200":0,"c100":0,"c50":0,"c20":0,"c10":0,"c5":0,"c2":0,"m100":0,"m050":0,"m025":0,"m010":0,"m005":0}'::jsonb,
+    status TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'fechado')),
+    criado_em TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    fechado_em TIMESTAMPTZ,
+    relatorio_ia TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.fechamentos_culto ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem visualizar seus fechamentos" ON public.fechamentos_culto;
+CREATE POLICY "Usuários podem visualizar seus fechamentos"
+    ON public.fechamentos_culto FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem criar seus fechamentos" ON public.fechamentos_culto;
+CREATE POLICY "Usuários podem criar seus fechamentos"
+    ON public.fechamentos_culto FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar seus fechamentos" ON public.fechamentos_culto;
+CREATE POLICY "Usuários podem atualizar seus fechamentos"
+    ON public.fechamentos_culto FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem excluir seus fechamentos" ON public.fechamentos_culto;
+CREATE POLICY "Usuários podem excluir seus fechamentos"
+    ON public.fechamentos_culto FOR DELETE USING (auth.uid() = user_id);
+
+-- TABELA 4: public.lancamentos
+CREATE TABLE IF NOT EXISTS public.lancamentos (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    fechamento_id TEXT NOT NULL REFERENCES public.fechamentos_culto(id) ON DELETE CASCADE,
+    tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'saida')),
+    categoria TEXT NOT NULL,
+    descricao TEXT NOT NULL,
+    valor NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+    forma_pagamento TEXT NOT NULL DEFAULT 'dinheiro',
+    nome_pessoa TEXT,
+    data DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+ALTER TABLE public.lancamentos ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem visualizar seus lançamentos" ON public.lancamentos;
+CREATE POLICY "Usuários podem visualizar seus lançamentos"
+    ON public.lancamentos FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem criar seus lançamentos" ON public.lancamentos;
+CREATE POLICY "Usuários podem criar seus lançamentos"
+    ON public.lancamentos FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar seus lançamentos" ON public.lancamentos;
+CREATE POLICY "Usuários podem atualizar seus lançamentos"
+    ON public.lancamentos FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem excluir seus lançamentos" ON public.lancamentos;
+CREATE POLICY "Usuários podem excluir seus lançamentos"
+    ON public.lancamentos FOR DELETE USING (auth.uid() = user_id);
+
+-- ÍNDICES
+CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_config_user_id ON public.configuracao_igreja(user_id);
+CREATE INDEX IF NOT EXISTS idx_fechamentos_user_id ON public.fechamentos_culto(user_id);
+CREATE INDEX IF NOT EXISTS idx_fechamentos_data ON public.fechamentos_culto(data);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_user_id ON public.lancamentos(user_id);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_fechamento_id ON public.lancamentos(fechamento_id);
+
+-- TRIGGER DE NOVO USUÁRIO
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.profiles (id, user_id, email, nome, cargo, nome_igreja)
+    VALUES (
+        NEW.id, NEW.id, NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'nome', 'Tesoureiro'),
+        COALESCE(NEW.raw_user_meta_data->>'cargo', 'Tesoureiro Principal'),
+        COALESCE(NEW.raw_user_meta_data->>'nome_igreja', 'Minha Igreja')
+    ) ON CONFLICT (id) DO NOTHING;
+
+    INSERT INTO public.configuracao_igreja (
+        id, user_id, nome_igreja, pastor_presidente, tesoureiro_padrao, porcentagem_matriz, aplicar_repasse_matriz
+    ) VALUES (
+        'config_' || NEW.id::text, NEW.id,
+        COALESCE(NEW.raw_user_meta_data->>'nome_igreja', 'Minha Igreja'),
+        'Pastor Presidente',
+        COALESCE(NEW.raw_user_meta_data->>'nome', 'Tesoureiro Principal'),
+        20.00, true
+    ) ON CONFLICT (id) DO NOTHING;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+`;
+
 export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNavigate }) => {
   const [form, setForm] = useState<ConfigIgreja>(config);
   const [saved, setSaved] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showSqlDetails, setShowSqlDetails] = useState(false);
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SUPABASE_FULL_SQL);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2500);
+  };
 
   const handleToggleCategoriaDefault = (cat: CategoriaEntrada) => {
     const current = form.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES;
@@ -45,10 +246,10 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
   };
 
   return (
-    <div id="config-view-container" className="space-y-6 w-full">
+    <div id="config-view-container" className="space-y-6 w-full max-w-4xl mx-auto pb-12">
       {/* Barra de Navegação Contextual */}
       {onNavigate && (
-        <div className="flex items-center justify-between gap-3 max-w-4xl mx-auto w-full">
+        <div className="flex items-center justify-between gap-3 w-full">
           <button
             type="button"
             onClick={() => onNavigate('fechamento')}
@@ -60,7 +261,8 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
         </div>
       )}
 
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl max-w-4xl mx-auto w-full space-y-6">
+      {/* CARD 1: CONFIGURAÇÕES DA IGREJA */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl w-full space-y-6">
         <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
           <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
             <Settings className="w-6 h-6" />
@@ -153,7 +355,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
               <label className="block text-xs font-semibold text-slate-300 mb-1">2º Tesoureiro / Conferente:</label>
               <input
                 type="text"
-                value={form.segundoTesoureiroPadrao}
+                value={form.segundoTesoureiroPadrao || ''}
                 onChange={(e) => setForm({ ...form, segundoTesoureiroPadrao: e.target.value })}
                 placeholder="Ex: Obreiro João"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -244,6 +446,90 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
             Salvar Dados da Igreja
           </button>
         </form>
+      </div>
+
+      {/* CARD 2: BANCO DE DADOS SUPABASE (ESTRUTURA & SCRIPT SQL) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl w-full space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+              <Database className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
+                <span>Estrutura do Banco de Dados Supabase</span>
+                <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
+                  RLS Ativo
+                </span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Script SQL pronto para criar as tabelas com isolamento seguro por <code className="text-emerald-300">user_id</code>.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCopySql}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition-all shadow-md shadow-emerald-600/20 cursor-pointer active:scale-95"
+            title="Copiar Script SQL completo para a área de transferência"
+          >
+            {copiedSql ? (
+              <>
+                <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                <span>Copiado!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4 text-slate-950" />
+                <span>Copiar SQL</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 1</span>
+            <span className="font-bold text-slate-200 font-mono">public.profiles</span>
+            <p className="text-[11px] text-slate-400 mt-1">Perfis de usuários, tesoureiros e permissões.</p>
+          </div>
+
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 2</span>
+            <span className="font-bold text-slate-200 font-mono">public.configuracao_igreja</span>
+            <p className="text-[11px] text-slate-400 mt-1">Dados institucionais, pastores e % da matriz.</p>
+          </div>
+
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 3</span>
+            <span className="font-bold text-slate-200 font-mono">public.fechamentos_culto</span>
+            <p className="text-[11px] text-slate-400 mt-1">Sessões de fechamento, atas e contagem física.</p>
+          </div>
+
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 4</span>
+            <span className="font-bold text-slate-200 font-mono">public.lancamentos</span>
+            <p className="text-[11px] text-slate-400 mt-1">Dízimos, ofertas, doações e saídas/despesas.</p>
+          </div>
+        </div>
+
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowSqlDetails(!showSqlDetails)}
+            className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold cursor-pointer transition-colors"
+          >
+            {showSqlDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            <span>{showSqlDetails ? 'Ocultar código SQL' : 'Visualizar código SQL completo'}</span>
+          </button>
+
+          {showSqlDetails && (
+            <div className="mt-3 relative rounded-2xl bg-slate-950 border border-slate-800 p-4 font-mono text-[11px] text-slate-300 overflow-x-auto max-h-80 overflow-y-auto">
+              <pre className="whitespace-pre">{SUPABASE_FULL_SQL}</pre>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

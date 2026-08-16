@@ -113,15 +113,18 @@ export interface User {
 
 export interface SupabasePerfilUsuarioRow {
   id: string;
+  user_id?: string | null;
   email: string;
   nome: string;
   cargo: string | null;
   nome_igreja: string | null;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface SupabaseConfiguracaoIgrejaRow {
   id: string;
+  user_id: string;
   nome_igreja: string;
   cnpj: string | null;
   cidade_uf: string | null;
@@ -134,11 +137,13 @@ export interface SupabaseConfiguracaoIgrejaRow {
   tipo_base_repasse_matriz: string | null;
   categorias_repasse_matriz: string[] | null;
   logo_url: string | null;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface SupabaseFechamentoCultoRow {
   id: string;
+  user_id: string;
   nome_igreja: string;
   data: string;
   data_inicio: string | null;
@@ -163,11 +168,13 @@ export interface SupabaseFechamentoCultoRow {
   criado_em: string;
   fechado_em: string | null;
   relatorio_ia: string | null;
-  user_id: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface SupabaseLancamentoRow {
   id: string;
+  user_id: string;
   fechamento_id: string;
   tipo: TipoLancamento;
   categoria: string;
@@ -176,6 +183,7 @@ export interface SupabaseLancamentoRow {
   forma_pagamento: FormaPagamento;
   nome_pessoa: string | null;
   data: string;
-  created_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 

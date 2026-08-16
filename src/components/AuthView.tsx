@@ -272,15 +272,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
             createdAt: new Date().toISOString(),
           };
 
-          // 2. Salva na tabela public.profiles
+          // 2. Salva na tabela public.profiles com user_id
           try {
             await supabase.from('profiles').upsert({
               id: newUserId,
+              user_id: newUserId,
               email: emailTrimmed,
               nome: nomeTrimmed,
               cargo: regCargo || 'Tesoureiro',
               nome_igreja: igrejaTrimmed || 'Minha Igreja',
               created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
             });
           } catch (profileErr) {
             console.warn('Perfil criado via trigger ou erro silencioso:', profileErr);

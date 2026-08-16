@@ -14,6 +14,20 @@ import {
 import { INITIAL_CONFIG, INITIAL_FECHAMENTOS } from '../data/mockData';
 
 /* =========================================================
+   HELPER: Obter ID do Usuário Autenticado
+   ========================================================= */
+
+export async function getCurrentUserId(explicitUserId?: string): Promise<string | null> {
+  if (explicitUserId) return explicitUserId;
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data?.user?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+/* =========================================================
    MAPPERS (Converter de snake_case do Supabase para camelCase do App)
    ========================================================= */
 
@@ -26,7 +40,7 @@ function mapRowToConfig(row: SupabaseConfiguracaoIgrejaRow): ConfigIgreja {
     pastorLocal: row.pastor_local || undefined,
     tesoureiroPadrao: row.tesoureiro_padrao,
     segundoTesoureiroPadrao: row.segundo_tesoureiro_padrao || undefined,
-    porcentagemMatriz: row.porcentagem_matriz ?? undefined,
+    porcentagemMatriz: row.porcentagem_matriz != null ? Number(row.porcentagem_matriz) : undefined,
     aplicarRepasseMatriz: row.aplicar_repasse_matriz ?? undefined,
     tipoBaseRepasseMatriz: (row.tipo_base_repasse_matriz as 'todas' | 'selecionadas') || undefined,
     categoriasRepasseMatriz: (row.categorias_repasse_matriz as CategoriaEntrada[]) || undefined,
@@ -34,20 +48,21 @@ function mapRowToConfig(row: SupabaseConfiguracaoIgrejaRow): ConfigIgreja {
   };
 }
 
-function mapConfigToRow(config: ConfigIgreja): Partial<SupabaseConfiguracaoIgrejaRow> {
+function mapConfigToRow(config: ConfigIgreja, userId: string): Partial<SupabaseConfiguracaoIgrejaRow> {
   return {
-    id: 'default_config',
-    nome_igreja: config.nomeIgreja,
+    id: `config_${userId}`,
+    user_id: userId,
+    nome_igreja: config.nomeIgreja || 'Tesouraria da Igreja',
     cnpj: config.cnpj || null,
     cidade_uf: config.cidadeUF || null,
-    pastor_presidente: config.pastorPresidente,
+    pastor_presidente: config.pastorPresidente || 'Pastor Presidente',
     pastor_local: config.pastorLocal || null,
-    tesoureiro_padrao: config.tesoureiroPadrao,
+    tesoureiro_padrao: config.tesoureiroPadrao || 'Tesoureiro Principal',
     segundo_tesoureiro_padrao: config.segundoTesoureiroPadrao || null,
-    porcentagem_matriz: config.porcentagemMatriz ?? null,
-    aplicar_repasse_matriz: config.aplicarRepasseMatriz ?? null,
-    tipo_base_repasse_matriz: config.tipoBaseRepasseMatriz || null,
-    categorias_repasse_matriz: config.categoriasRepasseMatriz || null,
+    porcentagem_matriz: config.porcentagemMatriz != null ? Number(config.porcentagemMatriz) : 20,
+    aplicar_repasse_matriz: config.aplicarRepasseMatriz ?? true,
+    tipo_base_repasse_matriz: config.tipoBaseRepasseMatriz || 'todas',
+    categorias_repasse_matriz: (config.categoriasRepasseMatriz as string[]) || null,
     logo_url: config.logoUrl || null,
     updated_at: new Date().toISOString(),
   };
@@ -86,7 +101,7 @@ function mapRowToFechamento(
     tesoureiro: row.tesoureiro,
     pastorLocal: row.pastor_local || undefined,
     segundaTestemunha: row.segunda_testemunha || undefined,
-    porcentagemMatriz: row.porcentagem_matriz ?? undefined,
+    porcentagemMatriz: row.porcentagem_matriz != null ? Number(row.porcentagem_matriz) : undefined,
     aplicarRepasseMatriz: row.aplicar_repasse_matriz ?? undefined,
     tipoBaseRepasseMatriz: (row.tipo_base_repasse_matriz as 'todas' | 'selecionadas') || undefined,
     categoriasRepasseMatriz: (row.categorias_repasse_matriz as CategoriaEntrada[]) || undefined,
@@ -107,7 +122,7 @@ function mapRowToFechamento(
    SERVIÇOS DE CONFIGURAÇÃO
    ========================================================= */
 
-export async function fetchConfiguracaoIgreja(): Promise<{ data: ConfigIgreja; isSupabase: boolean }> {
+export async function fetchConfiguracaoIgreja(userId?: string): Promise<{ data: ConfigIgreja; isSupabase: boolean }> {
   if (!isSupabaseConfigured) {
     const local = localStorage.getItem('church_treasury_config');
     const parsed = local ? JSON.parse(local) : INITIAL_CONFIG;
@@ -115,11 +130,16 @@ export async function fetchConfiguracaoIgreja(): Promise<{ data: ConfigIgreja; i
   }
 
   try {
-    const { data, error } = await supabase
-      .from('configuracao_igreja')
-      .select('*')
-      .eq('id', 'default_config')
-      .maybeSingle();
+    const uid = await getCurrentUserId(userId);
+    let query = supabase.from('configuracao_igreja').select('*');
+
+    if (uid) {
+      query = query.eq('user_id', uid);
+    } else {
+      query = query.eq('id', 'default_config');
+    }
+
+    const { data, error } = await query.maybeSingle();
 
     if (error) {
       console.warn('Erro ao carregar configurações do Supabase, utilizando dados locais:', error.message);
@@ -128,8 +148,10 @@ export async function fetchConfiguracaoIgreja(): Promise<{ data: ConfigIgreja; i
     }
 
     if (!data) {
-      // Se não existe no banco ainda, salva a configuração inicial
-      await saveConfiguracaoIgreja(INITIAL_CONFIG);
+      // Se ainda não existe registro de configuração para este usuário, cria a configuração inicial
+      if (uid) {
+        await saveConfiguracaoIgreja(INITIAL_CONFIG, uid);
+      }
       return { data: INITIAL_CONFIG, isSupabase: true };
     }
 
@@ -141,14 +163,20 @@ export async function fetchConfiguracaoIgreja(): Promise<{ data: ConfigIgreja; i
   }
 }
 
-export async function saveConfiguracaoIgreja(config: ConfigIgreja): Promise<boolean> {
-  // Sempre atualiza LocalStorage por garantia
+export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: string): Promise<boolean> {
+  // Sempre atualiza LocalStorage por garantia de persistência local rápida
   localStorage.setItem('church_treasury_config', JSON.stringify(config));
 
   if (!isSupabaseConfigured) return false;
 
   try {
-    const row = mapConfigToRow(config);
+    const uid = await getCurrentUserId(userId);
+    if (!uid) {
+      console.warn('Nenhum usuário autenticado encontrado para salvar configuração.');
+      return false;
+    }
+
+    const row = mapConfigToRow(config, uid);
     const { error } = await supabase
       .from('configuracao_igreja')
       .upsert(row, { onConflict: 'id' });
@@ -168,7 +196,7 @@ export async function saveConfiguracaoIgreja(config: ConfigIgreja): Promise<bool
    SERVIÇOS DE FECHAMENTOS DE CULTO & LANÇAMENTOS
    ========================================================= */
 
-export async function fetchFechamentos(): Promise<{ data: FechamentoCulto[]; isSupabase: boolean }> {
+export async function fetchFechamentos(userId?: string): Promise<{ data: FechamentoCulto[]; isSupabase: boolean }> {
   if (!isSupabaseConfigured) {
     const saved = localStorage.getItem('church_treasury_fechamentos');
     const parsed = saved ? JSON.parse(saved) : INITIAL_FECHAMENTOS;
@@ -176,10 +204,14 @@ export async function fetchFechamentos(): Promise<{ data: FechamentoCulto[]; isS
   }
 
   try {
-    const { data: fechamentosRows, error: fechamentosError } = await supabase
-      .from('fechamentos_culto')
-      .select('*')
-      .order('criado_em', { ascending: false });
+    const uid = await getCurrentUserId(userId);
+    let fQuery = supabase.from('fechamentos_culto').select('*');
+
+    if (uid) {
+      fQuery = fQuery.eq('user_id', uid);
+    }
+
+    const { data: fechamentosRows, error: fechamentosError } = await fQuery.order('criado_em', { ascending: false });
 
     if (fechamentosError) {
       console.warn('Erro ao buscar fechamentos no Supabase, usando backup local:', fechamentosError.message);
@@ -193,10 +225,13 @@ export async function fetchFechamentos(): Promise<{ data: FechamentoCulto[]; isS
       return { data: fallback, isSupabase: true };
     }
 
-    // Busca todos os lançamentos
-    const { data: lancamentosRows, error: lancamentosError } = await supabase
-      .from('lancamentos')
-      .select('*');
+    // Busca os lançamentos vinculados ao usuário
+    let lQuery = supabase.from('lancamentos').select('*');
+    if (uid) {
+      lQuery = lQuery.eq('user_id', uid);
+    }
+
+    const { data: lancamentosRows, error: lancamentosError } = await lQuery;
 
     if (lancamentosError) {
       console.warn('Erro ao buscar lançamentos no Supabase:', lancamentosError.message);
@@ -221,8 +256,15 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
   if (!isSupabaseConfigured) return false;
 
   try {
+    const uid = await getCurrentUserId(userId);
+    if (!uid) {
+      console.warn('Nenhum usuário autenticado para salvar fechamento no Supabase.');
+      return false;
+    }
+
     const fechamentoRow: Partial<SupabaseFechamentoCultoRow> = {
       id: fechamento.id,
+      user_id: uid,
       nome_igreja: fechamento.nomeIgreja,
       data: fechamento.data,
       data_inicio: fechamento.dataInicio || null,
@@ -237,17 +279,17 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       tesoureiro: fechamento.tesoureiro,
       pastor_local: fechamento.pastorLocal || null,
       segunda_testemunha: fechamento.segundaTestemunha || null,
-      porcentagem_matriz: fechamento.porcentagemMatriz ?? null,
+      porcentagem_matriz: fechamento.porcentagemMatriz != null ? Number(fechamento.porcentagemMatriz) : null,
       aplicar_repasse_matriz: fechamento.aplicarRepasseMatriz ?? null,
       tipo_base_repasse_matriz: fechamento.tipoBaseRepasseMatriz || null,
-      categorias_repasse_matriz: fechamento.categoriasRepasseMatriz || null,
+      categorias_repasse_matriz: (fechamento.categoriasRepasseMatriz as string[]) || null,
       observacoes: fechamento.observacoes || null,
       contagem_dinheiro: fechamento.contagemDinheiro,
       status: fechamento.status,
       criado_em: fechamento.criadoEm,
       fechado_em: fechamento.fechadoEm || null,
       relatorio_ia: fechamento.relatorioIA || null,
-      user_id: userId || null,
+      updated_at: new Date().toISOString(),
     };
 
     const { error: fError } = await supabase
@@ -259,10 +301,11 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       return false;
     }
 
-    // Salva os lançamentos vinculados
+    // Salva os lançamentos vinculados com user_id
     if (fechamento.lancamentos && fechamento.lancamentos.length > 0) {
       const lancamentoRows = fechamento.lancamentos.map((l) => ({
         id: l.id,
+        user_id: uid,
         fechamento_id: fechamento.id,
         tipo: l.tipo,
         categoria: l.categoria,
@@ -271,6 +314,7 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
         forma_pagamento: l.formaPagamento,
         nome_pessoa: l.nomePessoa || null,
         data: l.data,
+        updated_at: new Date().toISOString(),
       }));
 
       const { error: lError } = await supabase
@@ -289,17 +333,25 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
   }
 }
 
-export async function deleteFechamento(fechamentoId: string): Promise<boolean> {
+export async function deleteFechamento(fechamentoId: string, userId?: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
   try {
-    // Apaga os lançamentos primeiro caso não haja CASCADE configurado no banco
-    await supabase.from('lancamentos').delete().eq('fechamento_id', fechamentoId);
+    const uid = await getCurrentUserId(userId);
 
-    const { error } = await supabase
-      .from('fechamentos_culto')
-      .delete()
-      .eq('id', fechamentoId);
+    // Apaga os lançamentos primeiro caso não haja CASCADE configurado no banco
+    let lDelete = supabase.from('lancamentos').delete().eq('fechamento_id', fechamentoId);
+    if (uid) {
+      lDelete = lDelete.eq('user_id', uid);
+    }
+    await lDelete;
+
+    let fDelete = supabase.from('fechamentos_culto').delete().eq('id', fechamentoId);
+    if (uid) {
+      fDelete = fDelete.eq('user_id', uid);
+    }
+
+    const { error } = await fDelete;
 
     if (error) {
       console.warn('Erro ao excluir fechamento no Supabase:', error.message);
@@ -313,14 +365,17 @@ export async function deleteFechamento(fechamentoId: string): Promise<boolean> {
   }
 }
 
-export async function deleteLancamento(lancamentoId: string): Promise<boolean> {
+export async function deleteLancamento(lancamentoId: string, userId?: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
   try {
-    const { error } = await supabase
-      .from('lancamentos')
-      .delete()
-      .eq('id', lancamentoId);
+    const uid = await getCurrentUserId(userId);
+    let query = supabase.from('lancamentos').delete().eq('id', lancamentoId);
+    if (uid) {
+      query = query.eq('user_id', uid);
+    }
+
+    const { error } = await query;
 
     if (error) {
       console.warn('Erro ao excluir lançamento no Supabase:', error.message);
@@ -344,28 +399,22 @@ export async function syncUserProfile(user: User): Promise<boolean> {
   try {
     const row: SupabasePerfilUsuarioRow = {
       id: user.id,
+      user_id: user.id,
       email: user.email,
       nome: user.nome,
       cargo: user.cargo || null,
       nome_igreja: user.nomeIgreja || null,
       created_at: user.createdAt || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
-    // Tenta salvar na tabela 'profiles' (padrão)
     const { error: profileError } = await supabase
       .from('profiles')
       .upsert(row, { onConflict: 'id' });
 
     if (profileError) {
-      // Tenta fallback para 'perfis_usuarios' caso a tabela tenha o nome antigo
-      const { error: fallbackError } = await supabase
-        .from('perfis_usuarios')
-        .upsert(row, { onConflict: 'id' });
-
-      if (fallbackError) {
-        console.warn('Erro ao salvar perfil de usuário no Supabase:', profileError.message);
-        return false;
-      }
+      console.warn('Erro ao salvar perfil de usuário no Supabase:', profileError.message);
+      return false;
     }
 
     return true;
@@ -376,24 +425,18 @@ export async function syncUserProfile(user: User): Promise<boolean> {
 }
 
 export async function fetchUserProfile(userId: string): Promise<User | null> {
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured || !userId) return null;
 
   try {
-    // Tenta buscar da tabela 'profiles'
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
 
-    if (error || !data) {
-      // Fallback para 'perfis_usuarios'
-      const fallback = await supabase
-        .from('perfis_usuarios')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-      data = fallback.data;
+    if (error) {
+      console.warn('Erro ao buscar perfil do usuário:', error.message);
+      return null;
     }
 
     if (data) {
@@ -412,3 +455,4 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
     return null;
   }
 }
+
