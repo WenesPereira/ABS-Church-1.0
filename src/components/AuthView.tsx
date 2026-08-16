@@ -84,39 +84,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Helper to retrieve saved users locally
-  const getStoredUsers = (): StoredUserAccount[] => {
-    try {
-      const saved = localStorage.getItem('church_treasury_users');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Erro ao ler usuários armazenados', e);
-    }
-    // Default demo user if none registered yet
-    return [
-      {
-        id: 'user-demo-01',
-        email: 'tesouraria@igreja.com',
-        nome: 'Tesoureiro Principal',
-        cargo: 'Tesoureiro Responsável',
-        nomeIgreja: configIgreja?.nomeIgreja || 'Igreja Evangélica Sede',
-        passwordHash: '123456',
-        createdAt: new Date().toISOString()
-      }
-    ];
-  };
-
-  const saveLocalUserBackup = (user: StoredUserAccount) => {
-    try {
-      const users = getStoredUsers().filter((u) => u.email.toLowerCase() !== user.email.toLowerCase());
-      localStorage.setItem('church_treasury_users', JSON.stringify([...users, user]));
-    } catch (e) {
-      console.warn('Erro ao salvar cópia local de usuário:', e);
-    }
-  };
-
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
@@ -130,77 +97,49 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
     setIsLoading(true);
 
-    // Tenta autenticação via Supabase Auth oficial
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: emailTrimmed,
-          password: loginPassword,
-        });
-
-        if (!error && data?.user) {
-          const userProfile = await fetchUserProfile(data.user.id);
-          const meta = data.user.user_metadata || {};
-
-          const sessionUser: User = {
-            id: data.user.id,
-            email: data.user.email || emailTrimmed,
-            nome: userProfile?.nome || meta.nome || 'Tesoureiro',
-            cargo: userProfile?.cargo || meta.cargo || 'Tesoureiro Principal',
-            nomeIgreja: userProfile?.nomeIgreja || meta.nome_igreja || configIgreja?.nomeIgreja || 'Igreja Evangélica',
-            createdAt: data.user.created_at || new Date().toISOString(),
-          };
-
-          setSuccessMessage(`Bem-vindo(a) de volta, ${sessionUser.nome}!`);
-          setTimeout(() => {
-            setIsLoading(false);
-            onLoginSuccess(sessionUser, false);
-          }, 350);
-          return;
-        }
-
-        if (error) {
-          setErrorMessage(parseSupabaseAuthError(error));
-          setIsLoading(false);
-          return;
-        }
-      } catch (err: unknown) {
-        console.warn('Erro na autenticação Supabase Auth:', err);
-        const errObj = err as { message?: string };
-        setErrorMessage(parseSupabaseAuthError(errObj));
-        setIsLoading(false);
-        return;
-      }
+    if (!isSupabaseConfigured) {
+      setErrorMessage('Supabase não está configurado. Verifique as credenciais no arquivo de ambiente.');
+      setIsLoading(false);
+      return;
     }
 
-    // Fallback LocalStorage (para desenvolvimento ou offline)
-    setTimeout(() => {
-      const users = getStoredUsers();
-      const foundUser = users.find(
-        (u) => u.email.toLowerCase() === emailTrimmed && u.passwordHash === loginPassword
-      );
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailTrimmed,
+        password: loginPassword,
+      });
 
-      if (!foundUser) {
+      if (error) {
+        setErrorMessage(parseSupabaseAuthError(error));
         setIsLoading(false);
-        setErrorMessage('E-mail ou senha incorretos. Verifique suas credenciais.');
         return;
       }
 
-      const sessionUser: User = {
-        id: foundUser.id,
-        email: foundUser.email,
-        nome: foundUser.nome,
-        cargo: foundUser.cargo,
-        nomeIgreja: foundUser.nomeIgreja,
-        createdAt: foundUser.createdAt
-      };
+      if (data?.user) {
+        const userProfile = await fetchUserProfile(data.user.id);
+        const meta = data.user.user_metadata || {};
 
-      setSuccessMessage(`Bem-vindo(a) de volta, ${foundUser.nome}!`);
-      setTimeout(() => {
-        setIsLoading(false);
-        onLoginSuccess(sessionUser, false);
-      }, 350);
-    }, 300);
+        const sessionUser: User = {
+          id: data.user.id,
+          email: data.user.email || emailTrimmed,
+          nome: userProfile?.nome || meta.nome || 'Tesoureiro',
+          cargo: userProfile?.cargo || meta.cargo || 'Tesoureiro Principal',
+          nomeIgreja: userProfile?.nomeIgreja || meta.nome_igreja || configIgreja?.nomeIgreja || 'Igreja Evangélica',
+          createdAt: data.user.created_at || new Date().toISOString(),
+        };
+
+        setSuccessMessage(`Bem-vindo(a) de volta, ${sessionUser.nome}!`);
+        setTimeout(() => {
+          setIsLoading(false);
+          onLoginSuccess(sessionUser, false);
+        }, 300);
+      }
+    } catch (err: unknown) {
+      console.warn('Erro na autenticação Supabase Auth:', err);
+      const errObj = err as { message?: string };
+      setErrorMessage(parseSupabaseAuthError(errObj));
+      setIsLoading(false);
+    }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
@@ -234,130 +173,85 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
     setIsLoading(true);
 
-    if (isSupabaseConfigured) {
-      try {
-        // 1. Cria o usuário na tabela de Authentication oficial do Supabase (auth.users)
-        const { data, error } = await supabase.auth.signUp({
-          email: emailTrimmed,
-          password: regPassword,
-          options: {
-            data: {
-              nome: nomeTrimmed,
-              cargo: regCargo || 'Tesoureiro',
-              nome_igreja: igrejaTrimmed || 'Minha Igreja',
-            },
-          },
-        });
+    if (!isSupabaseConfigured) {
+      setErrorMessage('Supabase não está configurado. Verifique as credenciais no arquivo de ambiente.');
+      setIsLoading(false);
+      return;
+    }
 
-        if (error) {
-          setErrorMessage(parseSupabaseAuthError(error));
+    try {
+      // 1. Cria o usuário na tabela de Authentication oficial do Supabase (auth.users)
+      const { data, error } = await supabase.auth.signUp({
+        email: emailTrimmed,
+        password: regPassword,
+        options: {
+          data: {
+            nome: nomeTrimmed,
+            cargo: regCargo || 'Tesoureiro',
+            nome_igreja: igrejaTrimmed || 'Minha Igreja',
+          },
+        },
+      });
+
+      if (error) {
+        setErrorMessage(parseSupabaseAuthError(error));
+        setIsLoading(false);
+        return;
+      }
+
+      if (data?.user) {
+        if (data.user.identities && data.user.identities.length === 0) {
+          setErrorMessage('Este e-mail já está cadastrado no Supabase. Faça login para acessar.');
           setIsLoading(false);
           return;
         }
 
-        if (data?.user) {
-          if (data.user.identities && data.user.identities.length === 0) {
-            setErrorMessage('Este e-mail já está cadastrado no Supabase. Faça login para acessar.');
-            setIsLoading(false);
-            return;
-          }
+        const newUserId = data.user.id;
+        const newUser: User = {
+          id: newUserId,
+          email: emailTrimmed,
+          nome: nomeTrimmed,
+          cargo: regCargo || 'Tesoureiro',
+          nomeIgreja: igrejaTrimmed || 'Minha Igreja',
+          createdAt: new Date().toISOString(),
+        };
 
-          const newUserId = data.user.id;
-          const newUser: User = {
+        // 2. Salva na tabela public.profiles com user_id
+        try {
+          await supabase.from('profiles').upsert({
             id: newUserId,
+            user_id: newUserId,
             email: emailTrimmed,
             nome: nomeTrimmed,
             cargo: regCargo || 'Tesoureiro',
-            nomeIgreja: igrejaTrimmed || 'Minha Igreja',
-            createdAt: new Date().toISOString(),
-          };
-
-          // 2. Salva na tabela public.profiles com user_id
-          try {
-            await supabase.from('profiles').upsert({
-              id: newUserId,
-              user_id: newUserId,
-              email: emailTrimmed,
-              nome: nomeTrimmed,
-              cargo: regCargo || 'Tesoureiro',
-              nome_igreja: igrejaTrimmed || 'Minha Igreja',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            });
-          } catch (profileErr) {
-            console.warn('Perfil criado via trigger ou erro silencioso:', profileErr);
-          }
-
-          // Backup local
-          saveLocalUserBackup({ ...newUser, passwordHash: '***' });
-
-          // Verifica se requer confirmação de e-mail
-          if (!data.session) {
-            setSuccessMessage(
-              'Conta criada com sucesso no Supabase! Verifique sua caixa de entrada caso a confirmação por e-mail esteja ativada.'
-            );
-          } else {
-            setSuccessMessage('Conta registrada no Supabase com sucesso!');
-          }
-
-          setTimeout(() => {
-            setIsLoading(false);
-            onLoginSuccess(newUser, true, newUser.nomeIgreja);
-          }, 500);
-          return;
+            nome_igreja: igrejaTrimmed || 'Minha Igreja',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        } catch (profileErr) {
+          console.warn('Perfil criado via trigger ou erro silencioso:', profileErr);
         }
-      } catch (err: unknown) {
-        console.warn('Erro ao registrar no Supabase Auth:', err);
-        const errObj = err as { message?: string };
-        setErrorMessage(parseSupabaseAuthError(errObj));
-        setIsLoading(false);
-        return;
+
+        // Verifica se requer confirmação de e-mail
+        if (!data.session) {
+          setSuccessMessage(
+            'Conta criada com sucesso no Supabase! Verifique sua caixa de entrada caso a confirmação por e-mail esteja ativada.'
+          );
+        } else {
+          setSuccessMessage('Conta registrada no Supabase com sucesso!');
+        }
+
+        setTimeout(() => {
+          setIsLoading(false);
+          onLoginSuccess(newUser, true, newUser.nomeIgreja);
+        }, 500);
       }
+    } catch (err: unknown) {
+      console.warn('Erro ao registrar no Supabase Auth:', err);
+      const errObj = err as { message?: string };
+      setErrorMessage(parseSupabaseAuthError(errObj));
+      setIsLoading(false);
     }
-
-    // Fallback LocalStorage se o Supabase não estiver configurado
-    setTimeout(() => {
-      const users = getStoredUsers();
-      const userExists = users.some((u) => u.email.toLowerCase() === emailTrimmed);
-
-      if (userExists) {
-        setIsLoading(false);
-        setErrorMessage('Este e-mail já está cadastrado. Faça login para continuar.');
-        return;
-      }
-
-      const newUser: StoredUserAccount = {
-        id: 'user-' + Date.now(),
-        email: emailTrimmed,
-        nome: nomeTrimmed,
-        cargo: regCargo || 'Tesoureiro',
-        nomeIgreja: igrejaTrimmed || 'Minha Igreja',
-        passwordHash: regPassword,
-        createdAt: new Date().toISOString()
-      };
-
-      const updatedUsers = [...users, newUser];
-      try {
-        localStorage.setItem('church_treasury_users', JSON.stringify(updatedUsers));
-      } catch (err) {
-        console.error('Erro ao salvar usuário no localStorage:', err);
-      }
-
-      const sessionUser: User = {
-        id: newUser.id,
-        email: newUser.email,
-        nome: newUser.nome,
-        cargo: newUser.cargo,
-        nomeIgreja: newUser.nomeIgreja,
-        createdAt: newUser.createdAt
-      };
-
-      setSuccessMessage('Conta criada com sucesso! Redirecionando...');
-      setTimeout(() => {
-        setIsLoading(false);
-        onLoginSuccess(sessionUser, true, newUser.nomeIgreja);
-      }, 500);
-    }, 400);
   };
 
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   ActiveTab,
   FechamentoCulto,
@@ -7,11 +7,7 @@ import {
 } from './types';
 
 import {
-  INITIAL_CONFIG,
-  INITIAL_FECHAMENTOS,
-} from './data/mockData';
-
-import {
+  DEFAULT_CONFIG,
   fetchConfiguracaoIgreja,
   saveConfiguracaoIgreja,
   fetchFechamentos,
@@ -34,17 +30,20 @@ import { HistoricoView } from './components/HistoricoView';
 import { ConfigView } from './components/ConfigView';
 import { PrintReceiptModal } from './components/PrintReceiptModal';
 
-function createNewFechamento(config: ConfigIgreja): FechamentoCulto {
+function createEmptyFechamento(config: ConfigIgreja, user?: User | null): FechamentoCulto {
   const today = new Date().toISOString().split('T')[0];
   return {
     id: `culto-${Date.now()}`,
-    nomeIgreja: config.nomeIgreja,
+    nomeIgreja: config.nomeIgreja || 'Minha Igreja',
     data: today,
     hora: '19:00',
     tipoCulto: 'Fechamento de Caixa',
-    tesoureiro: config.tesoureiroPadrao,
-    segundaTestemunha: config.segundoTesoureiroPadrao,
+    tesoureiro: user?.nome || config.tesoureiroPadrao || 'Tesoureiro Principal',
+    segundaTestemunha: config.segundoTesoureiroPadrao || undefined,
     porcentagemMatriz: config.porcentagemMatriz ?? 20,
+    aplicarRepasseMatriz: config.aplicarRepasseMatriz ?? true,
+    tipoBaseRepasseMatriz: config.tipoBaseRepasseMatriz || 'todas',
+    categoriasRepasseMatriz: config.categoriasRepasseMatriz || undefined,
     status: 'aberto',
     criadoEm: new Date().toISOString(),
     contagemDinheiro: {
@@ -57,14 +56,8 @@ function createNewFechamento(config: ConfigIgreja): FechamentoCulto {
 
 export default function App() {
   // Authentication State
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const saved = localStorage.getItem('church_treasury_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isAuthChecking, setIsAuthChecking] = useState<boolean>(true);
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<ActiveTab>('fechamento');
@@ -75,87 +68,64 @@ export default function App() {
   }, [activeTab]);
 
   // Config State
-  const [configIgreja, setConfigIgreja] = useState<ConfigIgreja>(() => {
-    try {
-      const saved = localStorage.getItem('church_treasury_config');
-      return saved ? JSON.parse(saved) : INITIAL_CONFIG;
-    } catch {
-      return INITIAL_CONFIG;
-    }
-  });
+  const [configIgreja, setConfigIgreja] = useState<ConfigIgreja>(DEFAULT_CONFIG);
 
   // History State
-  const [historico, setHistorico] = useState<FechamentoCulto[]>(() => {
-    try {
-      const saved = localStorage.getItem('church_treasury_historico');
-      return saved ? JSON.parse(saved) : INITIAL_FECHAMENTOS;
-    } catch {
-      return INITIAL_FECHAMENTOS;
-    }
-  });
+  const [historico, setHistorico] = useState<FechamentoCulto[]>([]);
 
   // Active Closing State
-  const [fechamentoAtual, setFechamentoAtual] = useState<FechamentoCulto>(() => {
-    try {
-      const saved = localStorage.getItem('church_treasury_active_culto');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // Fallback
-    }
-    return INITIAL_FECHAMENTOS[0] || createNewFechamento(configIgreja);
-  });
+  const [fechamentoAtual, setFechamentoAtual] = useState<FechamentoCulto>(() =>
+    createEmptyFechamento(DEFAULT_CONFIG, null)
+  );
 
   // Modal Print State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
   /* =========================================================
-     AUTH HANDLERS
+     FUNÇÃO DE CARREGAMENTO DIRETO DO SUPABASE
      ========================================================= */
 
-  const handleLoginSuccess = (
-    user: User,
-    _isNewAccount?: boolean,
-    churchName?: string
-  ) => {
-    setCurrentUser(user);
+  const loadUserDataFromSupabase = useCallback(async (userId: string, userObj?: User | null) => {
     try {
-      localStorage.setItem('church_treasury_user', JSON.stringify(user));
-    } catch (e) {
-      console.error('Erro ao salvar sessão de usuário:', e);
-    }
+      // 1. Carrega configurações do usuário
+      const configRes = await fetchConfiguracaoIgreja(userId);
+      const userConfig = configRes.data || DEFAULT_CONFIG;
+      if (userObj?.nomeIgreja && (!userConfig.nomeIgreja || userConfig.nomeIgreja === 'Minha Igreja')) {
+        userConfig.nomeIgreja = userObj.nomeIgreja;
+      }
+      setConfigIgreja(userConfig);
 
-    // Sincroniza o perfil do usuário no Supabase
-    syncUserProfile(user);
-
-    if (churchName && churchName.trim()) {
-      setConfigIgreja((prev) => ({
-        ...prev,
-        nomeIgreja: churchName.trim(),
-      }));
+      // 2. Carrega fechamentos do usuário
+      const fechamentosRes = await fetchFechamentos(userId);
+      if (fechamentosRes.data && fechamentosRes.data.length > 0) {
+        setHistorico(fechamentosRes.data);
+        setFechamentoAtual(fechamentosRes.data[0]);
+      } else {
+        setHistorico([]);
+        const novoVazio = createEmptyFechamento(userConfig, userObj);
+        setFechamentoAtual(novoVazio);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar dados do Supabase para o usuário:', err);
     }
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    try {
-      localStorage.removeItem('church_treasury_user');
-    } catch (e) {
-      console.error('Erro ao encerrar sessão:', e);
-    }
-    if (isSupabaseConfigured) {
-      supabase.auth.signOut().catch((err) => console.warn('Erro ao sair do Supabase Auth:', err));
-    }
-  };
+  }, []);
 
   /* =========================================================
      SUPABASE AUTH SESSION INITIALIZATION & LISTENER
      ========================================================= */
 
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!isSupabaseConfigured) {
+      setIsAuthChecking(false);
+      return;
+    }
+
+    let isMounted = true;
 
     // Monitora sessão ativa do Supabase Auth
     supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!isMounted) return;
+
       if (session?.user) {
         const profile = await fetchUserProfile(session.user.id);
         const meta = session.user.user_metadata || {};
@@ -164,15 +134,30 @@ export default function App() {
           email: session.user.email || '',
           nome: profile?.nome || meta.nome || 'Tesoureiro',
           cargo: profile?.cargo || meta.cargo || 'Tesoureiro Principal',
-          nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || configIgreja.nomeIgreja,
+          nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || 'Minha Igreja',
           createdAt: session.user.created_at || new Date().toISOString(),
         };
-        setCurrentUser(u);
-        localStorage.setItem('church_treasury_user', JSON.stringify(u));
+
+        if (isMounted) {
+          setCurrentUser(u);
+          await loadUserDataFromSupabase(session.user.id, u);
+        }
+      } else {
+        if (isMounted) {
+          setCurrentUser(null);
+          setHistorico([]);
+          setFechamentoAtual(createEmptyFechamento(DEFAULT_CONFIG, null));
+        }
+      }
+
+      if (isMounted) {
+        setIsAuthChecking(false);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') && session?.user) {
         const profile = await fetchUserProfile(session.user.id);
         const meta = session.user.user_metadata || {};
@@ -181,118 +166,132 @@ export default function App() {
           email: session.user.email || '',
           nome: profile?.nome || meta.nome || 'Tesoureiro',
           cargo: profile?.cargo || meta.cargo || 'Tesoureiro Principal',
-          nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || configIgreja.nomeIgreja,
+          nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || 'Minha Igreja',
           createdAt: session.user.created_at || new Date().toISOString(),
         };
+
         setCurrentUser(u);
-        localStorage.setItem('church_treasury_user', JSON.stringify(u));
+        await loadUserDataFromSupabase(session.user.id, u);
       } else if (event === 'SIGNED_OUT') {
+        // RESET TOTAL NO LOGOUT
         setCurrentUser(null);
-        localStorage.removeItem('church_treasury_user');
+        setHistorico([]);
+        setConfigIgreja(DEFAULT_CONFIG);
+        setFechamentoAtual(createEmptyFechamento(DEFAULT_CONFIG, null));
+        setActiveTab('fechamento');
       }
     });
-
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, [isSupabaseConfigured]);
-
-  /* =========================================================
-     SINCRONIZAÇÃO INICIAL DE DADOS COM SUPABASE
-     ========================================================= */
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadSupabaseData() {
-      const uid = currentUser?.id;
-      const configRes = await fetchConfiguracaoIgreja(uid);
-      if (isMounted && configRes.data) {
-        setConfigIgreja(configRes.data);
-      }
-
-      const fechamentosRes = await fetchFechamentos(uid);
-      if (isMounted && fechamentosRes.data && fechamentosRes.data.length > 0) {
-        setHistorico(fechamentosRes.data);
-        if (fechamentosRes.data[0]) {
-          setFechamentoAtual(fechamentosRes.data[0]);
-        }
-      }
-    }
-
-    loadSupabaseData();
 
     return () => {
       isMounted = false;
+      subscription?.unsubscribe();
     };
-  }, [currentUser?.id]);
+  }, [loadUserDataFromSupabase]);
 
   /* =========================================================
-     PERSISTÊNCIA DA CONFIGURAÇÃO
+     AUTH HANDLERS
      ========================================================= */
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('church_treasury_config', JSON.stringify(configIgreja));
-    } catch (error) {
-      console.error('Erro ao salvar configuração:', error);
+  const handleLoginSuccess = async (
+    user: User,
+    _isNewAccount?: boolean,
+    churchName?: string
+  ) => {
+    // Limpa estado anterior antes de popular novo usuário
+    setHistorico([]);
+    setCurrentUser(user);
+
+    // Sincroniza o perfil do usuário no Supabase
+    await syncUserProfile(user);
+
+    if (churchName && churchName.trim()) {
+      const updatedConfig: ConfigIgreja = {
+        ...configIgreja,
+        nomeIgreja: churchName.trim(),
+      };
+      setConfigIgreja(updatedConfig);
+      if (user.id) {
+        saveConfiguracaoIgreja(updatedConfig, user.id);
+      }
     }
 
-    // Salva no Supabase vinculado ao usuário logado
-    if (currentUser?.id) {
-      saveConfiguracaoIgreja(configIgreja, currentUser.id);
+    // Carrega os dados reais do banco do Supabase para esta conta
+    await loadUserDataFromSupabase(user.id, user);
+  };
+
+  const handleLogout = async () => {
+    // 1. Limpa todos os estados locais do React imediatamente
+    setCurrentUser(null);
+    setHistorico([]);
+    setConfigIgreja(DEFAULT_CONFIG);
+    setFechamentoAtual(createEmptyFechamento(DEFAULT_CONFIG, null));
+    setActiveTab('fechamento');
+
+    // 2. Encerra a sessão no Supabase Auth
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.warn('Erro ao sair do Supabase Auth:', err);
+      }
     }
-  }, [configIgreja, currentUser?.id]);
+  };
 
   /* =========================================================
-     PERSISTÊNCIA DO HISTÓRICO
+     GERENCIADORES DE DADOS SINCRONIZADOS COM O SUPABASE
      ========================================================= */
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('church_treasury_historico', JSON.stringify(historico));
-    } catch (error) {
-      console.error('Erro ao salvar histórico:', error);
-    }
-  }, [historico]);
+  const handleSetFechamentoAtual = (
+    updater: FechamentoCulto | ((prev: FechamentoCulto) => FechamentoCulto)
+  ) => {
+    setFechamentoAtual((prev) => {
+      const updated = typeof updater === 'function' ? updater(prev) : updater;
 
-  /* =========================================================
-     PERSISTÊNCIA E SINCRONIZAÇÃO DO FECHAMENTO ATUAL
-     ========================================================= */
+      // Atualiza o histórico em memória
+      setHistorico((prevHistorico) => {
+        const index = prevHistorico.findIndex((f) => f.id === updated.id);
+        if (index >= 0) {
+          const copy = [...prevHistorico];
+          copy[index] = updated;
+          return copy;
+        }
+        return [updated, ...prevHistorico];
+      });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('church_treasury_active_culto', JSON.stringify(fechamentoAtual));
-    } catch (error) {
-      console.error('Erro ao salvar fechamento atual:', error);
-    }
-
-    // Salva/Sincroniza fechamento no Supabase vinculado ao usuário logado
-    if (currentUser?.id) {
-      saveFechamento(fechamentoAtual, currentUser.id);
-    }
-
-    setHistorico((prev) => {
-      const index = prev.findIndex((f) => f.id === fechamentoAtual.id);
-
-      if (index >= 0) {
-        const updated = [...prev];
-        updated[index] = fechamentoAtual;
-        return updated;
+      // Salva no Supabase vinculado ao usuário logado
+      if (currentUser?.id) {
+        saveFechamento(updated, currentUser.id);
       }
 
-      return [fechamentoAtual, ...prev];
+      return updated;
     });
-  }, [fechamentoAtual, currentUser?.id]);
+  };
+
+  const handleSetConfigIgreja = (
+    updater: ConfigIgreja | ((prev: ConfigIgreja) => ConfigIgreja)
+  ) => {
+    setConfigIgreja((prev) => {
+      const updated = typeof updater === 'function' ? updater(prev) : updater;
+      if (currentUser?.id) {
+        saveConfiguracaoIgreja(updated, currentUser.id);
+      }
+      return updated;
+    });
+  };
 
   /* =========================================================
      AÇÕES DO FECHAMENTO
      ========================================================= */
 
-  const handleNovoFechamento = () => {
-    const novo = createNewFechamento(configIgreja);
+  const handleNovoFechamento = async () => {
+    const novo = createEmptyFechamento(configIgreja, currentUser);
     setFechamentoAtual(novo);
+    setHistorico((prev) => [novo, ...prev]);
     setActiveTab('fechamento');
+
+    if (currentUser?.id) {
+      await saveFechamento(novo, currentUser.id);
+    }
   };
 
   const handleSelectFechamento = (fechamento: FechamentoCulto) => {
@@ -302,14 +301,17 @@ export default function App() {
 
   const handleDeleteFechamentoItem = async (id: string) => {
     setHistorico((prev) => prev.filter((f) => f.id !== id));
-    deleteFechamento(id, currentUser?.id);
+    if (currentUser?.id) {
+      await deleteFechamento(id, currentUser.id);
+    }
 
     if (fechamentoAtual.id === id) {
       const remaining = historico.filter((f) => f.id !== id);
       if (remaining.length > 0) {
         setFechamentoAtual(remaining[0]);
       } else {
-        setFechamentoAtual(createNewFechamento(configIgreja));
+        const novo = createEmptyFechamento(configIgreja, currentUser);
+        setFechamentoAtual(novo);
       }
     }
   };
@@ -322,6 +324,17 @@ export default function App() {
   /* =========================================================
      RENDER
      ========================================================= */
+
+  if (isAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center font-sans">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin"></div>
+          <p className="text-sm font-medium text-slate-400">Verificando sessão segura...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return (
@@ -361,7 +374,7 @@ export default function App() {
             {activeTab === 'fechamento' && (
               <FechamentoAtualView
                 fechamento={fechamentoAtual}
-                setFechamento={setFechamentoAtual}
+                setFechamento={handleSetFechamentoAtual}
                 onGoToLancamentos={() => setActiveTab('lancamentos')}
                 onGoToContagem={() => setActiveTab('contagem')}
                 onGoToRelatorioIA={() => setActiveTab('relatorio_ia')}
@@ -372,7 +385,7 @@ export default function App() {
             {activeTab === 'lancamentos' && (
               <LancamentosView
                 fechamento={fechamentoAtual}
-                setFechamento={setFechamentoAtual}
+                setFechamento={handleSetFechamentoAtual}
                 onNavigate={setActiveTab}
               />
             )}
@@ -380,7 +393,7 @@ export default function App() {
             {activeTab === 'contagem' && (
               <ContagemDinheiroView
                 fechamento={fechamentoAtual}
-                setFechamento={setFechamentoAtual}
+                setFechamento={handleSetFechamentoAtual}
                 onNavigate={setActiveTab}
               />
             )}
@@ -388,7 +401,7 @@ export default function App() {
             {activeTab === 'relatorio_ia' && (
               <RelatorioIAView
                 fechamento={fechamentoAtual}
-                setFechamento={setFechamentoAtual}
+                setFechamento={handleSetFechamentoAtual}
                 onNavigate={setActiveTab}
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
               />
@@ -409,7 +422,7 @@ export default function App() {
             {activeTab === 'config' && (
               <ConfigView
                 config={configIgreja}
-                setConfig={setConfigIgreja}
+                setConfig={handleSetConfigIgreja}
                 onNavigate={setActiveTab}
               />
             )}
