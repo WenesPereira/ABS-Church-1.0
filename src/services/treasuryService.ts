@@ -23,16 +23,22 @@ export const DEFAULT_CONFIG: ConfigIgreja = {
 };
 
 /* =========================================================
-   HELPER: Obter ID do Usuário Autenticado
+   HELPER: Obter e Validar Sessão do Usuário Autenticado
    ========================================================= */
 
 export async function getCurrentUserId(explicitUserId?: string): Promise<string | null> {
   if (explicitUserId) return explicitUserId;
   if (!isSupabaseConfigured) return null;
+
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) {
+      console.error('Erro Supabase ao validar sessão do usuário:', error);
+      return null;
+    }
     return user?.id || null;
-  } catch {
+  } catch (err) {
+    console.error('Erro Supabase inesperado ao obter sessão:', err);
     return null;
   }
 }
@@ -74,7 +80,6 @@ function mapConfigToRow(config: ConfigIgreja, userId: string): Partial<SupabaseC
     tipo_base_repasse_matriz: config.tipoBaseRepasseMatriz || 'todas',
     categorias_repasse_matriz: (config.categoriasRepasseMatriz as string[]) || null,
     logo_url: config.logoUrl || null,
-    updated_at: new Date().toISOString(),
   };
 }
 
@@ -140,6 +145,7 @@ export async function fetchConfiguracaoIgreja(userId?: string): Promise<{ data: 
   try {
     const uid = await getCurrentUserId(userId);
     if (!uid) {
+      console.warn('fetchConfiguracaoIgreja: Usuário não autenticado no Supabase.');
       return { data: DEFAULT_CONFIG, isSupabase: true };
     }
 
@@ -150,7 +156,7 @@ export async function fetchConfiguracaoIgreja(userId?: string): Promise<{ data: 
       .maybeSingle();
 
     if (error) {
-      console.warn('Erro ao carregar configurações do Supabase:', error.message);
+      console.error('Erro Supabase ao buscar configuracao_igreja:', error);
       return { data: DEFAULT_CONFIG, isSupabase: false };
     }
 
@@ -162,7 +168,7 @@ export async function fetchConfiguracaoIgreja(userId?: string): Promise<{ data: 
 
     return { data: mapRowToConfig(data), isSupabase: true };
   } catch (err) {
-    console.error('Falha de conexão com Supabase para configurações:', err);
+    console.error('Erro Supabase inesperado ao buscar configurações:', err);
     return { data: DEFAULT_CONFIG, isSupabase: false };
   }
 }
@@ -173,22 +179,23 @@ export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: stri
   try {
     const uid = await getCurrentUserId(userId);
     if (!uid) {
-      console.warn('Nenhum usuário autenticado encontrado para salvar configuração.');
+      console.error('Erro Supabase: Tentativa de salvar configuracao_igreja sem usuário autenticado.');
       return false;
     }
 
     const row = mapConfigToRow(config, uid);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('configuracao_igreja')
-      .upsert(row, { onConflict: 'id' });
+      .upsert(row, { onConflict: 'id' })
+      .select();
 
     if (error) {
-      console.warn('Erro ao salvar configuração no Supabase:', error.message);
+      console.error('Erro Supabase ao salvar configuracao_igreja:', error);
       return false;
     }
-    return true;
+    return !!data;
   } catch (err) {
-    console.warn('Erro de conexão ao salvar configuração no Supabase:', err);
+    console.error('Erro Supabase inesperado ao salvar configuracao_igreja:', err);
     return false;
   }
 }
@@ -205,10 +212,11 @@ export async function fetchFechamentos(userId?: string): Promise<{ data: Fechame
   try {
     const uid = await getCurrentUserId(userId);
     if (!uid) {
+      console.warn('fetchFechamentos: Usuário não autenticado no Supabase.');
       return { data: [], isSupabase: true };
     }
 
-    // Busca apenas os fechamentos do usuário autenticado
+    // 1. Busca os fechamentos filtrando explicitamente pelo usuário logado
     const { data: fechamentosRows, error: fechamentosError } = await supabase
       .from('fechamentos_culto')
       .select('*')
@@ -216,7 +224,7 @@ export async function fetchFechamentos(userId?: string): Promise<{ data: Fechame
       .order('criado_em', { ascending: false });
 
     if (fechamentosError) {
-      console.warn('Erro ao buscar fechamentos no Supabase:', fechamentosError.message);
+      console.error('Erro Supabase ao buscar fechamentos_culto:', fechamentosError);
       return { data: [], isSupabase: false };
     }
 
@@ -224,14 +232,14 @@ export async function fetchFechamentos(userId?: string): Promise<{ data: Fechame
       return { data: [], isSupabase: true };
     }
 
-    // Busca os lançamentos vinculados a esse usuário
+    // 2. Busca os lançamentos filtrando explicitamente pelo usuário logado
     const { data: lancamentosRows, error: lancamentosError } = await supabase
       .from('lancamentos')
       .select('*')
       .eq('user_id', uid);
 
     if (lancamentosError) {
-      console.warn('Erro ao buscar lançamentos no Supabase:', lancamentosError.message);
+      console.error('Erro Supabase ao buscar lancamentos:', lancamentosError);
     }
 
     const allLancamentos = lancamentosRows || [];
@@ -243,7 +251,7 @@ export async function fetchFechamentos(userId?: string): Promise<{ data: Fechame
 
     return { data: fechamentosCompleto, isSupabase: true };
   } catch (err) {
-    console.warn('Falha de conexão com Supabase ao carregar fechamentos:', err);
+    console.error('Erro Supabase inesperado ao carregar fechamentos:', err);
     return { data: [], isSupabase: false };
   }
 }
@@ -254,7 +262,7 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
   try {
     const uid = await getCurrentUserId(userId);
     if (!uid) {
-      console.warn('Nenhum usuário autenticado para salvar fechamento no Supabase.');
+      console.error('Erro Supabase: Tentativa de salvar fechamento sem usuário autenticado.');
       return false;
     }
 
@@ -285,19 +293,19 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       criado_em: fechamento.criadoEm,
       fechado_em: fechamento.fechadoEm || null,
       relatorio_ia: fechamento.relatorioIA || null,
-      updated_at: new Date().toISOString(),
     };
 
-    const { error: fError } = await supabase
+    const { data: fData, error: fError } = await supabase
       .from('fechamentos_culto')
-      .upsert(fechamentoRow, { onConflict: 'id' });
+      .upsert(fechamentoRow, { onConflict: 'id' })
+      .select();
 
     if (fError) {
-      console.warn('Erro ao salvar fechamento no Supabase:', fError.message);
+      console.error('Erro Supabase ao salvar fechamentos_culto:', fError);
       return false;
     }
 
-    // Salva os lançamentos vinculados com user_id
+    // Salva os lançamentos vinculados explicitamente com user_id
     if (fechamento.lancamentos && fechamento.lancamentos.length > 0) {
       const lancamentoRows = fechamento.lancamentos.map((l) => ({
         id: l.id,
@@ -310,21 +318,21 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
         forma_pagamento: l.formaPagamento,
         nome_pessoa: l.nomePessoa || null,
         data: l.data,
-        updated_at: new Date().toISOString(),
       }));
 
-      const { error: lError } = await supabase
+      const { data: lData, error: lError } = await supabase
         .from('lancamentos')
-        .upsert(lancamentoRows, { onConflict: 'id' });
+        .upsert(lancamentoRows, { onConflict: 'id' })
+        .select();
 
       if (lError) {
-        console.warn('Erro ao sincronizar lançamentos no Supabase:', lError.message);
+        console.error('Erro Supabase ao salvar lancamentos:', lError);
       }
     }
 
     return true;
   } catch (err) {
-    console.warn('Erro de conexão ao salvar fechamento no Supabase:', err);
+    console.error('Erro Supabase inesperado ao salvar fechamento:', err);
     return false;
   }
 }
@@ -334,29 +342,37 @@ export async function deleteFechamento(fechamentoId: string, userId?: string): P
 
   try {
     const uid = await getCurrentUserId(userId);
-    if (!uid) return false;
+    if (!uid) {
+      console.error('Erro Supabase: Tentativa de excluir fechamento sem usuário autenticado.');
+      return false;
+    }
 
-    // Apaga os lançamentos primeiro
-    await supabase
+    // 1. Apaga os lançamentos vinculados ao usuário e ao fechamento
+    const { error: lError } = await supabase
       .from('lancamentos')
       .delete()
       .eq('fechamento_id', fechamentoId)
       .eq('user_id', uid);
 
-    const { error } = await supabase
+    if (lError) {
+      console.error('Erro Supabase ao excluir lançamentos do fechamento:', lError);
+    }
+
+    // 2. Apaga o fechamento do usuário
+    const { error: fError } = await supabase
       .from('fechamentos_culto')
       .delete()
       .eq('id', fechamentoId)
       .eq('user_id', uid);
 
-    if (error) {
-      console.warn('Erro ao excluir fechamento no Supabase:', error.message);
+    if (fError) {
+      console.error('Erro Supabase ao excluir fechamentos_culto:', fError);
       return false;
     }
 
     return true;
   } catch (err) {
-    console.warn('Erro de conexão ao excluir fechamento no Supabase:', err);
+    console.error('Erro Supabase inesperado ao excluir fechamento:', err);
     return false;
   }
 }
@@ -366,7 +382,10 @@ export async function deleteLancamento(lancamentoId: string, userId?: string): P
 
   try {
     const uid = await getCurrentUserId(userId);
-    if (!uid) return false;
+    if (!uid) {
+      console.error('Erro Supabase: Tentativa de excluir lançamento sem usuário autenticado.');
+      return false;
+    }
 
     const { error } = await supabase
       .from('lancamentos')
@@ -375,13 +394,13 @@ export async function deleteLancamento(lancamentoId: string, userId?: string): P
       .eq('user_id', uid);
 
     if (error) {
-      console.warn('Erro ao excluir lançamento no Supabase:', error.message);
+      console.error('Erro Supabase ao excluir lançamento:', error);
       return false;
     }
 
     return true;
   } catch (err) {
-    console.warn('Erro de conexão ao excluir lançamento no Supabase:', err);
+    console.error('Erro Supabase inesperado ao excluir lançamento:', err);
     return false;
   }
 }
@@ -394,7 +413,7 @@ export async function syncUserProfile(user: User): Promise<boolean> {
   if (!isSupabaseConfigured || !user.id) return false;
 
   try {
-    const row: SupabasePerfilUsuarioRow = {
+    const row: Partial<SupabasePerfilUsuarioRow> = {
       id: user.id,
       user_id: user.id,
       email: user.email,
@@ -402,21 +421,21 @@ export async function syncUserProfile(user: User): Promise<boolean> {
       cargo: user.cargo || null,
       nome_igreja: user.nomeIgreja || null,
       created_at: user.createdAt || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
     };
 
-    const { error: profileError } = await supabase
+    const { data, error } = await supabase
       .from('profiles')
-      .upsert(row, { onConflict: 'id' });
+      .upsert(row, { onConflict: 'id' })
+      .select();
 
-    if (profileError) {
-      console.warn('Erro ao salvar perfil de usuário no Supabase:', profileError.message);
+    if (error) {
+      console.error('Erro Supabase ao salvar perfil de usuário em profiles:', error);
       return false;
     }
 
     return true;
   } catch (err) {
-    console.warn('Erro ao sincronizar perfil do usuário com Supabase:', err);
+    console.error('Erro Supabase inesperado ao sincronizar perfil do usuário:', err);
     return false;
   }
 }
@@ -428,11 +447,11 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .eq('id', userId)
+      .eq('user_id', userId)
       .maybeSingle();
 
     if (error) {
-      console.warn('Erro ao buscar perfil do usuário:', error.message);
+      console.error('Erro Supabase ao buscar perfil em profiles:', error);
       return null;
     }
 
@@ -448,7 +467,7 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
     }
     return null;
   } catch (err) {
-    console.warn('Erro ao carregar perfil do usuário no Supabase:', err);
+    console.error('Erro Supabase inesperado ao carregar perfil do usuário:', err);
     return null;
   }
 }

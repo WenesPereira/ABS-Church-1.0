@@ -87,16 +87,28 @@ export default function App() {
 
   const loadUserDataFromSupabase = useCallback(async (userId: string, userObj?: User | null) => {
     try {
-      // 1. Carrega configurações do usuário
-      const configRes = await fetchConfiguracaoIgreja(userId);
+      // Garante a sessão ativa do usuário antes de realizar consultas
+      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+      if (authError) {
+        console.error('Erro Supabase ao validar sessão do usuário:', authError);
+      }
+
+      const effectiveUserId = authUser?.id || userId;
+      if (!effectiveUserId) {
+        console.warn('loadUserDataFromSupabase: ID de usuário não encontrado.');
+        return;
+      }
+
+      // 1. Carrega configurações do usuário com filtro explícito
+      const configRes = await fetchConfiguracaoIgreja(effectiveUserId);
       const userConfig = configRes.data || DEFAULT_CONFIG;
       if (userObj?.nomeIgreja && (!userConfig.nomeIgreja || userConfig.nomeIgreja === 'Minha Igreja')) {
         userConfig.nomeIgreja = userObj.nomeIgreja;
       }
       setConfigIgreja(userConfig);
 
-      // 2. Carrega fechamentos do usuário
-      const fechamentosRes = await fetchFechamentos(userId);
+      // 2. Carrega fechamentos do usuário com filtro explícito
+      const fechamentosRes = await fetchFechamentos(effectiveUserId);
       if (fechamentosRes.data && fechamentosRes.data.length > 0) {
         setHistorico(fechamentosRes.data);
         setFechamentoAtual(fechamentosRes.data[0]);
@@ -106,7 +118,7 @@ export default function App() {
         setFechamentoAtual(novoVazio);
       }
     } catch (err) {
-      console.error('Erro ao carregar dados do Supabase para o usuário:', err);
+      console.error('Erro Supabase inesperado ao carregar dados do usuário:', err);
     }
   }, []);
 
@@ -123,8 +135,12 @@ export default function App() {
     let isMounted = true;
 
     // Monitora sessão ativa do Supabase Auth
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session }, error: sessionError }) => {
       if (!isMounted) return;
+
+      if (sessionError) {
+        console.error('Erro Supabase ao recuperar sessão:', sessionError);
+      }
 
       if (session?.user) {
         const profile = await fetchUserProfile(session.user.id);
@@ -230,9 +246,12 @@ export default function App() {
     // 2. Encerra a sessão no Supabase Auth
     if (isSupabaseConfigured) {
       try {
-        await supabase.auth.signOut();
+        const { error } = await supabase.auth.signOut();
+        if (error) {
+          console.error('Erro Supabase ao deslogar:', error);
+        }
       } catch (err) {
-        console.warn('Erro ao sair do Supabase Auth:', err);
+        console.error('Erro Supabase inesperado ao sair:', err);
       }
     }
   };

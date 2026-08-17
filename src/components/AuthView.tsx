@@ -110,6 +110,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
       });
 
       if (error) {
+        console.error('Erro Supabase no login (signInWithPassword):', error);
         setErrorMessage(parseSupabaseAuthError(error));
         setIsLoading(false);
         return;
@@ -135,7 +136,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         }, 300);
       }
     } catch (err: unknown) {
-      console.warn('Erro na autenticação Supabase Auth:', err);
+      console.error('Erro Supabase inesperado no login:', err);
       const errObj = err as { message?: string };
       setErrorMessage(parseSupabaseAuthError(errObj));
       setIsLoading(false);
@@ -194,6 +195,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
       });
 
       if (error) {
+        console.error('Erro Supabase no cadastro (signUp):', error);
         setErrorMessage(parseSupabaseAuthError(error));
         setIsLoading(false);
         return;
@@ -218,7 +220,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
         // 2. Salva na tabela public.profiles com user_id
         try {
-          await supabase.from('profiles').upsert({
+          const { error: profileErr } = await supabase.from('profiles').upsert({
             id: newUserId,
             user_id: newUserId,
             email: emailTrimmed,
@@ -226,10 +228,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
             cargo: regCargo || 'Tesoureiro',
             nome_igreja: igrejaTrimmed || 'Minha Igreja',
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
           });
+          if (profileErr) {
+            console.error('Erro Supabase ao salvar profiles:', profileErr);
+          }
         } catch (profileErr) {
-          console.warn('Perfil criado via trigger ou erro silencioso:', profileErr);
+          console.error('Erro Supabase inesperado ao salvar profiles:', profileErr);
         }
 
         // Verifica se requer confirmação de e-mail
@@ -247,7 +251,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         }, 500);
       }
     } catch (err: unknown) {
-      console.warn('Erro ao registrar no Supabase Auth:', err);
+      console.error('Erro Supabase inesperado no registro:', err);
       const errObj = err as { message?: string };
       setErrorMessage(parseSupabaseAuthError(errObj));
       setIsLoading(false);
@@ -275,6 +279,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
         setIsLoading(false);
         if (error) {
+          console.error('Erro Supabase na recuperação de senha:', error);
           setErrorMessage(parseSupabaseAuthError(error));
         } else {
           setSuccessMessage(
@@ -284,6 +289,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         return;
       } catch (err: unknown) {
         setIsLoading(false);
+        console.error('Erro Supabase inesperado na recuperação de senha:', err);
         const errObj = err as { message?: string };
         setErrorMessage(parseSupabaseAuthError(errObj));
         return;
