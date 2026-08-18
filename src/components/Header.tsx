@@ -18,6 +18,10 @@ import {
   Settings,
   Menu,
   X,
+  Cloud,
+  Check,
+  AlertCircle,
+  Loader2,
 } from 'lucide-react';
 import { ActiveTab, FechamentoCulto, ConfigIgreja, User } from '../types';
 import { formatCurrency, calcularResumoLancamentos } from '../utils/calculations';
@@ -31,6 +35,8 @@ interface HeaderProps {
   onOpenPrintModal: () => void;
   currentUser?: User | null;
   onLogout?: () => void;
+  syncStatus?: 'idle' | 'saving' | 'saved' | 'error';
+  onManualSave?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -42,6 +48,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPrintModal,
   currentUser,
   onLogout,
+  syncStatus = 'idle',
+  onManualSave,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -222,6 +230,47 @@ export const Header: React.FC<HeaderProps> = ({
               3. AÇÕES RÁPIDAS & MENU MOBILE (DIREITA)
               =================================================== */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* INDICADOR DE SINCRONIZAÇÃO EM NUVEM */}
+            {onManualSave && (
+              <button
+                type="button"
+                onClick={onManualSave}
+                disabled={syncStatus === 'saving'}
+                className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  syncStatus === 'saving'
+                    ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                    : syncStatus === 'saved'
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                    : syncStatus === 'error'
+                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                    : 'bg-slate-800/80 hover:bg-slate-750 text-slate-300 border-slate-700 hover:border-slate-600'
+                }`}
+                title="Status da Sincronização com o Banco Supabase (Clique para Forçar Salvamento)"
+              >
+                {syncStatus === 'saving' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                    <span>Salvando...</span>
+                  </>
+                ) : syncStatus === 'saved' ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Salvo na Nuvem</span>
+                  </>
+                ) : syncStatus === 'error' ? (
+                  <>
+                    <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Erro ao Salvar</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-3.5 h-3.5 text-sky-400" />
+                    <span className="hidden md:inline">Salvar</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {/* BOTÃO IMPRIMIR / PDF */}
             <button
               type="button"

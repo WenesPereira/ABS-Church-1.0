@@ -81,6 +81,9 @@ export default function App() {
   // Modal Print State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
 
+  // Supabase Cloud Sync State
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
   /* =========================================================
      FUNÇÃO DE CARREGAMENTO DIRETO DO SUPABASE
      ========================================================= */
@@ -279,7 +282,20 @@ export default function App() {
 
       // Salva no Supabase vinculado ao usuário logado
       if (currentUser?.id) {
-        saveFechamento(updated, currentUser.id);
+        setSyncStatus('saving');
+        saveFechamento(updated, currentUser.id)
+          .then((success) => {
+            if (success) {
+              setSyncStatus('saved');
+              setTimeout(() => setSyncStatus('idle'), 2500);
+            } else {
+              setSyncStatus('error');
+            }
+          })
+          .catch((err) => {
+            console.error('Erro ao sincronizar fechamento:', err);
+            setSyncStatus('error');
+          });
       }
 
       return updated;
@@ -292,10 +308,41 @@ export default function App() {
     setConfigIgreja((prev) => {
       const updated = typeof updater === 'function' ? updater(prev) : updater;
       if (currentUser?.id) {
-        saveConfiguracaoIgreja(updated, currentUser.id);
+        setSyncStatus('saving');
+        saveConfiguracaoIgreja(updated, currentUser.id)
+          .then((success) => {
+            if (success) {
+              setSyncStatus('saved');
+              setTimeout(() => setSyncStatus('idle'), 2500);
+            } else {
+              setSyncStatus('error');
+            }
+          })
+          .catch((err) => {
+            console.error('Erro ao sincronizar configurações:', err);
+            setSyncStatus('error');
+          });
       }
       return updated;
     });
+  };
+
+  const handleManualSave = async () => {
+    if (!currentUser?.id) return;
+    setSyncStatus('saving');
+    try {
+      const ok1 = await saveFechamento(fechamentoAtual, currentUser.id);
+      const ok2 = await saveConfiguracaoIgreja(configIgreja, currentUser.id);
+      if (ok1 && ok2) {
+        setSyncStatus('saved');
+        setTimeout(() => setSyncStatus('idle'), 2500);
+      } else {
+        setSyncStatus('error');
+      }
+    } catch (err) {
+      console.error('Erro no salvamento manual:', err);
+      setSyncStatus('error');
+    }
   };
 
   /* =========================================================
@@ -309,7 +356,14 @@ export default function App() {
     setActiveTab('fechamento');
 
     if (currentUser?.id) {
-      await saveFechamento(novo, currentUser.id);
+      setSyncStatus('saving');
+      const ok = await saveFechamento(novo, currentUser.id);
+      if (ok) {
+        setSyncStatus('saved');
+        setTimeout(() => setSyncStatus('idle'), 2500);
+      } else {
+        setSyncStatus('error');
+      }
     }
   };
 
@@ -376,6 +430,8 @@ export default function App() {
         onOpenPrintModal={() => setIsPrintModalOpen(true)}
         currentUser={currentUser}
         onLogout={handleLogout}
+        syncStatus={syncStatus}
+        onManualSave={handleManualSave}
       />
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">

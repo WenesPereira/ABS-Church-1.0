@@ -23,24 +23,69 @@ export const DEFAULT_CONFIG: ConfigIgreja = {
 };
 
 /* =========================================================
+   HELPER: Formatação e Sanitização Segura de Datas para SQL
+   ========================================================= */
+
+export function toSqlDate(val?: string | null): string {
+  if (!val || typeof val !== 'string' || !val.trim()) {
+    return new Date().toISOString().split('T')[0];
+  }
+  const trimmed = val.trim();
+  // Formato YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  // Formato YYYY-MM-DDTHH:mm:ss...
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
+    return trimmed.split('T')[0];
+  }
+  // Formato DD/MM/YYYY ou DD/MM/YYYY HH:mm...
+  const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, '0');
+    const month = brMatch[2].padStart(2, '0');
+    const year = brMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
+export function toSqlTimestamp(val?: string | null): string | null {
+  if (!val || typeof val !== 'string' || !val.trim()) return null;
+  const trimmed = val.trim();
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString();
+  }
+  return null;
+}
+
+/* =========================================================
    HELPER: Obter e Validar Sessão do Usuário Autenticado
    ========================================================= */
 
 export async function getCurrentUserId(explicitUserId?: string): Promise<string | null> {
-  if (explicitUserId) return explicitUserId;
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured) return explicitUserId || null;
 
   try {
     const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) {
-      console.error('Erro Supabase ao validar sessão do usuário:', error);
-      return null;
+    if (user?.id) {
+      return user.id;
     }
-    return user?.id || null;
+    if (error) {
+      console.warn('getCurrentUserId auth.getUser aviso:', error.message);
+    }
   } catch (err) {
-    console.error('Erro Supabase inesperado ao obter sessão:', err);
-    return null;
+    console.warn('getCurrentUserId erro ao obter user:', err);
   }
+
+  // Se explicitUserId for fornecido como fallback
+  if (explicitUserId) return explicitUserId;
+  return null;
 }
 
 /* =========================================================
@@ -266,32 +311,41 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       return false;
     }
 
+    const cleanContagem = fechamento.contagemDinheiro && typeof fechamento.contagemDinheiro === 'object'
+      ? fechamento.contagemDinheiro
+      : {
+          c200: 0, c100: 0, c50: 0, c20: 0, c10: 0, c5: 0, c2: 0,
+          m100: 0, m050: 0, m025: 0, m010: 0, m005: 0,
+        };
+
     const fechamentoRow: Partial<SupabaseFechamentoCultoRow> = {
-      id: fechamento.id,
+      id: fechamento.id || `culto-${Date.now()}`,
       user_id: uid,
-      nome_igreja: fechamento.nomeIgreja,
-      data: fechamento.data,
-      data_inicio: fechamento.dataInicio || null,
-      data_fim: fechamento.dataFim || null,
-      hora: fechamento.hora,
-      tipo_culto: fechamento.tipoCulto,
+      nome_igreja: fechamento.nomeIgreja || 'Minha Igreja',
+      data: toSqlDate(fechamento.data),
+      data_inicio: fechamento.dataInicio ? toSqlDate(fechamento.dataInicio) : null,
+      data_fim: fechamento.dataFim ? toSqlDate(fechamento.dataFim) : null,
+      hora: fechamento.hora || '19:00',
+      tipo_culto: fechamento.tipoCulto || 'Fechamento de Caixa',
       pregador: fechamento.pregador || null,
       passagem_biblica: fechamento.passagemBiblica || null,
-      qtd_membros: fechamento.qtdMembros ?? null,
-      qtd_visitantes: fechamento.qtdVisitantes ?? null,
+      qtd_membros: typeof fechamento.qtdMembros === 'number' ? fechamento.qtdMembros : 0,
+      qtd_visitantes: typeof fechamento.qtdVisitantes === 'number' ? fechamento.qtdVisitantes : 0,
       pastor_presidente: fechamento.pastorPresidente || null,
-      tesoureiro: fechamento.tesoureiro,
+      tesoureiro: fechamento.tesoureiro || 'Tesoureiro Principal',
       pastor_local: fechamento.pastorLocal || null,
       segunda_testemunha: fechamento.segundaTestemunha || null,
       porcentagem_matriz: fechamento.porcentagemMatriz != null ? Number(fechamento.porcentagemMatriz) : 20,
       aplicar_repasse_matriz: fechamento.aplicarRepasseMatriz ?? true,
       tipo_base_repasse_matriz: fechamento.tipoBaseRepasseMatriz || 'todas',
-      categorias_repasse_matriz: (fechamento.categoriasRepasseMatriz as string[]) || null,
+      categorias_repasse_matriz: Array.isArray(fechamento.categoriasRepasseMatriz)
+        ? (fechamento.categoriasRepasseMatriz as string[])
+        : ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
       observacoes: fechamento.observacoes || null,
-      contagem_dinheiro: fechamento.contagemDinheiro,
-      status: fechamento.status,
-      criado_em: fechamento.criadoEm,
-      fechado_em: fechamento.fechadoEm || null,
+      contagem_dinheiro: cleanContagem,
+      status: fechamento.status === 'fechado' ? 'fechado' : 'aberto',
+      criado_em: toSqlTimestamp(fechamento.criadoEm) || new Date().toISOString(),
+      fechado_em: toSqlTimestamp(fechamento.fechadoEm),
       relatorio_ia: fechamento.relatorioIA || null,
     };
 
@@ -311,13 +365,13 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
         id: l.id,
         user_id: uid,
         fechamento_id: fechamento.id,
-        tipo: l.tipo,
-        categoria: l.categoria,
-        descricao: l.descricao,
-        valor: Number(l.valor),
-        forma_pagamento: l.formaPagamento,
+        tipo: l.tipo === 'saida' ? 'saida' : 'entrada',
+        categoria: l.categoria || (l.tipo === 'saida' ? 'outros' : 'oferta_culto'),
+        descricao: l.descricao || 'Lançamento',
+        valor: Number(l.valor) || 0,
+        forma_pagamento: l.formaPagamento || 'dinheiro',
         nome_pessoa: l.nomePessoa || null,
-        data: l.data,
+        data: toSqlDate(l.data),
       }));
 
       const { data: lData, error: lError } = await supabase
