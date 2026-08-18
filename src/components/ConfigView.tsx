@@ -134,17 +134,25 @@ CREATE TABLE IF NOT EXISTS public.lancamentos (
     id TEXT PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
     fechamento_id TEXT NOT NULL REFERENCES public.fechamentos_culto(id) ON DELETE CASCADE,
-    tipo TEXT NOT NULL CHECK (tipo IN ('entrada', 'saida')),
+    tipo TEXT NOT NULL,
     categoria TEXT NOT NULL,
     descricao TEXT NOT NULL,
     valor NUMERIC(12,2) NOT NULL DEFAULT 0.00,
     forma_pagamento TEXT NOT NULL DEFAULT 'dinheiro',
     nome_pessoa TEXT,
     data DATE NOT NULL DEFAULT CURRENT_DATE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 ALTER TABLE public.lancamentos ENABLE ROW LEVEL SECURITY;
+
+-- Compatibilização de restrições para suportar maiúsculas/minúsculas
+ALTER TABLE public.lancamentos DROP CONSTRAINT IF EXISTS lancamentos_tipo_check;
+ALTER TABLE public.lancamentos ADD CONSTRAINT lancamentos_tipo_check 
+    CHECK (LOWER(tipo) IN ('entrada', 'saida', 'saída', 'receita', 'despesa'));
+
+ALTER TABLE public.fechamentos_culto DROP CONSTRAINT IF EXISTS fechamentos_culto_status_check;
+ALTER TABLE public.fechamentos_culto ADD CONSTRAINT fechamentos_culto_status_check 
+    CHECK (LOWER(status) IN ('aberto', 'fechado'));
 
 DROP POLICY IF EXISTS "Usuários podem visualizar seus lançamentos" ON public.lancamentos;
 CREATE POLICY "Usuários podem visualizar seus lançamentos"

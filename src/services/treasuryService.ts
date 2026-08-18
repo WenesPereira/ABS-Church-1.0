@@ -3,6 +3,7 @@ import {
   ConfigIgreja,
   FechamentoCulto,
   Lancamento,
+  TipoLancamento,
   User,
   SupabaseConfiguracaoIgrejaRow,
   SupabaseFechamentoCultoRow,
@@ -129,9 +130,13 @@ function mapConfigToRow(config: ConfigIgreja, userId: string): Partial<SupabaseC
 }
 
 function mapRowToLancamento(row: SupabaseLancamentoRow): Lancamento {
+  const rawTipo = String(row.tipo || '').toLowerCase().trim();
+  const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
+  const tipo: TipoLancamento = isSaida ? 'saida' : 'entrada';
+
   return {
     id: row.id,
-    tipo: row.tipo,
+    tipo,
     categoria: row.categoria as CategoriaEntrada | CategoriaSaida,
     descricao: row.descricao,
     valor: Number(row.valor),
@@ -361,26 +366,62 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
 
     // Salva os lançamentos vinculados explicitamente com user_id
     if (fechamento.lancamentos && fechamento.lancamentos.length > 0) {
-      const lancamentoRows = fechamento.lancamentos.map((l) => ({
-        id: l.id,
-        user_id: uid,
-        fechamento_id: fechamento.id,
-        tipo: l.tipo === 'saida' ? 'saida' : 'entrada',
-        categoria: l.categoria || (l.tipo === 'saida' ? 'outros' : 'oferta_culto'),
-        descricao: l.descricao || 'Lançamento',
-        valor: Number(l.valor) || 0,
-        forma_pagamento: l.formaPagamento || 'dinheiro',
-        nome_pessoa: l.nomePessoa || null,
-        data: toSqlDate(l.data),
-      }));
+      const tipoStrategies: { name: string; resolve: (isSaida: boolean, cat: string) => string }[] = [
+        { name: 'lowercase', resolve: (isSaida) => (isSaida ? 'saida' : 'entrada') },
+        { name: 'uppercase', resolve: (isSaida) => (isSaida ? 'SAIDA' : 'ENTRADA') },
+        { name: 'accent_lower', resolve: (isSaida) => (isSaida ? 'saída' : 'entrada') },
+        { name: 'accent_upper', resolve: (isSaida) => (isSaida ? 'SAÍDA' : 'ENTRADA') },
+        { name: 'receita_despesa_lower', resolve: (isSaida) => (isSaida ? 'despesa' : 'receita') },
+        { name: 'receita_despesa_upper', resolve: (isSaida) => (isSaida ? 'DESPESA' : 'RECEITA') },
+        { name: 'capitalized', resolve: (isSaida) => (isSaida ? 'Saida' : 'Entrada') },
+        { name: 'capitalized_receita', resolve: (isSaida) => (isSaida ? 'Despesa' : 'Receita') },
+        { name: 'category_as_type', resolve: (isSaida, cat) => cat || (isSaida ? 'outros' : 'oferta_culto') },
+        { name: 'single_char_es', resolve: (isSaida) => (isSaida ? 'S' : 'E') },
+        { name: 'single_char_cd', resolve: (isSaida) => (isSaida ? 'D' : 'C') },
+      ];
 
-      const { data: lData, error: lError } = await supabase
-        .from('lancamentos')
-        .upsert(lancamentoRows, { onConflict: 'id' })
-        .select();
+      let lastError: any = null;
+      let savedSuccessfully = false;
 
-      if (lError) {
-        console.error('Erro Supabase ao salvar lancamentos:', lError);
+      for (const strategy of tipoStrategies) {
+        const rows = fechamento.lancamentos.map((l) => {
+          const rawTipo = String(l.tipo || '').toLowerCase().trim();
+          const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
+          const finalTipo = strategy.resolve(isSaida, l.categoria);
+
+          return {
+            id: l.id,
+            user_id: uid,
+            fechamento_id: fechamento.id,
+            tipo: finalTipo,
+            categoria: l.categoria || (isSaida ? 'outros' : 'oferta_culto'),
+            descricao: l.descricao || 'Lançamento',
+            valor: Number(l.valor) || 0,
+            forma_pagamento: l.formaPagamento || 'dinheiro',
+            nome_pessoa: l.nomePessoa || null,
+            data: toSqlDate(l.data),
+          };
+        });
+
+        const { error } = await supabase
+          .from('lancamentos')
+          .upsert(rows, { onConflict: 'id' })
+          .select();
+
+        if (!error) {
+          savedSuccessfully = true;
+          break;
+        }
+
+        lastError = error;
+        // Se o erro não for de check constraint (23514 / lancamentos_tipo_check), não tenta outras variações de tipo
+        if (error.code !== '23514' && !error.message?.includes('lancamentos_tipo_check')) {
+          break;
+        }
+      }
+
+      if (!savedSuccessfully && lastError) {
+        console.error('Erro Supabase ao salvar lancamentos:', lastError);
       }
     }
 

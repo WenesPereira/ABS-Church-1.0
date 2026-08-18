@@ -35,7 +35,7 @@ function parseSupabaseAuthError(error: { message?: string; status?: number } | n
   const msg = error.message.toLowerCase();
 
   if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
-    return 'E-mail ou senha incorretos. Por favor, verifique seus dados.';
+    return 'E-mail ou senha incorretos. Verifique suas credenciais ou crie sua conta na aba "Criar Conta".';
   }
   if (msg.includes('email not confirmed')) {
     return 'E-mail ainda não confirmado no Supabase. Verifique sua caixa de entrada para confirmar antes de entrar.';
