@@ -96,6 +96,9 @@ export interface ConfigIgreja {
   tipoBaseRepasseMatriz?: 'todas' | 'selecionadas';
   categoriasRepasseMatriz?: CategoriaEntrada[];
   logoUrl?: string;
+  whatsappSuporte?: string; // Número de WhatsApp para atendimento e suporte
+  emailSuporte?: string; // E-mail para atendimento e suporte
+  apkDownloadUrl?: string; // Link direto para download do APK Android (ex: Drive, Mediafire, OneDrive)
 }
 
 export interface User {
@@ -105,6 +108,11 @@ export interface User {
   cargo?: string;
   nomeIgreja?: string;
   createdAt: string;
+  subscriptionStatus?: 'active' | 'inactive' | 'trialing' | 'cancelled' | string;
+  subscriptionPlan?: string;
+  subscriptionExpiresAt?: string;
+  mpPreapprovalId?: string;
+  isDemo?: boolean;
 }
 
 /* =========================================================
@@ -118,6 +126,10 @@ export interface SupabasePerfilUsuarioRow {
   nome: string;
   cargo: string | null;
   nome_igreja: string | null;
+  subscription_status?: string | null;
+  subscription_plan?: string | null;
+  subscription_expires_at?: string | null;
+  mp_preapproval_id?: string | null;
   created_at: string;
   updated_at?: string;
 }

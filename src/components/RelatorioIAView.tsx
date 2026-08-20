@@ -1,16 +1,33 @@
 import React, { useState } from 'react';
-import { Sparkles, FileText, CheckCircle2, Copy, Printer, Loader2, AlertCircle, Church, Download, ArrowLeft, Coins } from 'lucide-react';
+import { Sparkles, FileText, CheckCircle2, Copy, Printer, Loader2, AlertCircle, Church, Download, ArrowLeft, Coins, Crown, Lock, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { FechamentoCulto, ActiveTab } from '../types';
+import { FechamentoCulto, ActiveTab, User } from '../types';
 import { generateChurchReport } from '../services/api';
+import { isSubscriptionActive, getMercadoPagoSubscriptionUrl } from '../services/treasuryService';
 
 interface RelatorioIAViewProps {
   fechamento: FechamentoCulto;
   setFechamento: React.Dispatch<React.SetStateAction<FechamentoCulto>>;
   onNavigate?: (tab: ActiveTab) => void;
   onOpenPrintModal?: () => void;
+  currentUser?: User | null;
+  onOpenSubscriptionModal?: () => void;
+}
+
+export function sanitizeReportText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/Exgressamos/gi, 'Expressamos')
+    .replace(/Orientação Auditiva/gi, 'Orientação de Auditoria')
+    .replace(/Orientacao Auditiva/gi, 'Orientação de Auditoria')
+    .replace(/orientação auditiva/gi, 'orientação de auditoria')
+    .replace(/orientacao auditiva/gi, 'orientação de auditoria')
+    .replace(/inconsciência/gi, 'inconsistência')
+    .replace(/inconsciencia/gi, 'inconsistência')
+    .replace(/Inconsciência/gi, 'Inconsistência')
+    .replace(/Inconsciencia/gi, 'Inconsistência');
 }
 
 export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
@@ -18,11 +35,15 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
   setFechamento,
   onNavigate,
   onOpenPrintModal,
+  currentUser,
+  onOpenSubscriptionModal,
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const isSubscribed = isSubscriptionActive(currentUser);
 
   const handleDownloadPdf = async () => {
     const element = document.getElementById('ai-report-content');
@@ -76,10 +97,18 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
   };
 
   const handleGerarRelatorio = async () => {
+    if (!isSubscribed) {
+      if (onOpenSubscriptionModal) {
+        onOpenSubscriptionModal();
+      }
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const report = await generateChurchReport(fechamento);
+      const rawReport = await generateChurchReport(fechamento);
+      const report = sanitizeReportText(rawReport);
       setFechamento((prev) => ({
         ...prev,
         relatorioIA: report,
@@ -91,9 +120,11 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
     }
   };
 
+  const currentReportText = sanitizeReportText(fechamento.relatorioIA || '');
+
   const handleCopy = () => {
-    if (fechamento.relatorioIA) {
-      navigator.clipboard.writeText(fechamento.relatorioIA);
+    if (currentReportText) {
+      navigator.clipboard.writeText(currentReportText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -126,6 +157,39 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
         </div>
       )}
 
+      {/* Subscription Lock Warning if not subscribed */}
+      {!isSubscribed && (
+        <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/40 border border-amber-500/40 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 max-w-5xl mx-auto w-full">
+          <div className="flex items-center gap-3">
+            <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+              <Crown className="w-6 h-6 fill-current" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Recurso Exclusivo Pro
+                </span>
+              </div>
+              <h3 className="text-sm sm:text-base font-bold text-slate-100 mt-1">
+                Desbloqueie a Análise Financeira por Inteligência Artificial
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
+                Assine o plano mensal do Tesouraria Pro para gerar pareceres formais e análises detalhadas com IA.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpenSubscriptionModal}
+            className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-xs shadow-lg shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer shrink-0 w-full sm:w-auto"
+          >
+            <Crown className="w-4 h-4 fill-current" />
+            <span>Assinar Plano Mensal</span>
+          </button>
+        </div>
+      )}
+
       {/* Banner */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-5xl mx-auto w-full">
         <div className="flex items-center gap-3">
@@ -149,6 +213,11 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
             <>
               <Loader2 className="w-4 h-4 animate-spin text-white" />
               <span>Analisando Caixa do Culto...</span>
+            </>
+          ) : !isSubscribed ? (
+            <>
+              <Lock className="w-4 h-4 text-amber-300" />
+              <span>Desbloquear com Pro</span>
             </>
           ) : (
             <>
@@ -205,7 +274,7 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
             </div>
 
             <div id="ai-report-content" className="prose prose-invert max-w-none text-xs md:text-sm leading-relaxed text-slate-200 bg-slate-950/60 p-5 rounded-2xl border border-slate-800/80">
-              <ReactMarkdown>{fechamento.relatorioIA}</ReactMarkdown>
+              <ReactMarkdown>{currentReportText}</ReactMarkdown>
             </div>
           </div>
         ) : (

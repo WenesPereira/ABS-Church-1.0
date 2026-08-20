@@ -1,237 +1,110 @@
-import React, { useState } from 'react';
-import { Settings, Church, Check, User, ShieldCheck, ArrowLeft, Database, Copy, CheckCircle2, ChevronDown, ChevronUp } from 'lucide-react';
-import { ConfigIgreja, CategoriaEntrada, ActiveTab } from '../types';
+import React, { useState, useEffect } from 'react';
+import {
+  Settings,
+  Church,
+  Check,
+  User as UserIcon,
+  ShieldCheck,
+  ArrowLeft,
+  CheckCircle2,
+  Crown,
+  Sparkles,
+  RefreshCw,
+  Trash2,
+  AlertTriangle,
+  X,
+  Loader2,
+  MessageCircle,
+  Mail,
+  Headphones,
+  Smartphone,
+  Download,
+  ExternalLink,
+  Save,
+  Globe,
+} from 'lucide-react';
+import { ConfigIgreja, CategoriaEntrada, ActiveTab, User } from '../types';
 import { ALL_ENTRADA_CATEGORIES, CATEGORIA_ENTRADA_LABELS } from '../utils/calculations';
+import {
+  isSubscriptionActive,
+  fetchUserProfile,
+  DEFAULT_CONFIG,
+  isSuperAdmin,
+  fetchGlobalAdminConfig,
+  saveGlobalAdminConfig,
+  GlobalAdminConfig,
+  getLocalSupportConfig,
+} from '../services/treasuryService';
 
 interface ConfigViewProps {
   config: ConfigIgreja;
   setConfig: React.Dispatch<React.SetStateAction<ConfigIgreja>>;
   onNavigate?: (tab: ActiveTab) => void;
+  currentUser?: User | null;
+  onOpenSubscriptionModal?: () => void;
+  onStatusUpdated?: (updatedUser: User) => void;
+  onResetAllData?: () => Promise<boolean>;
 }
 
-const SUPABASE_FULL_SQL = `-- ==============================================================================
--- SCRIPT DE CRIAÇÃO DO BANCO DE DADOS SUPABASE - TESOURARIA DA IGREJA
--- ==============================================================================
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- TABELA 1: public.profiles
-CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
-    email TEXT NOT NULL,
-    nome TEXT NOT NULL DEFAULT 'Tesoureiro',
-    cargo TEXT DEFAULT 'Tesoureiro Principal',
-    nome_igreja TEXT DEFAULT 'Igreja Evangélica',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-);
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Usuários podem visualizar seu próprio perfil" ON public.profiles;
-CREATE POLICY "Usuários podem visualizar seu próprio perfil"
-    ON public.profiles FOR SELECT USING (auth.uid() = user_id OR auth.uid() = id);
-
-DROP POLICY IF EXISTS "Usuários podem criar seu próprio perfil" ON public.profiles;
-CREATE POLICY "Usuários podem criar seu próprio perfil"
-    ON public.profiles FOR INSERT WITH CHECK (auth.uid() = user_id OR auth.uid() = id);
-
-DROP POLICY IF EXISTS "Usuários podem atualizar seu próprio perfil" ON public.profiles;
-CREATE POLICY "Usuários podem atualizar seu próprio perfil"
-    ON public.profiles FOR UPDATE USING (auth.uid() = user_id OR auth.uid() = id) WITH CHECK (auth.uid() = user_id OR auth.uid() = id);
-
-DROP POLICY IF EXISTS "Usuários podem excluir seu próprio perfil" ON public.profiles;
-CREATE POLICY "Usuários podem excluir seu próprio perfil"
-    ON public.profiles FOR DELETE USING (auth.uid() = user_id OR auth.uid() = id);
-
--- TABELA 2: public.configuracao_igreja
-CREATE TABLE IF NOT EXISTS public.configuracao_igreja (
-    id TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
-    nome_igreja TEXT NOT NULL DEFAULT 'Tesouraria da Igreja',
-    cnpj TEXT,
-    cidade_uf TEXT,
-    pastor_presidente TEXT NOT NULL DEFAULT 'Pastor Presidente',
-    pastor_local TEXT,
-    tesoureiro_padrao TEXT NOT NULL DEFAULT 'Tesoureiro Principal',
-    segundo_tesoureiro_padrao TEXT,
-    porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
-    aplicar_repasse_matriz BOOLEAN DEFAULT true,
-    tipo_base_repasse_matriz TEXT DEFAULT 'todas',
-    categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
-    logo_url TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-);
-ALTER TABLE public.configuracao_igreja ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Usuários podem visualizar suas configurações" ON public.configuracao_igreja;
-CREATE POLICY "Usuários podem visualizar suas configurações"
-    ON public.configuracao_igreja FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem cadastrar suas configurações" ON public.configuracao_igreja;
-CREATE POLICY "Usuários podem cadastrar suas configurações"
-    ON public.configuracao_igreja FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem atualizar suas configurações" ON public.configuracao_igreja;
-CREATE POLICY "Usuários podem atualizar suas configurações"
-    ON public.configuracao_igreja FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem excluir suas configurações" ON public.configuracao_igreja;
-CREATE POLICY "Usuários podem excluir suas configurações"
-    ON public.configuracao_igreja FOR DELETE USING (auth.uid() = user_id);
-
--- TABELA 3: public.fechamentos_culto
-CREATE TABLE IF NOT EXISTS public.fechamentos_culto (
-    id TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
-    nome_igreja TEXT NOT NULL DEFAULT 'Tesouraria da Igreja',
-    data DATE NOT NULL DEFAULT CURRENT_DATE,
-    data_inicio DATE,
-    data_fim DATE,
-    hora TEXT NOT NULL DEFAULT '19:00',
-    tipo_culto TEXT NOT NULL DEFAULT 'Fechamento de Caixa',
-    pregador TEXT,
-    passagem_biblica TEXT,
-    qtd_membros INTEGER DEFAULT 0,
-    qtd_visitantes INTEGER DEFAULT 0,
-    pastor_presidente TEXT,
-    tesoureiro TEXT NOT NULL DEFAULT 'Tesoureiro Principal',
-    pastor_local TEXT,
-    segunda_testemunha TEXT,
-    porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
-    aplicar_repasse_matriz BOOLEAN DEFAULT true,
-    tipo_base_repasse_matriz TEXT DEFAULT 'todas',
-    categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
-    observacoes TEXT,
-    contagem_dinheiro JSONB NOT NULL DEFAULT '{"c200":0,"c100":0,"c50":0,"c20":0,"c10":0,"c5":0,"c2":0,"m100":0,"m050":0,"m025":0,"m010":0,"m005":0}'::jsonb,
-    status TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'fechado')),
-    criado_em TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    fechado_em TIMESTAMPTZ,
-    relatorio_ia TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-);
-ALTER TABLE public.fechamentos_culto ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Usuários podem visualizar seus fechamentos" ON public.fechamentos_culto;
-CREATE POLICY "Usuários podem visualizar seus fechamentos"
-    ON public.fechamentos_culto FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem criar seus fechamentos" ON public.fechamentos_culto;
-CREATE POLICY "Usuários podem criar seus fechamentos"
-    ON public.fechamentos_culto FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem atualizar seus fechamentos" ON public.fechamentos_culto;
-CREATE POLICY "Usuários podem atualizar seus fechamentos"
-    ON public.fechamentos_culto FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem excluir seus fechamentos" ON public.fechamentos_culto;
-CREATE POLICY "Usuários podem excluir seus fechamentos"
-    ON public.fechamentos_culto FOR DELETE USING (auth.uid() = user_id);
-
--- TABELA 4: public.lancamentos
-CREATE TABLE IF NOT EXISTS public.lancamentos (
-    id TEXT PRIMARY KEY,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
-    fechamento_id TEXT NOT NULL REFERENCES public.fechamentos_culto(id) ON DELETE CASCADE,
-    tipo TEXT NOT NULL,
-    categoria TEXT NOT NULL,
-    descricao TEXT NOT NULL,
-    valor NUMERIC(12,2) NOT NULL DEFAULT 0.00,
-    forma_pagamento TEXT NOT NULL DEFAULT 'dinheiro',
-    nome_pessoa TEXT,
-    data DATE NOT NULL DEFAULT CURRENT_DATE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-);
-ALTER TABLE public.lancamentos ENABLE ROW LEVEL SECURITY;
-
--- Compatibilização de restrições para suportar maiúsculas/minúsculas
-ALTER TABLE public.lancamentos DROP CONSTRAINT IF EXISTS lancamentos_tipo_check;
-ALTER TABLE public.lancamentos ADD CONSTRAINT lancamentos_tipo_check 
-    CHECK (LOWER(tipo) IN ('entrada', 'saida', 'saída', 'receita', 'despesa'));
-
-ALTER TABLE public.fechamentos_culto DROP CONSTRAINT IF EXISTS fechamentos_culto_status_check;
-ALTER TABLE public.fechamentos_culto ADD CONSTRAINT fechamentos_culto_status_check 
-    CHECK (LOWER(status) IN ('aberto', 'fechado'));
-
-DROP POLICY IF EXISTS "Usuários podem visualizar seus lançamentos" ON public.lancamentos;
-CREATE POLICY "Usuários podem visualizar seus lançamentos"
-    ON public.lancamentos FOR SELECT USING (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem criar seus lançamentos" ON public.lancamentos;
-CREATE POLICY "Usuários podem criar seus lançamentos"
-    ON public.lancamentos FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem atualizar seus lançamentos" ON public.lancamentos;
-CREATE POLICY "Usuários podem atualizar seus lançamentos"
-    ON public.lancamentos FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Usuários podem excluir seus lançamentos" ON public.lancamentos;
-CREATE POLICY "Usuários podem excluir seus lançamentos"
-    ON public.lancamentos FOR DELETE USING (auth.uid() = user_id);
-
--- ÍNDICES
-CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_config_user_id ON public.configuracao_igreja(user_id);
-CREATE INDEX IF NOT EXISTS idx_fechamentos_user_id ON public.fechamentos_culto(user_id);
-CREATE INDEX IF NOT EXISTS idx_fechamentos_data ON public.fechamentos_culto(data);
-CREATE INDEX IF NOT EXISTS idx_lancamentos_user_id ON public.lancamentos(user_id);
-CREATE INDEX IF NOT EXISTS idx_lancamentos_fechamento_id ON public.lancamentos(fechamento_id);
-
--- TRIGGER DE NOVO USUÁRIO
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS TRIGGER AS $$
-BEGIN
-    INSERT INTO public.profiles (id, user_id, email, nome, cargo, nome_igreja)
-    VALUES (
-        NEW.id, NEW.id, NEW.email,
-        COALESCE(NEW.raw_user_meta_data->>'nome', 'Tesoureiro'),
-        COALESCE(NEW.raw_user_meta_data->>'cargo', 'Tesoureiro Principal'),
-        COALESCE(NEW.raw_user_meta_data->>'nome_igreja', 'Minha Igreja')
-    ) ON CONFLICT (id) DO NOTHING;
-
-    INSERT INTO public.configuracao_igreja (
-        id, user_id, nome_igreja, pastor_presidente, tesoureiro_padrao, porcentagem_matriz, aplicar_repasse_matriz
-    ) VALUES (
-        'config_' || NEW.id::text, NEW.id,
-        COALESCE(NEW.raw_user_meta_data->>'nome_igreja', 'Minha Igreja'),
-        'Pastor Presidente',
-        COALESCE(NEW.raw_user_meta_data->>'nome', 'Tesoureiro Principal'),
-        20.00, true
-    ) ON CONFLICT (id) DO NOTHING;
-
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-    AFTER INSERT ON auth.users
-    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
-
--- ==============================================================================
--- PERMISSÕES OBRIGATÓRIAS (GRANT) PARA AS ROLES DO SUPABASE (authenticated / anon)
--- ==============================================================================
-GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
-
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
-`;
-
-export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNavigate }) => {
+export const ConfigView: React.FC<ConfigViewProps> = ({
+  config,
+  setConfig,
+  onNavigate,
+  currentUser,
+  onOpenSubscriptionModal,
+  onStatusUpdated,
+  onResetAllData,
+}) => {
   const [form, setForm] = useState<ConfigIgreja>(config);
   const [saved, setSaved] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
-  const [showSqlDetails, setShowSqlDetails] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyMessage, setVerifyMessage] = useState<string | null>(null);
 
-  const handleCopySql = () => {
-    navigator.clipboard.writeText(SUPABASE_FULL_SQL);
-    setCopiedSql(true);
-    setTimeout(() => setCopiedSql(false), 2500);
+  // Estados do Modal de Confirmação Dupla de Reset/Exclusão
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [confirmInput, setConfirmInput] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetFeedback, setResetFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Estados exclusivos do Super Admin Global (wenes13@hotmail.com)
+  const isSuper = isSuperAdmin(currentUser);
+  const [globalConfig, setGlobalConfig] = useState<GlobalAdminConfig>(() => getLocalSupportConfig());
+  const [isSavingGlobal, setIsSavingGlobal] = useState(false);
+  const [globalSavedFeedback, setGlobalSavedFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isSuper) {
+      fetchGlobalAdminConfig().then((data) => {
+        if (data) {
+          setGlobalConfig(data);
+        }
+      });
+    }
+  }, [isSuper]);
+
+  const isSubscribed = isSubscriptionActive(currentUser);
+
+  const handleRefreshSubscription = async () => {
+    if (!currentUser?.id) return;
+    setIsVerifying(true);
+    setVerifyMessage(null);
+    try {
+      const fresh = await fetchUserProfile(currentUser.id);
+      if (fresh) {
+        if (onStatusUpdated) onStatusUpdated(fresh);
+        if (isSubscriptionActive(fresh)) {
+          setVerifyMessage('Status atualizado: Assinatura PRO Ativa!');
+        } else {
+          setVerifyMessage('Status atualizado: Assinatura ainda não detectada.');
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      setVerifyMessage('Não foi possível verificar a assinatura no momento.');
+    } finally {
+      setIsVerifying(false);
+      setTimeout(() => setVerifyMessage(null), 4000);
+    }
   };
 
   const handleToggleCategoriaDefault = (cat: CategoriaEntrada) => {
@@ -265,6 +138,73 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
     setTimeout(() => setSaved(false), 3000);
   };
 
+  const handleSaveGlobalAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingGlobal(true);
+    setGlobalSavedFeedback(null);
+    try {
+      const ok = await saveGlobalAdminConfig(globalConfig);
+      if (ok) {
+        setGlobalSavedFeedback('Configurações globais salvas com sucesso no banco Supabase!');
+      } else {
+        setGlobalSavedFeedback('Configurações salvas localmente.');
+      }
+    } catch (err) {
+      console.error(err);
+      setGlobalSavedFeedback('Erro ao salvar configurações globais.');
+    } finally {
+      setIsSavingGlobal(false);
+      setTimeout(() => setGlobalSavedFeedback(null), 4000);
+    }
+  };
+
+  const handleOpenResetModal = () => {
+    setConfirmInput('');
+    setResetFeedback(null);
+    setIsResetModalOpen(true);
+  };
+
+  const handleExecuteReset = async () => {
+    if (confirmInput.trim().toUpperCase() !== 'CONFIRMAR') {
+      return;
+    }
+
+    setIsResetting(true);
+    setResetFeedback(null);
+
+    try {
+      if (onResetAllData) {
+        const ok = await onResetAllData();
+        if (ok) {
+          setForm(DEFAULT_CONFIG);
+          setResetFeedback({
+            type: 'success',
+            message: 'Todos os dados foram excluídos e o sistema foi restaurado para o padrão com sucesso.',
+          });
+          setTimeout(() => {
+            setIsResetModalOpen(false);
+            setConfirmInput('');
+            setIsResetting(false);
+          }, 1800);
+          return;
+        }
+      }
+
+      setResetFeedback({
+        type: 'error',
+        message: 'Não foi possível concluir a limpeza dos dados. Tente novamente em instantes.',
+      });
+    } catch (err) {
+      console.error('Erro ao resetar dados:', err);
+      setResetFeedback({
+        type: 'error',
+        message: 'Ocorreu um erro inesperado ao tentar resetar os dados.',
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   return (
     <div id="config-view-container" className="space-y-6 w-full max-w-4xl mx-auto pb-12">
       {/* Barra de Navegação Contextual */}
@@ -278,6 +218,214 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
             <ArrowLeft className="w-4 h-4 text-amber-400" />
             <span>Voltar ao Fechamento Atual</span>
           </button>
+        </div>
+      )}
+
+      {/* CARD 0: PLANO & ASSINATURA MERCADO PAGO */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl w-full space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+          <div className="flex items-center gap-3">
+            <div className={`p-3 rounded-2xl ${isSubscribed ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}`}>
+              <Crown className="w-6 h-6 fill-current" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-slate-100">
+                  Plano & Assinatura Mensal
+                </h2>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase border ${
+                  isSuper
+                    ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                    : isSubscribed
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                }`}>
+                  {isSuper ? 'Super Admin (Isento)' : isSubscribed ? 'Pro Ativo' : 'Plano Gratuito'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {isSuper
+                  ? 'Conta de Super Administrador com liberação total e isenção permanente de assinatura.'
+                  : isSubscribed
+                  ? 'Sua igreja tem acesso total aos recursos de IA, impressão térmica e nuvem.'
+                  : 'Assine para liberar relatórios com IA, fechamentos ilimitados e suporte.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {onOpenSubscriptionModal && (
+              <button
+                type="button"
+                onClick={onOpenSubscriptionModal}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-xs shadow-md shadow-amber-500/20 transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+              >
+                <Crown className="w-3.5 h-3.5 fill-current" />
+                <span>{isSubscribed ? 'Ver Detalhes do Plano' : 'Assinar Plano Pro'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleRefreshSubscription}
+              disabled={isVerifying}
+              className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700 transition-all cursor-pointer disabled:opacity-50"
+              title="Atualizar status da assinatura"
+            >
+              <RefreshCw className={`w-4 h-4 ${isVerifying ? 'animate-spin text-amber-400' : ''}`} />
+            </button>
+          </div>
+        </div>
+
+        {verifyMessage && (
+          <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-amber-300 flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{verifyMessage}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-[10px] uppercase text-slate-500 font-bold block">Status Atual</span>
+            <span className={`font-mono font-bold ${isSuper ? 'text-purple-300' : isSubscribed ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {isSuper ? 'ATIVO (ISENTO / SUPER ADMIN)' : isSubscribed ? 'ATIVO (PRO)' : 'INATIVO / BÁSICO'}
+            </span>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-[10px] uppercase text-slate-500 font-bold block">Cobrança Mensal</span>
+            <span className="font-mono font-bold text-slate-200">
+              {isSuper ? 'Isento (Sem cobrança)' : 'R$ 19,90 / mês'}
+            </span>
+          </div>
+          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
+            <span className="text-[10px] uppercase text-slate-500 font-bold block">Identificador do Usuário</span>
+            <span className="font-mono text-[11px] text-slate-400 truncate block" title={currentUser?.id}>
+              {currentUser?.id ? `${currentUser.id.substring(0, 14)}...` : 'Não identificado'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* PAINEL EXCLUSIVO DO SUPER ADMINISTRADOR (Visível apenas para wenes13@hotmail.com) */}
+      {isSuper && (
+        <div className="bg-gradient-to-br from-purple-950/40 via-slate-900 to-slate-900 border-2 border-purple-500/60 rounded-3xl p-5 md:p-6 shadow-2xl w-full space-y-6 animate-in fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-purple-500/30 pb-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-lg shadow-purple-500/10">
+                <Globe className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-purple-100">
+                    Painel do Administrador (Global)
+                  </h2>
+                  <span className="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full uppercase bg-purple-500 text-white tracking-wide shadow-sm">
+                    SUPER ADMIN
+                  </span>
+                </div>
+                <p className="text-xs text-purple-300/80 mt-0.5">
+                  Gerenciamento global de canais de suporte e link de download do aplicativo Android (APK).
+                </p>
+              </div>
+            </div>
+            <div className="text-right text-[11px] text-purple-300/70 font-mono">
+              Acesso exclusivo: <span className="text-purple-200 font-bold">{currentUser?.email}</span>
+            </div>
+          </div>
+
+          {globalSavedFeedback && (
+            <div className="bg-purple-950/80 border border-purple-500/60 p-4 rounded-2xl text-xs text-purple-200 flex items-center gap-2 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
+              <span className="font-semibold">{globalSavedFeedback}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSaveGlobalAdmin} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
+                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>WhatsApp de Suporte (Global):</span>
+                </label>
+                <input
+                  type="text"
+                  value={globalConfig.whatsappSuporte || ''}
+                  onChange={(e) => setGlobalConfig({ ...globalConfig, whatsappSuporte: e.target.value })}
+                  placeholder="Ex: 5511999999999 ou (11) 99999-9999"
+                  className="w-full bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Usado no botão de WhatsApp da tela de login e suporte.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-amber-400" />
+                  <span>E-mail de Suporte (Global):</span>
+                </label>
+                <input
+                  type="email"
+                  value={globalConfig.emailSuporte || ''}
+                  onChange={(e) => setGlobalConfig({ ...globalConfig, emailSuporte: e.target.value })}
+                  placeholder="Ex: suporte@tesouraria.com"
+                  className="w-full bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">
+                  Usado no botão de envio de e-mail na tela de login.
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
+                <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Link para Download do Aplicativo Android (.APK):</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={globalConfig.apkDownloadUrl || ''}
+                  onChange={(e) => setGlobalConfig({ ...globalConfig, apkDownloadUrl: e.target.value })}
+                  placeholder="Ex: https://drive.google.com/file/d/... ou https://onedrive.live.com/..."
+                  className="flex-1 bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                />
+                {globalConfig.apkDownloadUrl && (
+                  <a
+                    href={globalConfig.apkDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-xs font-bold transition-colors border border-purple-500/40 shrink-0"
+                    title="Testar link de download"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Testar Link</span>
+                  </a>
+                )}
+              </div>
+              <p className="text-[10px] text-purple-300/70 mt-1">
+                Link público direto para o APK (OneDrive, MediaFire, Google Drive, etc.). Esse link é aberto quando os usuários clicam em "Baixar Aplicativo Android (APK)" na tela de login da Web.
+              </p>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSavingGlobal}
+              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white py-3 rounded-2xl font-bold text-xs transition-all shadow-lg shadow-purple-600/30 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isSavingGlobal ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Salvando no Supabase...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Salvar Configurações Globais</span>
+                </>
+              )}
+            </button>
+          </form>
         </div>
       )}
 
@@ -468,89 +616,168 @@ export const ConfigView: React.FC<ConfigViewProps> = ({ config, setConfig, onNav
         </form>
       </div>
 
-      {/* CARD 2: BANCO DE DADOS SUPABASE (ESTRUTURA & SCRIPT SQL) */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl w-full space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              <Database className="w-6 h-6" />
+      {/* CARD 3: ZONA DE PERIGO - EXCLUIR & RESETAR DADOS */}
+      <div className="bg-slate-900/90 border border-rose-900/40 rounded-3xl p-5 md:p-6 shadow-xl w-full space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-900/30 pb-4">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="p-3 rounded-2xl bg-rose-500/15 text-rose-400 border border-rose-500/30 shrink-0">
+              <Trash2 className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-100 flex items-center gap-2">
-                <span>Estrutura do Banco de Dados Supabase</span>
-                <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold">
-                  RLS Ativo
+              <div className="flex items-center gap-2">
+                <h2 className="text-base sm:text-lg font-bold text-rose-200">
+                  Zona de Perigo: Excluir e Resetar Dados
+                </h2>
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  Ação Destrutiva
                 </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Script SQL pronto para criar as tabelas com isolamento seguro por <code className="text-emerald-300">user_id</code>.
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Apaga permanentemente todos os fechamentos, lançamentos de dízimos/ofertas e restaura as configurações padrões do sistema.
               </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={handleCopySql}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs transition-all shadow-md shadow-emerald-600/20 cursor-pointer active:scale-95"
-            title="Copiar Script SQL completo para a área de transferência"
+            onClick={handleOpenResetModal}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold text-xs transition-all shadow-lg shadow-rose-900/30 cursor-pointer shrink-0 active:scale-95"
+            title="Abrir confirmação para excluir e resetar todos os dados"
           >
-            {copiedSql ? (
-              <>
-                <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                <span>Copiado!</span>
-              </>
-            ) : (
-              <>
-                <Copy className="w-4 h-4 text-slate-950" />
-                <span>Copiar SQL</span>
-              </>
-            )}
+            <Trash2 className="w-4 h-4 text-white" />
+            <span>Excluir / Resetar Dados</span>
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 1</span>
-            <span className="font-bold text-slate-200 font-mono">public.profiles</span>
-            <p className="text-[11px] text-slate-400 mt-1">Perfis de usuários, tesoureiros e permissões.</p>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 2</span>
-            <span className="font-bold text-slate-200 font-mono">public.configuracao_igreja</span>
-            <p className="text-[11px] text-slate-400 mt-1">Dados institucionais, pastores e % da matriz.</p>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 3</span>
-            <span className="font-bold text-slate-200 font-mono">public.fechamentos_culto</span>
-            <p className="text-[11px] text-slate-400 mt-1">Sessões de fechamento, atas e contagem física.</p>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">Tabela 4</span>
-            <span className="font-bold text-slate-200 font-mono">public.lancamentos</span>
-            <p className="text-[11px] text-slate-400 mt-1">Dízimos, ofertas, doações e saídas/despesas.</p>
-          </div>
-        </div>
-
-        <div>
-          <button
-            type="button"
-            onClick={() => setShowSqlDetails(!showSqlDetails)}
-            className="flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold cursor-pointer transition-colors"
-          >
-            {showSqlDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-            <span>{showSqlDetails ? 'Ocultar código SQL' : 'Visualizar código SQL completo'}</span>
-          </button>
-
-          {showSqlDetails && (
-            <div className="mt-3 relative rounded-2xl bg-slate-950 border border-slate-800 p-4 font-mono text-[11px] text-slate-300 overflow-x-auto max-h-80 overflow-y-auto">
-              <pre className="whitespace-pre">{SUPABASE_FULL_SQL}</pre>
-            </div>
-          )}
+        <div className="bg-rose-950/20 border border-rose-900/30 rounded-2xl p-4 text-xs text-rose-300/90 space-y-1">
+          <p className="font-semibold flex items-center gap-1.5 text-rose-300">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+            Atenção antes de prosseguir:
+          </p>
+          <p className="text-slate-400 text-[11px] leading-relaxed">
+            Esta operação removerá todas as atas de culto, balancetes, contagens de cédulas e histórico financeiro associados à sua conta. Recomendamos emitir e salvar os relatórios em PDF antes de executar o reset.
+          </p>
         </div>
       </div>
+
+      {/* =========================================================
+          MODAL DE CONFIRMAÇÃO DUPLA (RESET / EXCLUSÃO DE DADOS)
+          ========================================================= */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-rose-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-left">
+            {/* Botão Fechar */}
+            <button
+              type="button"
+              onClick={() => {
+                if (!isResetting) {
+                  setIsResetModalOpen(false);
+                  setConfirmInput('');
+                }
+              }}
+              disabled={isResetting}
+              className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Cabeçalho do Alerta */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  Confirmação Obrigatória
+                </span>
+                <h3 className="text-lg font-bold text-slate-100 mt-1">
+                  Excluir Todos os Dados da Igreja
+                </h3>
+              </div>
+            </div>
+
+            {/* Mensagem Exata Requisitada */}
+            <div className="p-4 rounded-2xl bg-rose-950/30 border border-rose-900/50 space-y-2">
+              <p className="text-sm font-bold text-rose-200 leading-snug">
+                Tem certeza de que deseja apagar todos os seus dados? Esta ação é irreversível.
+              </p>
+              <ul className="text-xs text-slate-300 space-y-1 list-disc list-inside pt-1">
+                <li>Todos os fechamentos e atas de culto serão excluídos</li>
+                <li>Todos os lançamentos de dízimos, ofertas e despesas serão apagados</li>
+                <li>As configurações da igreja serão restauradas para os padrões</li>
+              </ul>
+            </div>
+
+            {/* Feedback de sucesso ou erro */}
+            {resetFeedback && (
+              <div
+                className={`p-3.5 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+                  resetFeedback.type === 'success'
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    : 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                }`}
+              >
+                {resetFeedback.type === 'success' ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                )}
+                <span>{resetFeedback.message}</span>
+              </div>
+            )}
+
+            {/* Campo de Confirmação Textual Obrigatória */}
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-300">
+                Para confirmar a exclusão, digite <span className="font-mono text-rose-400 font-bold">CONFIRMAR</span> no campo abaixo:
+              </label>
+              <input
+                type="text"
+                value={confirmInput}
+                onChange={(e) => setConfirmInput(e.target.value)}
+                placeholder="Digite CONFIRMAR"
+                disabled={isResetting}
+                className="w-full bg-slate-950 border border-slate-800 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 rounded-xl p-3 text-sm font-mono text-slate-100 placeholder:text-slate-600 focus:outline-none transition-colors"
+                autoFocus
+              />
+            </div>
+
+            {/* Botões de Ação */}
+            <div className="flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsResetModalOpen(false);
+                  setConfirmInput('');
+                }}
+                disabled={isResetting}
+                className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 text-xs font-semibold border border-slate-700 transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteReset}
+                disabled={confirmInput.trim().toUpperCase() !== 'CONFIRMAR' || isResetting}
+                className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold text-xs transition-all shadow-lg shadow-rose-900/30 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              >
+                {isResetting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-white" />
+                    <span>Excluindo dados...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4 text-white" />
+                    <span>Sim, desejo apagar</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -10,15 +10,20 @@ import {
   Database,
   Layers,
   ChevronRight,
+  Crown,
+  Zap,
 } from 'lucide-react';
-import { ActiveTab, FechamentoCulto } from '../types';
+import { ActiveTab, FechamentoCulto, User } from '../types';
 import { isSupabaseConfigured } from '../services/supabase';
+import { isSubscriptionActive } from '../services/treasuryService';
 
 interface SidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   qtdLancamentos: number;
   fechamentoAtual?: FechamentoCulto;
+  currentUser?: User | null;
+  onOpenSubscriptionModal?: () => void;
 }
 
 interface NavGroup {
@@ -39,7 +44,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   setActiveTab,
   qtdLancamentos,
   fechamentoAtual,
+  currentUser,
+  onOpenSubscriptionModal,
 }) => {
+  const isSubscribed = isSubscriptionActive(currentUser);
+
   const navGroups: NavGroup[] = [
     {
       groupName: 'Operação do Culto',
@@ -227,6 +236,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Rodapé da Barra Lateral */}
         <div className="p-4 border-t border-slate-800/80 bg-slate-950/60 space-y-3">
+          {/* Pro Subscription CTA / Status */}
+          {onOpenSubscriptionModal && (
+            <button
+              type="button"
+              onClick={onOpenSubscriptionModal}
+              className={`w-full p-3 rounded-2xl border text-left transition-all cursor-pointer group shadow-sm active:scale-98 ${
+                isSubscribed
+                  ? 'bg-emerald-950/40 border-emerald-500/30 hover:bg-emerald-950/60 text-emerald-300'
+                  : 'bg-gradient-to-br from-amber-950/50 via-slate-900 to-slate-900 border-amber-500/40 hover:border-amber-500/70 text-slate-200'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 mb-1.5">
+                <div className="flex items-center gap-1.5">
+                  <div className={`p-1 rounded-lg ${isSubscribed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                    <Crown className="w-3.5 h-3.5 fill-current" />
+                  </div>
+                  <span className="text-xs font-bold">
+                    {isSubscribed ? 'Plano Pro Ativo' : 'Seja Pro Mensal'}
+                  </span>
+                </div>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase border ${
+                  isSubscribed
+                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse'
+                }`}>
+                  {isSubscribed ? 'Ativo' : 'R$ 19,90'}
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 leading-relaxed group-hover:text-slate-300">
+                {isSubscribed
+                  ? 'Todos os recursos de IA, relatórios e nuvem liberados.'
+                  : 'Desbloqueie IA, impressão térmica e fechamentos ilimitados.'}
+              </p>
+            </button>
+          )}
+
           <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs">
             <div className="flex items-center gap-2">
               <div

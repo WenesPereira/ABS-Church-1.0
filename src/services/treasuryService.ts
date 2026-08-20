@@ -13,6 +13,248 @@ import {
   CategoriaSaida,
 } from '../types';
 
+export const LOCAL_SUPPORT_KEY = 'tesouraria_app_support_config';
+
+/**
+ * Super Admin Global do Sistema
+ * Apenas este e-mail tem acesso às configurações globais (Painel do Administrador)
+ */
+export const SUPER_ADMIN_EMAIL = 'wenes13@hotmail.com';
+
+/**
+ * Verifica se um usuário ou e-mail é o Super Admin global
+ */
+export function isSuperAdmin(target?: User | { email?: string } | string | null): boolean {
+  if (!target) return false;
+  const email = typeof target === 'string' ? target : target.email;
+  if (!email || typeof email !== 'string') return false;
+  return email.trim().toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+}
+
+export interface GlobalAdminConfig {
+  whatsappSuporte: string;
+  emailSuporte: string;
+  apkDownloadUrl: string;
+}
+
+/**
+ * Detecta se a aplicação está rodando em ambiente nativo/APK Android (WebView / TWA / Cordova / Capacitor / Standalone app)
+ * Retorna true se estiver rodando dentro do APK instalado, e false se for Web browser padrão.
+ */
+export function isAndroidApkEnvironment(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+
+  const win = window as any;
+
+  // 1. Bridges nativas e wrappers (Capacitor, Cordova, WebView JS Bridges)
+  if (
+    win.Capacitor ||
+    win.cordova ||
+    win._cordovaNative ||
+    win.AndroidBridge ||
+    win.Android ||
+    win.isNativeApp ||
+    win.ReactNativeWebView
+  ) {
+    return true;
+  }
+
+  const ua = (navigator.userAgent || navigator.vendor || win.opera || '').toLowerCase();
+
+  // 2. Assinaturas de WebView Android (; wv, Version/4.0 etc.)
+  const isAndroid = ua.includes('android');
+  const isWebView = isAndroid && (ua.includes('; wv') || ua.includes('version/4.0') || ua.includes('crosswalk'));
+  if (isWebView) {
+    return true;
+  }
+
+  // 3. Standalone mode no Android (APK instalado via TWA / WebApp container nativo)
+  const isStandalone =
+    (typeof window.matchMedia === 'function' && window.matchMedia('(display-mode: standalone)').matches) ||
+    (navigator as any).standalone === true;
+  if (isAndroid && isStandalone) {
+    return true;
+  }
+
+  // 4. Referrer originário de pacote Android nativo
+  if (typeof document !== 'undefined' && document.referrer && document.referrer.startsWith('android-app://')) {
+    return true;
+  }
+
+  return false;
+}
+
+export function getLocalSupportConfig(): GlobalAdminConfig {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = localStorage.getItem(LOCAL_SUPPORT_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          whatsappSuporte: parsed.whatsappSuporte || '5511999999999',
+          emailSuporte: parsed.emailSuporte || 'suporte@tesouraria.com',
+          apkDownloadUrl: parsed.apkDownloadUrl || 'https://drive.google.com',
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Erro ao ler suporte local:', e);
+  }
+  return {
+    whatsappSuporte: '5511999999999',
+    emailSuporte: 'suporte@tesouraria.com',
+    apkDownloadUrl: 'https://drive.google.com',
+  };
+}
+
+export function saveLocalSupportConfig(whatsapp?: string, email?: string, apkUrl?: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const current = getLocalSupportConfig();
+      const toSave = {
+        whatsappSuporte: (whatsapp !== undefined && whatsapp !== '') ? whatsapp : current.whatsappSuporte,
+        emailSuporte: (email !== undefined && email !== '') ? email : current.emailSuporte,
+        apkDownloadUrl: (apkUrl !== undefined && apkUrl !== '') ? apkUrl : current.apkDownloadUrl,
+      };
+      localStorage.setItem(LOCAL_SUPPORT_KEY, JSON.stringify(toSave));
+    }
+  } catch (e) {
+    console.warn('Erro ao salvar suporte em localStorage:', e);
+  }
+}
+
+/**
+ * Busca a configuração global do sistema (WhatsApp, E-mail e APK) do Supabase.
+ * Caso não encontre ou esteja offline, retorna o cache do localStorage.
+ */
+export async function fetchGlobalAdminConfig(): Promise<GlobalAdminConfig> {
+  const local = getLocalSupportConfig();
+  if (!isSupabaseConfigured) return local;
+
+  try {
+    // 1. Tenta buscar da linha identificadora global 'global_admin_settings'
+    const { data: globalRow, error: gErr } = await supabase
+      .from('configuracao_igreja')
+      .select('*')
+      .eq('id', 'global_admin_settings')
+      .maybeSingle();
+
+    if (!gErr && globalRow) {
+      const gAny = globalRow as any;
+      const whatsapp = gAny.whatsapp_suporte || local.whatsappSuporte;
+      const email = gAny.email_suporte || local.emailSuporte;
+      const apk = gAny.apk_download_url || local.apkDownloadUrl;
+      saveLocalSupportConfig(whatsapp, email, apk);
+      return { whatsappSuporte: whatsapp, emailSuporte: email, apkDownloadUrl: apk };
+    }
+
+    // 2. Se não houver linha global específica, tenta carregar da primeira linha de configuracao_igreja disponível
+    const { data: firstRows, error: fErr } = await supabase
+      .from('configuracao_igreja')
+      .select('*')
+      .limit(1);
+
+    if (!fErr && firstRows && firstRows.length > 0) {
+      const rowAny = firstRows[0] as any;
+      const whatsapp = rowAny.whatsapp_suporte || local.whatsappSuporte;
+      const email = rowAny.email_suporte || local.emailSuporte;
+      const apk = rowAny.apk_download_url || local.apkDownloadUrl;
+      saveLocalSupportConfig(whatsapp, email, apk);
+      return { whatsappSuporte: whatsapp, emailSuporte: email, apkDownloadUrl: apk };
+    }
+  } catch (err) {
+    console.warn('Aviso ao buscar configurações globais do admin no Supabase:', err);
+  }
+
+  return local;
+}
+
+/**
+ * Salva as configurações globais do Super Admin no Supabase e no localStorage.
+ */
+export async function saveGlobalAdminConfig(config: GlobalAdminConfig, userId?: string): Promise<boolean> {
+  // Salva no localStorage imediatamente para garantir sincronia local instantânea
+  saveLocalSupportConfig(config.whatsappSuporte, config.emailSuporte, config.apkDownloadUrl);
+
+  if (!isSupabaseConfigured) return true;
+
+  try {
+    const uid = await getCurrentUserId(userId);
+
+    // 1. Grava na linha global 'global_admin_settings'
+    const payloadGlobal: any = {
+      id: 'global_admin_settings',
+      nome_igreja: 'Configurações Globais do Sistema',
+      pastor_presidente: 'Super Admin',
+      tesoureiro_padrao: 'Super Admin',
+      whatsapp_suporte: config.whatsappSuporte,
+      email_suporte: config.emailSuporte,
+      apk_download_url: config.apkDownloadUrl,
+    };
+    if (uid) {
+      payloadGlobal.user_id = uid;
+    }
+
+    const { error: gErr } = await supabase
+      .from('configuracao_igreja')
+      .upsert(payloadGlobal, { onConflict: 'id' });
+
+    if (gErr) {
+      console.warn('Aviso ao salvar global_admin_settings em configuracao_igreja:', gErr.message);
+    }
+
+    // 2. Se temos o UID do usuário Super Admin, atualiza também a configuração pessoal dele
+    if (uid) {
+      const { error: userErr } = await supabase
+        .from('configuracao_igreja')
+        .update({
+          whatsapp_suporte: config.whatsappSuporte,
+          email_suporte: config.emailSuporte,
+          apk_download_url: config.apkDownloadUrl,
+        } as any)
+        .eq('user_id', uid);
+
+      if (userErr) {
+        console.warn('Aviso ao sincronizar dados no perfil do Super Admin:', userErr.message);
+      }
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Erro ao persistir configurações globais no Supabase:', err);
+    return false;
+  }
+}
+
+export function buildWhatsAppLink(phoneNumber?: string, customMessage?: string): string {
+  if (!phoneNumber) return '#';
+  let digits = phoneNumber.replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) {
+    digits = `55${digits}`;
+  }
+  if (!digits) return '#';
+  const text = customMessage || 'Olá, preciso de suporte no Sistema de Tesouraria.';
+  return `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+}
+
+export function formatWhatsAppDisplay(phoneNumber?: string): string {
+  if (!phoneNumber) return '';
+  const digits = phoneNumber.replace(/\D/g, '');
+  if (digits.length === 13 && digits.startsWith('55')) {
+    return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
+  }
+  if (digits.length === 12 && digits.startsWith('55')) {
+    return `+55 (${digits.slice(2, 4)}) ${digits.slice(4, 8)}-${digits.slice(8)}`;
+  }
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return phoneNumber;
+}
+
 export const DEFAULT_CONFIG: ConfigIgreja = {
   nomeIgreja: 'Minha Igreja',
   pastorPresidente: 'Pastor Presidente',
@@ -21,6 +263,9 @@ export const DEFAULT_CONFIG: ConfigIgreja = {
   aplicarRepasseMatriz: true,
   tipoBaseRepasseMatriz: 'todas',
   categoriasRepasseMatriz: ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
+  whatsappSuporte: '5511999999999',
+  emailSuporte: 'suporte@tesouraria.com',
+  apkDownloadUrl: 'https://drive.google.com',
 };
 
 /* =========================================================
@@ -94,6 +339,15 @@ export async function getCurrentUserId(explicitUserId?: string): Promise<string 
    ========================================================= */
 
 function mapRowToConfig(row: SupabaseConfiguracaoIgrejaRow): ConfigIgreja {
+  const localSupport = getLocalSupportConfig();
+  const rowAny = row as any;
+  const whatsappSuporte = rowAny.whatsapp_suporte || localSupport.whatsappSuporte || '5511999999999';
+  const emailSuporte = rowAny.email_suporte || localSupport.emailSuporte || 'suporte@tesouraria.com';
+  const apkDownloadUrl = rowAny.apk_download_url || localSupport.apkDownloadUrl || 'https://drive.google.com';
+
+  // Mantém salvo localmente para a tela de login
+  saveLocalSupportConfig(whatsappSuporte, emailSuporte, apkDownloadUrl);
+
   return {
     nomeIgreja: row.nome_igreja,
     cnpj: row.cnpj || undefined,
@@ -107,10 +361,16 @@ function mapRowToConfig(row: SupabaseConfiguracaoIgrejaRow): ConfigIgreja {
     tipoBaseRepasseMatriz: (row.tipo_base_repasse_matriz as 'todas' | 'selecionadas') || 'todas',
     categoriasRepasseMatriz: (row.categorias_repasse_matriz as CategoriaEntrada[]) || undefined,
     logoUrl: row.logo_url || undefined,
+    whatsappSuporte,
+    emailSuporte,
+    apkDownloadUrl,
   };
 }
 
 function mapConfigToRow(config: ConfigIgreja, userId: string): Partial<SupabaseConfiguracaoIgrejaRow> {
+  // Salva no cache local para que a tela de login tenha acesso instantâneo
+  saveLocalSupportConfig(config.whatsappSuporte, config.emailSuporte, config.apkDownloadUrl);
+
   return {
     id: `config_${userId}`,
     user_id: userId,
@@ -129,15 +389,32 @@ function mapConfigToRow(config: ConfigIgreja, userId: string): Partial<SupabaseC
   };
 }
 
+let lastSuccessfulTipoStrategy: string | null = null;
+
 function mapRowToLancamento(row: SupabaseLancamentoRow): Lancamento {
   const rawTipo = String(row.tipo || '').toLowerCase().trim();
-  const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
+  const isSaida =
+    rawTipo === 'saida' ||
+    rawTipo === 'saída' ||
+    rawTipo === 's' ||
+    rawTipo === 'd' ||
+    rawTipo === 'despesa' ||
+    rawTipo === 'debito' ||
+    rawTipo === 'débito' ||
+    rawTipo === 'out' ||
+    rawTipo === 'expense' ||
+    rawTipo.includes('said') ||
+    rawTipo.includes('desp') ||
+    rawTipo.includes('debit') ||
+    rawTipo.includes('out') ||
+    ['aluguel', 'agua', 'luz', 'internet', 'alimentacao', 'manutencao', 'acao_social', 'material_ebd'].includes(rawTipo);
+
   const tipo: TipoLancamento = isSaida ? 'saida' : 'entrada';
 
   return {
     id: row.id,
     tipo,
-    categoria: row.categoria as CategoriaEntrada | CategoriaSaida,
+    categoria: (row.categoria as CategoriaEntrada | CategoriaSaida) || (isSaida ? 'outros' : 'oferta_culto'),
     descricao: row.descricao,
     valor: Number(row.valor),
     formaPagamento: row.forma_pagamento,
@@ -366,19 +643,44 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
 
     // Salva os lançamentos vinculados explicitamente com user_id
     if (fechamento.lancamentos && fechamento.lancamentos.length > 0) {
-      const tipoStrategies: { name: string; resolve: (isSaida: boolean, cat: string) => string }[] = [
+      const allTipoStrategies: { name: string; resolve: (isSaida: boolean, cat: string) => string }[] = [
         { name: 'lowercase', resolve: (isSaida) => (isSaida ? 'saida' : 'entrada') },
-        { name: 'uppercase', resolve: (isSaida) => (isSaida ? 'SAIDA' : 'ENTRADA') },
         { name: 'accent_lower', resolve: (isSaida) => (isSaida ? 'saída' : 'entrada') },
+        { name: 'capitalized', resolve: (isSaida) => (isSaida ? 'Saida' : 'Entrada') },
+        { name: 'capitalized_accent', resolve: (isSaida) => (isSaida ? 'Saída' : 'Entrada') },
+        { name: 'uppercase', resolve: (isSaida) => (isSaida ? 'SAIDA' : 'ENTRADA') },
         { name: 'accent_upper', resolve: (isSaida) => (isSaida ? 'SAÍDA' : 'ENTRADA') },
         { name: 'receita_despesa_lower', resolve: (isSaida) => (isSaida ? 'despesa' : 'receita') },
+        { name: 'receita_despesa_cap', resolve: (isSaida) => (isSaida ? 'Despesa' : 'Receita') },
         { name: 'receita_despesa_upper', resolve: (isSaida) => (isSaida ? 'DESPESA' : 'RECEITA') },
-        { name: 'capitalized', resolve: (isSaida) => (isSaida ? 'Saida' : 'Entrada') },
-        { name: 'capitalized_receita', resolve: (isSaida) => (isSaida ? 'Despesa' : 'Receita') },
-        { name: 'category_as_type', resolve: (isSaida, cat) => cat || (isSaida ? 'outros' : 'oferta_culto') },
+        { name: 'credito_debito_lower', resolve: (isSaida) => (isSaida ? 'debito' : 'credito') },
+        { name: 'credito_debito_accent_lower', resolve: (isSaida) => (isSaida ? 'débito' : 'crédito') },
+        { name: 'credito_debito_cap', resolve: (isSaida) => (isSaida ? 'Débito' : 'Crédito') },
+        { name: 'credito_debito_cap_no_accent', resolve: (isSaida) => (isSaida ? 'Debito' : 'Credito') },
+        { name: 'credito_debito_upper', resolve: (isSaida) => (isSaida ? 'DEBITO' : 'CREDITO') },
+        { name: 'credito_debito_accent_upper', resolve: (isSaida) => (isSaida ? 'DÉBITO' : 'CRÉDITO') },
         { name: 'single_char_es', resolve: (isSaida) => (isSaida ? 'S' : 'E') },
+        { name: 'single_char_es_lower', resolve: (isSaida) => (isSaida ? 's' : 'e') },
         { name: 'single_char_cd', resolve: (isSaida) => (isSaida ? 'D' : 'C') },
+        { name: 'single_char_cd_lower', resolve: (isSaida) => (isSaida ? 'd' : 'c') },
+        { name: 'single_char_rd', resolve: (isSaida) => (isSaida ? 'D' : 'R') },
+        { name: 'in_out_lower', resolve: (isSaida) => (isSaida ? 'out' : 'in') },
+        { name: 'in_out_upper', resolve: (isSaida) => (isSaida ? 'OUT' : 'IN') },
+        { name: 'income_expense_lower', resolve: (isSaida) => (isSaida ? 'expense' : 'income') },
+        { name: 'income_expense_cap', resolve: (isSaida) => (isSaida ? 'Expense' : 'Income') },
+        { name: 'income_expense_upper', resolve: (isSaida) => (isSaida ? 'EXPENSE' : 'INCOME') },
+        { name: 'category_as_type', resolve: (isSaida, cat) => cat || (isSaida ? 'outros' : 'oferta_culto') },
+        { name: 'category_as_type_upper', resolve: (isSaida, cat) => (cat || (isSaida ? 'outros' : 'oferta_culto')).toUpperCase() },
+        { name: 'dizimo_despesa', resolve: (isSaida) => (isSaida ? 'despesa' : 'dizimo') },
+        { name: 'dizimo_despesa_accent', resolve: (isSaida) => (isSaida ? 'Despesa' : 'Dízimo') },
       ];
+
+      const tipoStrategies = lastSuccessfulTipoStrategy
+        ? [
+            ...allTipoStrategies.filter((s) => s.name === lastSuccessfulTipoStrategy),
+            ...allTipoStrategies.filter((s) => s.name !== lastSuccessfulTipoStrategy),
+          ]
+        : allTipoStrategies;
 
       let lastError: any = null;
       let savedSuccessfully = false;
@@ -410,18 +712,52 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
 
         if (!error) {
           savedSuccessfully = true;
+          lastSuccessfulTipoStrategy = strategy.name;
           break;
         }
 
         lastError = error;
-        // Se o erro não for de check constraint (23514 / lancamentos_tipo_check), não tenta outras variações de tipo
-        if (error.code !== '23514' && !error.message?.includes('lancamentos_tipo_check')) {
+        // Se o erro for de check constraint (23514 / lancamentos_tipo_check), tenta a próxima estratégia
+        if (error.code !== '23514' && !error.message?.includes('lancamentos_tipo_check') && !error.message?.includes('check constraint')) {
           break;
         }
       }
 
+      // Fallback linha a linha caso lote falhe
+      if (!savedSuccessfully) {
+        for (const l of fechamento.lancamentos) {
+          const rawTipo = String(l.tipo || '').toLowerCase().trim();
+          const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
+
+          for (const strategy of tipoStrategies) {
+            const singleRow = {
+              id: l.id,
+              user_id: uid,
+              fechamento_id: fechamento.id,
+              tipo: strategy.resolve(isSaida, l.categoria),
+              categoria: l.categoria || (isSaida ? 'outros' : 'oferta_culto'),
+              descricao: l.descricao || 'Lançamento',
+              valor: Number(l.valor) || 0,
+              forma_pagamento: l.formaPagamento || 'dinheiro',
+              nome_pessoa: l.nomePessoa || null,
+              data: toSqlDate(l.data),
+            };
+
+            const { error: rowErr } = await supabase
+              .from('lancamentos')
+              .upsert(singleRow, { onConflict: 'id' });
+
+            if (!rowErr) {
+              lastSuccessfulTipoStrategy = strategy.name;
+              savedSuccessfully = true;
+              break;
+            }
+          }
+        }
+      }
+
       if (!savedSuccessfully && lastError) {
-        console.error('Erro Supabase ao salvar lancamentos:', lastError);
+        console.warn('Aviso ao sincronizar lançamentos:', lastError.message || lastError);
       }
     }
 
@@ -500,39 +836,135 @@ export async function deleteLancamento(lancamentoId: string, userId?: string): P
   }
 }
 
+export async function resetAllUserData(userId?: string): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  try {
+    const uid = await getCurrentUserId(userId);
+    if (!uid) {
+      console.error('Erro: Tentativa de resetar dados sem usuário autenticado.');
+      return false;
+    }
+
+    // 1. Exclui todos os lançamentos do usuário
+    const { error: lErr } = await supabase
+      .from('lancamentos')
+      .delete()
+      .eq('user_id', uid);
+
+    if (lErr) {
+      console.error('Erro ao limpar lançamentos:', lErr);
+    }
+
+    // 2. Exclui todos os fechamentos do usuário
+    const { error: fErr } = await supabase
+      .from('fechamentos_culto')
+      .delete()
+      .eq('user_id', uid);
+
+    if (fErr) {
+      console.error('Erro ao limpar fechamentos:', fErr);
+    }
+
+    // 3. Restaura configuração padrão da igreja no Supabase
+    await saveConfiguracaoIgreja(DEFAULT_CONFIG, uid);
+
+    return true;
+  } catch (err) {
+    console.error('Erro inesperado ao resetar dados do usuário:', err);
+    return false;
+  }
+}
+
 /* =========================================================
-   SERVIÇOS DE USUÁRIOS & PERFIS
+   SERVIÇOS DE USUÁRIOS, PERFIS & ASSINATURAS (MERCADO PAGO)
    ========================================================= */
+
+export const MERCADO_PAGO_PLAN_BASE_URL = 'https://mpago.la/2ZjJrWE';
+
+/**
+ * Retorna o link oficial do Mercado Pago com o external_reference vinculado ao ID do usuário.
+ */
+export function getMercadoPagoSubscriptionUrl(userId?: string): string {
+  if (!userId) return MERCADO_PAGO_PLAN_BASE_URL;
+  return `${MERCADO_PAGO_PLAN_BASE_URL}?external_reference=${encodeURIComponent(userId)}`;
+}
+
+/**
+ * Verifica se o usuário tem assinatura ativa (ou em período de teste válido).
+ * REGRA EXCLUSIVA: O Super Admin (wenes13@hotmail.com) possui isenção permanente e status PRO vitalício automático.
+ */
+export function isSubscriptionActive(user?: User | { email?: string; subscriptionStatus?: string; isDemo?: boolean } | null): boolean {
+  if (!user) return false;
+
+  // 1. Liberação automática e isenção vitalícia para o Super Admin ou Modo Demo
+  if (isSuperAdmin(user) || (user as User).isDemo === true) {
+    return true;
+  }
+
+  // 2. Verificação padrão para usuários comuns via Supabase / Mercado Pago
+  const status = (user.subscriptionStatus || '').toLowerCase().trim();
+  return status === 'active' || status === 'trialing' || status === 'ativo';
+}
 
 export async function syncUserProfile(user: User): Promise<boolean> {
   if (!isSupabaseConfigured || !user.id) return false;
 
-  try {
-    const row: Partial<SupabasePerfilUsuarioRow> = {
-      id: user.id,
-      user_id: user.id,
-      email: user.email,
-      nome: user.nome,
-      cargo: user.cargo || null,
-      nome_igreja: user.nomeIgreja || null,
-      created_at: user.createdAt || new Date().toISOString(),
-    };
+  // AVISO: NUNCA incluir subscription_status nem sobrescrever dados de assinatura aqui.
+  // subscription_status é estritamente de leitura (controlado externamente / webhook / painel do banco).
+  const payload: Record<string, any> = {
+    id: user.id,
+    user_id: user.id,
+    email: user.email,
+    nome: user.nome,
+    cargo: user.cargo || null,
+    nome_igreja: user.nomeIgreja || null,
+    created_at: user.createdAt || new Date().toISOString(),
+  };
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert(row, { onConflict: 'id' })
-      .select();
+  // Tenta salvar, removendo dinamicamente quaisquer colunas opcionais que não existam no Supabase
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert(payload, { onConflict: 'id' });
 
-    if (error) {
-      console.error('Erro Supabase ao salvar perfil de usuário em profiles:', error);
-      return false;
+      if (!error) {
+        return true;
+      }
+
+      // Se o erro for de coluna inexistente no schema cache do Supabase (PGRST204)
+      if (error.code === 'PGRST204' || error.message?.includes('Could not find the') || error.message?.includes('column')) {
+        const match = error.message?.match(/Could not find the '([^']+)' column/);
+        if (match && match[1] && match[1] in payload) {
+          const missingCol = match[1];
+          delete payload[missingCol];
+          continue;
+        }
+
+        if ('cargo' in payload) {
+          delete payload.cargo;
+          continue;
+        }
+        if ('nome_igreja' in payload) {
+          delete payload.nome_igreja;
+          continue;
+        }
+        if ('created_at' in payload) {
+          delete payload.created_at;
+          continue;
+        }
+      }
+
+      console.warn('Aviso Supabase ao sincronizar perfil:', error.message);
+      break;
+    } catch (err) {
+      console.warn('Erro inesperado ao sincronizar perfil:', err);
+      break;
     }
-
-    return true;
-  } catch (err) {
-    console.error('Erro Supabase inesperado ao sincronizar perfil do usuário:', err);
-    return false;
   }
+
+  return true;
 }
 
 export async function fetchUserProfile(userId: string): Promise<User | null> {
@@ -551,12 +983,22 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
     }
 
     if (data) {
+      const isSuper = isSuperAdmin(data.email);
+      // Lê o valor de subscription_status EXCLUSIVAMENTE do banco de dados (com isenção automática para Super Admin)
+      const rawStatus = typeof data.subscription_status === 'string' ? data.subscription_status.trim().toLowerCase() : '';
+      const isStatusActive = isSuper || rawStatus === 'active' || rawStatus === 'ativo' || rawStatus === 'trialing';
+      const subscriptionStatus = isStatusActive ? 'active' : 'inactive';
+
       return {
         id: data.id,
         email: data.email,
         nome: data.nome,
         cargo: data.cargo || undefined,
         nomeIgreja: data.nome_igreja || undefined,
+        subscriptionStatus,
+        subscriptionPlan: isSuper ? 'pro_isento' : (data.subscription_plan || 'mensal'),
+        subscriptionExpiresAt: isSuper ? 'Vitalício / Isento' : (data.subscription_expires_at || undefined),
+        mpPreapprovalId: data.mp_preapproval_id || undefined,
         createdAt: data.created_at || new Date().toISOString(),
       };
     }
@@ -565,5 +1007,20 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
     console.error('Erro Supabase inesperado ao carregar perfil do usuário:', err);
     return null;
   }
+}
+
+/**
+ * Consulta o status atualizado do usuário diretamente no Supabase sem realizar sobrescrita.
+ */
+export async function updateUserSubscriptionStatus(
+  userId: string,
+  _status: 'active' | 'inactive' | 'trialing' | 'cancelled' | string,
+  _mpPreapprovalId?: string
+): Promise<boolean> {
+  // Conforme diretriz de segurança, o front-end NÃO altera subscription_status no banco de dados.
+  // Apenas consulta o status atualizado.
+  if (!isSupabaseConfigured || !userId) return false;
+  const user = await fetchUserProfile(userId);
+  return isSubscriptionActive(user);
 }
 

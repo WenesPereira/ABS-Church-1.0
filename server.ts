@@ -62,23 +62,40 @@ INSTRUÇÕES DO RELATÓRIO:
    - **Porcentagem e Repasse para a Matriz / Sede**: Se a opção aplicarRepasseMatriz for verdadeira (ou true), destaque a porcentagem configurada e o valor exato a ser enviado para a Matriz (Sede), e o Saldo Final Remanescente da Congregação Local. Se a opção aplicarRepasseMatriz for falsa, informe explicitamente que este fechamento é isento / não possui repasse para a Matriz e o saldo total pertence à congregação.
 3. **Análise de Conferência do Caixa Físico (Espécie)**:
    - Compare o valor lançado em Dinheiro vs o Total Contado na Calculadora de Cédulas e Moedas.
-   - Diga se o caixa fechou exato, com sobra ou com falta em dinheiro físico.
-4. **Anotações de Transparência e Parecer da Tesouraria**: Mensagem e encerramento agradecendo a fidelidade dos dízimos e ofertas da igreja.
+   - Diga se o caixa fechou exato, com sobra ou com falta em dinheiro físico. Se houver discrepância, utilize o termo técnico "inconsistência" contábil.
+4. **Anotações de Transparência e Parecer da Tesouraria / Orientação de Auditoria**:
+   - Utilize a seção "Orientação de Auditoria" para recomendações fiscais.
+   - Use a forma correta "Expressamos nossa gratidão pela fidelidade..." ao concluir.
+   - NUNCA utilize termos incorretos como "Exgressamos", "Orientação Auditiva" ou "inconsciência".
 5. **Campo de Assinaturas Oficiais**: Inclua obrigatoriamente as linhas de assinatura para apenas: **Pastor Presidente**, **Tesoureiro** e **Pastor Local**.
 
-Responda em Português do Brasil com excelente clareza, formatação impecável em Markdown (usando tabelas, tópicos e negritos).
+Responda em Português do Brasil com excelente clareza, rigor gramatical e formatação impecável em Markdown (usando tabelas, tópicos e negritos).
 `;
 
     const response = await ai.models.generateContent({
       model: "gemini-3.6-flash",
       contents: promptText,
       config: {
-        systemInstruction: "Você é um auditor e assistente financeiro especializado em tesouraria de igrejas evangélicas e cristãs.",
-        temperature: 0.3,
+        systemInstruction: "Você é um auditor e assistente financeiro especializado em tesouraria de igrejas evangélicas e cristãs. Use sempre os termos corretos em português: 'Expressamos', 'Orientação de Auditoria', 'inconsistência'.",
+        temperature: 0.2,
       },
     });
 
-    return res.json({ report: response.text || "Relatório não gerado." });
+    let reportText = response.text || "Relatório não gerado.";
+
+    // Higienização e correções ortográficas obrigatórias
+    reportText = reportText
+      .replace(/Exgressamos/gi, "Expressamos")
+      .replace(/Orientação Auditiva/gi, "Orientação de Auditoria")
+      .replace(/Orientacao Auditiva/gi, "Orientação de Auditoria")
+      .replace(/orientação auditiva/gi, "orientação de auditoria")
+      .replace(/orientacao auditiva/gi, "orientação de auditoria")
+      .replace(/inconsciência/gi, "inconsistência")
+      .replace(/inconsciencia/gi, "inconsistência")
+      .replace(/Inconsciência/gi, "Inconsistência")
+      .replace(/Inconsciencia/gi, "Inconsistência");
+
+    return res.json({ report: reportText });
   } catch (error: any) {
     console.error("Erro no relatório de caixa da igreja:", error);
     return res.status(500).json({ error: error.message || "Erro ao processar relatório da tesouraria." });

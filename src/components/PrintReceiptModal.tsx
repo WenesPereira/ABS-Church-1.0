@@ -77,6 +77,18 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     return labels[cat] || cat.replace(/_/g, ' ');
   };
 
+  const getValidSignerName = (value?: string, placeholder?: string) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (placeholder && trimmed.toLowerCase() === placeholder.toLowerCase()) return '';
+    return trimmed;
+  };
+
+  const pastorPresidenteAssinatura = getValidSignerName(fechamento.pastorPresidente || config.pastorPresidente, 'Pastor Presidente');
+  const tesoureiroAssinatura = getValidSignerName(fechamento.tesoureiro || config.tesoureiroPadrao, 'Tesoureiro Principal');
+  const pastorLocalAssinatura = getValidSignerName(fechamento.pastorLocal || config.pastorLocal, 'Pastor Local');
+
   const saidaLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'saida');
   const dizimoLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'entrada' && l.categoria === 'dizimo');
 
@@ -278,9 +290,9 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
               {fechamento.qtdMembros ? <p><strong>Membros Presentes:</strong> {fechamento.qtdMembros}</p> : null}
             </div>
             <div>
-              <p><strong>Pastor Presidente:</strong> {fechamento.pastorPresidente || config.pastorPresidente || 'N/I'}</p>
-              <p><strong>Tesoureiro:</strong> {fechamento.tesoureiro || config.tesoureiroPadrao || 'N/I'}</p>
-              <p><strong>Pastor Local:</strong> {fechamento.pastorLocal || config.pastorLocal || 'N/I'}</p>
+              <p><strong>Pastor Presidente:</strong> {pastorPresidenteAssinatura || 'Não Informado'}</p>
+              <p><strong>Tesoureiro:</strong> {tesoureiroAssinatura || 'Não Informado'}</p>
+              <p><strong>Pastor Local:</strong> {pastorLocalAssinatura || 'Não Informado'}</p>
             </div>
           </div>
 
@@ -419,22 +431,22 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           {/* Signatures Line */}
           <div className="pt-10 grid grid-cols-3 gap-4 text-center text-[10px] border-t border-slate-300">
             <div>
-              <div className="border-t border-slate-800 pt-1 font-bold">
-                {fechamento.pastorPresidente || config.pastorPresidente || 'Pastor Presidente'}
+              <div className="border-t border-slate-800 pt-1 font-bold min-h-[1.4rem] text-slate-900">
+                {pastorPresidenteAssinatura || ''}
               </div>
-              <p className="text-slate-600">Pastor Presidente</p>
+              <p className="text-slate-700 font-medium">Pastor Presidente</p>
             </div>
             <div>
-              <div className="border-t border-slate-800 pt-1 font-bold">
-                {fechamento.tesoureiro || config.tesoureiroPadrao || 'Tesoureiro'}
+              <div className="border-t border-slate-800 pt-1 font-bold min-h-[1.4rem] text-slate-900">
+                {tesoureiroAssinatura || ''}
               </div>
-              <p className="text-slate-600">Tesoureiro</p>
+              <p className="text-slate-700 font-medium">Tesoureiro</p>
             </div>
             <div>
-              <div className="border-t border-slate-800 pt-1 font-bold">
-                {fechamento.pastorLocal || config.pastorLocal || 'Pastor Local'}
+              <div className="border-t border-slate-800 pt-1 font-bold min-h-[1.4rem] text-slate-900">
+                {pastorLocalAssinatura || ''}
               </div>
-              <p className="text-slate-600">Pastor Local</p>
+              <p className="text-slate-700 font-medium">Pastor Local</p>
             </div>
           </div>
 

@@ -12,6 +12,8 @@ import {
   ArrowLeft,
   Coins,
   FileCheck,
+  AlertTriangle,
+  X,
 } from 'lucide-react';
 
 import {
@@ -62,6 +64,18 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
 
   const [filterTipo, setFilterTipo] =
     useState<string>('todos');
+
+  const [duplicateModal, setDuplicateModal] = useState<{
+    isOpen: boolean;
+    categoriaLabel: string;
+    valorFormatado: string;
+    pendingLancamento: Lancamento | null;
+  }>({
+    isOpen: false,
+    categoriaLabel: '',
+    valorFormatado: '',
+    pendingLancamento: null,
+  });
 
   /*
    * Proteção contra fechamento.lancamentos inexistente.
@@ -249,7 +263,57 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
   };
 
   /*
-   * Adiciona lançamento.
+   * Extrai a data limpa (YYYY-MM-DD) para conferência de mesmo dia
+   */
+  const extractDateOnly = (dateStr?: string): string => {
+    if (!dateStr) return '';
+    const trimmed = dateStr.trim();
+    const ptMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (ptMatch) {
+      const day = ptMatch[1].padStart(2, '0');
+      const month = ptMatch[2].padStart(2, '0');
+      const year = ptMatch[3];
+      return `${year}-${month}-${day}`;
+    }
+    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (isoMatch) {
+      const year = isoMatch[1];
+      const month = isoMatch[2].padStart(2, '0');
+      const day = isoMatch[3].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return trimmed.split(' ')[0] || '';
+  };
+
+  /*
+   * Efetiva a gravação do lançamento no estado e dispara a sincronização
+   */
+  const salvarLancamentoFinal = (lancamentoToSave: Lancamento) => {
+    setFechamento((prev) => ({
+      ...prev,
+      lancamentos: [
+        lancamentoToSave,
+        ...(Array.isArray(prev.lancamentos) ? prev.lancamentos : []),
+      ],
+    }));
+
+    /*
+     * Limpa somente os campos do formulário após gravação confirmada
+     */
+    setDescricao('');
+    setValorStr('');
+    setNomePessoa('');
+  };
+
+  /*
+   * Adiciona lançamento com verificação prévia de despesa duplicada.
    */
   const handleAddLancamento = (
     e: React.FormEvent
@@ -271,8 +335,7 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
     const now = new Date();
 
     /*
-     * Guardamos ISO para permitir futuras ordenações,
-     * mas mantemos também a apresentação em pt-BR.
+     * Guardamos apresentação em pt-BR e data do registro.
      */
     const formattedDate =
       `${now.toLocaleDateString('pt-BR')} ` +
@@ -317,23 +380,83 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
       data: formattedDate,
     };
 
-    setFechamento((prev) => ({
-      ...prev,
+    // Verificação de despesa duplicada no mesmo dia com mesma categoria e mesmo valor
+    if (tipo === 'saida') {
+      const currentDateKey =
+        extractDateOnly(formattedDate) ||
+        extractDateOnly(fechamento.data) ||
+        extractDateOnly(new Date().toISOString());
 
-      lancamentos: [
-        newLancamento,
-        ...(Array.isArray(prev.lancamentos)
-          ? prev.lancamentos
-          : []),
-      ],
-    }));
+      const isDuplicate = lancamentos.some((l) => {
+        const isSaida =
+          l.tipo === 'saida' ||
+          String(l.tipo).toLowerCase().includes('saida') ||
+          String(l.tipo).toLowerCase().includes('despesa');
 
-    /*
-     * Limpa somente os campos do formulário.
-     */
-    setDescricao('');
-    setValorStr('');
-    setNomePessoa('');
+        if (!isSaida) return false;
+
+        const sameCategory =
+          String(l.categoria).trim().toLowerCase() ===
+          String(categoriaFinal).trim().toLowerCase();
+
+        if (!sameCategory) return false;
+
+        const lValor =
+          typeof l.valor === 'number'
+            ? l.valor
+            : Number(l.valor) || 0;
+
+        const sameValue = Math.abs(lValor - valor) < 0.01;
+        if (!sameValue) return false;
+
+        const lDateKey = extractDateOnly(l.data);
+        if (lDateKey && currentDateKey) {
+          return lDateKey === currentDateKey;
+        }
+        return true;
+      });
+
+      if (isDuplicate) {
+        // Exibe modal de confirmação sem excluir nem salvar automaticamente
+        setDuplicateModal({
+          isOpen: true,
+          categoriaLabel: getCategoryLabel(categoriaFinal),
+          valorFormatado: formatCurrency(valor),
+          pendingLancamento: newLancamento,
+        });
+        return;
+      }
+    }
+
+    // Salva diretamente caso não haja duplicidade
+    salvarLancamentoFinal(newLancamento);
+  };
+
+  /*
+   * Confirmar gravação da despesa duplicada
+   */
+  const handleConfirmDuplicate = () => {
+    if (duplicateModal.pendingLancamento) {
+      salvarLancamentoFinal(duplicateModal.pendingLancamento);
+    }
+    setDuplicateModal({
+      isOpen: false,
+      categoriaLabel: '',
+      valorFormatado: '',
+      pendingLancamento: null,
+    });
+  };
+
+  /*
+   * Cancelar e manter formulário aberto para revisão/correção
+   */
+  const handleCancelDuplicate = () => {
+    setDuplicateModal({
+      isOpen: false,
+      categoriaLabel: '',
+      valorFormatado: '',
+      pendingLancamento: null,
+    });
   };
 
   /*
@@ -1008,6 +1131,60 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Modal de Detecção e Confirmação de Despesa Duplicada */}
+      {duplicateModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/50 rounded-3xl p-6 max-w-lg w-full shadow-2xl space-y-5 animate-in fade-in zoom-in duration-150 relative">
+            <button
+              type="button"
+              onClick={handleCancelDuplicate}
+              className="absolute top-5 right-5 p-2 rounded-xl text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Fechar e revisar"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 pr-8">
+              <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                <AlertTriangle className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-100">
+                  Despesa Já Registrada
+                </h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                  Aviso de Possível Duplicidade
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 leading-relaxed space-y-2">
+              <p className="font-medium text-slate-200">
+                Atenção: Já existe um lançamento registrado para <strong className="text-amber-400 font-bold">{duplicateModal.categoriaLabel}</strong> no valor de <strong className="text-amber-400 font-bold">{duplicateModal.valorFormatado}</strong> nesta mesma data. Deseja continuar e registrar novamente?
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleCancelDuplicate}
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs transition-colors border border-slate-700 cursor-pointer text-center"
+              >
+                Cancelar / Revisar
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmDuplicate}
+                className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-all shadow-lg shadow-amber-600/20 cursor-pointer active:scale-95 text-center"
+              >
+                Sim, continuar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

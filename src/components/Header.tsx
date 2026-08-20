@@ -5,7 +5,6 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Printer,
-  RefreshCw,
   Download,
   LogOut,
   User as UserIcon,
@@ -22,21 +21,23 @@ import {
   Check,
   AlertCircle,
   Loader2,
+  Crown,
 } from 'lucide-react';
 import { ActiveTab, FechamentoCulto, ConfigIgreja, User } from '../types';
 import { formatCurrency, calcularResumoLancamentos } from '../utils/calculations';
+import { isSubscriptionActive } from '../services/treasuryService';
 
 interface HeaderProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   fechamentoAtual: FechamentoCulto;
   configIgreja: ConfigIgreja;
-  onNovoFechamento: () => void;
   onOpenPrintModal: () => void;
   currentUser?: User | null;
   onLogout?: () => void;
   syncStatus?: 'idle' | 'saving' | 'saved' | 'error';
   onManualSave?: () => void;
+  onOpenSubscriptionModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -44,15 +45,16 @@ export const Header: React.FC<HeaderProps> = ({
   setActiveTab,
   fechamentoAtual,
   configIgreja,
-  onNovoFechamento,
   onOpenPrintModal,
   currentUser,
   onLogout,
   syncStatus = 'idle',
   onManualSave,
+  onOpenSubscriptionModal,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const isSubscribed = isSubscriptionActive(currentUser);
 
   // Close mobile menu on Escape key press
   useEffect(() => {
@@ -230,6 +232,25 @@ export const Header: React.FC<HeaderProps> = ({
               3. AÇÕES RÁPIDAS & MENU MOBILE (DIREITA)
               =================================================== */}
           <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            {/* BOTÃO / BADGE DE ASSINATURA PRO */}
+            {onOpenSubscriptionModal && (
+              <button
+                type="button"
+                onClick={onOpenSubscriptionModal}
+                className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer border ${
+                  isSubscribed
+                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
+                    : 'bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/10 hover:from-amber-500/30 hover:to-yellow-500/30 text-amber-300 border-amber-500/50 shadow-amber-500/10 animate-pulse'
+                }`}
+                title={isSubscribed ? 'Assinatura Pro Ativa (Ver Detalhes)' : 'Assinar Plano Mensal Pro'}
+              >
+                <Crown className={`w-3.5 h-3.5 ${isSubscribed ? 'text-emerald-400' : 'text-amber-400 fill-amber-400'}`} />
+                <span className="hidden sm:inline">
+                  {isSubscribed ? 'Pro Ativo' : 'Seja Pro'}
+                </span>
+              </button>
+            )}
+
             {/* INDICADOR DE SINCRONIZAÇÃO EM NUVEM */}
             {onManualSave && (
               <button
@@ -245,7 +266,7 @@ export const Header: React.FC<HeaderProps> = ({
                     ? 'bg-rose-500/15 text-rose-300 border-rose-500/40'
                     : 'bg-slate-800/80 hover:bg-slate-750 text-slate-300 border-slate-700 hover:border-slate-600'
                 }`}
-                title="Status da Sincronização com o Banco Supabase (Clique para Forçar Salvamento)"
+                title="Salvar alterações na nuvem"
               >
                 {syncStatus === 'saving' ? (
                   <>
@@ -281,17 +302,6 @@ export const Header: React.FC<HeaderProps> = ({
               <Download className="w-3.5 h-3.5 text-emerald-400 hidden xs:inline" />
               <Printer className="w-3.5 h-3.5 text-amber-400" />
               <span className="hidden sm:inline">PDF / Imprimir</span>
-            </button>
-
-            {/* BOTÃO NOVO CAIXA */}
-            <button
-              type="button"
-              onClick={onNovoFechamento}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow-md shadow-amber-500/20 active:scale-95 cursor-pointer"
-              title="Iniciar Novo Fechamento de Caixa"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-950" />
-              <span className="hidden md:inline">Novo Caixa</span>
             </button>
 
             {/* BOTÃO LOGOUT */}

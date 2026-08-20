@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Church,
   Lock,
@@ -14,11 +14,28 @@ import {
   ShieldCheck,
   UserCheck,
   CloudCheck,
-  ArrowLeft
+  ArrowLeft,
+  MessageCircle,
+  Headphones,
+  Smartphone,
+  Download,
+  Sparkles,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { User, ConfigIgreja } from '../types';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
-import { fetchUserProfile } from '../services/treasuryService';
+import {
+  fetchUserProfile,
+  getLocalSupportConfig,
+  buildWhatsAppLink,
+  formatWhatsAppDisplay,
+  isAndroidApkEnvironment,
+  fetchGlobalAdminConfig,
+  GlobalAdminConfig,
+} from '../services/treasuryService';
+import { DEMO_USER, DEMO_CONFIG } from '../data/mockData';
 
 interface AuthViewProps {
   onLoginSuccess: (user: User, isNewAccount?: boolean, churchName?: string) => void;
@@ -30,7 +47,7 @@ interface StoredUserAccount extends User {
 }
 
 function parseSupabaseAuthError(error: { message?: string; status?: number } | null): string {
-  if (!error || !error.message) return 'Ocorreu um erro inesperado ao autenticar.';
+  if (!error || !error.message) return 'Não foi possível processar sua solicitação no momento. Tente novamente em instantes.';
   
   const msg = error.message.toLowerCase();
 
@@ -38,10 +55,10 @@ function parseSupabaseAuthError(error: { message?: string; status?: number } | n
     return 'E-mail ou senha incorretos. Verifique suas credenciais ou crie sua conta na aba "Criar Conta".';
   }
   if (msg.includes('email not confirmed')) {
-    return 'E-mail ainda não confirmado no Supabase. Verifique sua caixa de entrada para confirmar antes de entrar.';
+    return 'E-mail ainda não confirmado. Verifique sua caixa de entrada para confirmar seu acesso antes de entrar.';
   }
   if (msg.includes('user already registered') || msg.includes('already exists') || msg.includes('unique constraint')) {
-    return 'Este e-mail já possui cadastro. Clique na aba "Entrar" para acessar.';
+    return 'Este e-mail já possui cadastro. Clique na aba "Entrar" para acessar sua conta.';
   }
   if (msg.includes('password should be at least') || msg.includes('weak password')) {
     return 'A senha fornecida é muito curta. Crie uma senha com pelo menos 6 caracteres.';
@@ -50,13 +67,13 @@ function parseSupabaseAuthError(error: { message?: string; status?: number } | n
     return 'Muitas tentativas em pouco tempo. Por segurança, aguarde alguns instantes antes de tentar novamente.';
   }
   if (msg.includes('signup disabled') || msg.includes('signups not allowed')) {
-    return 'Novos cadastros estão desativados temporariamente no painel do Supabase.';
+    return 'Novos cadastros estão temporariamente indisponíveis no momento.';
   }
   if (msg.includes('fetch') || msg.includes('network') || msg.includes('failed to fetch')) {
-    return 'Falha de conexão com os servidores do Supabase. Verifique sua conexão com a internet.';
+    return 'Falha de conexão com os servidores. Verifique sua conexão com a internet.';
   }
 
-  return `Erro de autenticação: ${error.message}`;
+  return 'Não foi possível completar a operação no momento. Tente novamente em instantes.';
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja }) => {
@@ -83,6 +100,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showApkTutorial, setShowApkTutorial] = useState(false);
+
+  // Suporte e Atendimento Global gerenciado pelo Super Admin
+  const [globalSupport, setGlobalSupport] = useState<GlobalAdminConfig>(() => getLocalSupportConfig());
+
+  useEffect(() => {
+    fetchGlobalAdminConfig().then((data) => {
+      if (data) {
+        setGlobalSupport(data);
+      }
+    });
+  }, []);
+
+  const supportWhatsApp = globalSupport.whatsappSuporte || configIgreja?.whatsappSuporte || '5511999999999';
+  const supportEmail = globalSupport.emailSuporte || configIgreja?.emailSuporte || 'suporte@tesouraria.com';
+  const apkDownloadUrl = globalSupport.apkDownloadUrl || configIgreja?.apkDownloadUrl || 'https://drive.google.com';
+  const whatsappLink = buildWhatsAppLink(supportWhatsApp, 'Olá, preciso de ajuda e suporte no Sistema de Tesouraria.');
+
+  // Detecção de ambiente: Exibir botão de download apenas na versão Web (ocultar se já estiver rodando dentro do APK)
+  const isApkEnvironment = isAndroidApkEnvironment();
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -98,7 +135,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
     setIsLoading(true);
 
     if (!isSupabaseConfigured) {
-      setErrorMessage('Supabase não está configurado. Verifique as credenciais no arquivo de ambiente.');
+      setErrorMessage('Não foi possível conectar ao sistema no momento. Tente novamente mais tarde.');
       setIsLoading(false);
       return;
     }
@@ -110,7 +147,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
       });
 
       if (error) {
-        console.error('Erro Supabase no login (signInWithPassword):', error);
+        // Informação controlada de login inválido sem gerar exceção não tratada no console
+        console.warn('Tentativa de autenticação não autorizada:', error.message);
         setErrorMessage(parseSupabaseAuthError(error));
         setIsLoading(false);
         return;
@@ -126,6 +164,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
           nome: userProfile?.nome || meta.nome || 'Tesoureiro',
           cargo: userProfile?.cargo || meta.cargo || 'Tesoureiro Principal',
           nomeIgreja: userProfile?.nomeIgreja || meta.nome_igreja || configIgreja?.nomeIgreja || 'Igreja Evangélica',
+          subscriptionStatus: userProfile?.subscriptionStatus || 'inactive',
+          subscriptionPlan: userProfile?.subscriptionPlan || 'mensal',
+          subscriptionExpiresAt: userProfile?.subscriptionExpiresAt,
+          mpPreapprovalId: userProfile?.mpPreapprovalId,
           createdAt: data.user.created_at || new Date().toISOString(),
         };
 
@@ -136,7 +178,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         }, 300);
       }
     } catch (err: unknown) {
-      console.error('Erro Supabase inesperado no login:', err);
+      console.error('Erro inesperado no login:', err);
       const errObj = err as { message?: string };
       setErrorMessage(parseSupabaseAuthError(errObj));
       setIsLoading(false);
@@ -175,13 +217,13 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
     setIsLoading(true);
 
     if (!isSupabaseConfigured) {
-      setErrorMessage('Supabase não está configurado. Verifique as credenciais no arquivo de ambiente.');
+      setErrorMessage('Não foi possível conectar ao sistema no momento. Tente novamente mais tarde.');
       setIsLoading(false);
       return;
     }
 
     try {
-      // 1. Cria o usuário na tabela de Authentication oficial do Supabase (auth.users)
+      // 1. Cria o usuário na autenticação segura
       const { data, error } = await supabase.auth.signUp({
         email: emailTrimmed,
         password: regPassword,
@@ -195,7 +237,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
       });
 
       if (error) {
-        console.error('Erro Supabase no cadastro (signUp):', error);
+        console.error('Erro no cadastro:', error);
         setErrorMessage(parseSupabaseAuthError(error));
         setIsLoading(false);
         return;
@@ -203,7 +245,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
       if (data?.user) {
         if (data.user.identities && data.user.identities.length === 0) {
-          setErrorMessage('Este e-mail já está cadastrado no Supabase. Faça login para acessar.');
+          setErrorMessage('Este e-mail já possui uma conta cadastrada. Faça login para acessar.');
           setIsLoading(false);
           return;
         }
@@ -218,7 +260,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
           createdAt: new Date().toISOString(),
         };
 
-        // 2. Salva na tabela public.profiles com user_id
+        // 2. Salva o perfil
         try {
           const { error: profileErr } = await supabase.from('profiles').upsert({
             id: newUserId,
@@ -230,19 +272,19 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
             created_at: new Date().toISOString(),
           });
           if (profileErr) {
-            console.error('Erro Supabase ao salvar profiles:', profileErr);
+            console.error('Erro ao salvar perfil:', profileErr);
           }
         } catch (profileErr) {
-          console.error('Erro Supabase inesperado ao salvar profiles:', profileErr);
+          console.error('Erro inesperado ao salvar perfil:', profileErr);
         }
 
         // Verifica se requer confirmação de e-mail
         if (!data.session) {
           setSuccessMessage(
-            'Conta criada com sucesso no Supabase! Verifique sua caixa de entrada caso a confirmação por e-mail esteja ativada.'
+            'Conta criada com sucesso! Verifique sua caixa de entrada caso a confirmação por e-mail esteja ativada.'
           );
         } else {
-          setSuccessMessage('Conta registrada no Supabase com sucesso!');
+          setSuccessMessage('Conta criada com sucesso!');
         }
 
         setTimeout(() => {
@@ -251,7 +293,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         }, 500);
       }
     } catch (err: unknown) {
-      console.error('Erro Supabase inesperado no registro:', err);
+      console.error('Erro inesperado no registro:', err);
       const errObj = err as { message?: string };
       setErrorMessage(parseSupabaseAuthError(errObj));
       setIsLoading(false);
@@ -305,11 +347,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
     }, 400);
   };
 
-  const fillDemoAccount = () => {
-    setLoginEmail('tesouraria@igreja.com');
-    setLoginPassword('123456');
+  const handleAccessDemo = () => {
+    setIsLoading(true);
     setErrorMessage(null);
-    setSuccessMessage('Credenciais de teste preenchidas! Clique em Entrar.');
+    setSuccessMessage('Acessando Modo Demonstração (Sem Cadastro)...');
+    setTimeout(() => {
+      setIsLoading(false);
+      onLoginSuccess(DEMO_USER, false, DEMO_CONFIG.nomeIgreja);
+    }, 200);
   };
 
   return (
@@ -330,10 +375,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
             Sistema Integrado de Fechamento & Gestão de Caixa
           </p>
 
-          {/* Supabase Status Indicator */}
+          {/* Status Indicator */}
           <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
-            <CloudCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Supabase Auth & Nuvem Ativos</span>
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <span>Acesso Seguro e Criptografado</span>
           </div>
         </div>
 
@@ -398,9 +443,53 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
 
           {/* ALERTS */}
           {errorMessage && (
-            <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex items-start gap-3 animate-fadeIn">
-              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-              <div className="leading-snug">{errorMessage}</div>
+            <div className="mb-5 p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs sm:text-sm flex flex-col gap-2.5 animate-fadeIn">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                <div className="leading-snug">{errorMessage}</div>
+              </div>
+              {mode === 'login' && errorMessage.includes('E-mail ou senha') && (
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-rose-500/20 pl-8">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRegEmail(loginEmail);
+                      setMode('register');
+                      setErrorMessage(null);
+                    }}
+                    className="text-xs font-bold text-amber-400 hover:text-amber-300 hover:underline cursor-pointer"
+                  >
+                    Criar conta com este e-mail &rarr;
+                  </button>
+                  <span className="text-rose-400/40 text-xs">•</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotEmail(loginEmail);
+                      setMode('forgot');
+                      setErrorMessage(null);
+                    }}
+                    className="text-xs text-slate-300 hover:text-white hover:underline cursor-pointer"
+                  >
+                    Esqueci minha senha
+                  </button>
+                </div>
+              )}
+              {mode === 'register' && errorMessage.includes('já possui cadastro') && (
+                <div className="pt-1 border-t border-rose-500/20 pl-8">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLoginEmail(regEmail);
+                      setMode('login');
+                      setErrorMessage(null);
+                    }}
+                    className="text-xs font-bold text-amber-400 hover:text-amber-300 hover:underline cursor-pointer"
+                  >
+                    Entrar na minha conta existente &rarr;
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -500,16 +589,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
                 )}
               </button>
 
-              {/* DEMO SHORTCUT BUTTON */}
-              <div className="pt-3 border-t border-slate-800/80 text-center">
+              {/* BOTAO DE ACESSO DIRETO A CONTA DEMO */}
+              <div className="pt-4 border-t border-slate-800/80 space-y-2">
                 <button
                   type="button"
-                  onClick={fillDemoAccount}
-                  className="text-xs text-amber-400/90 hover:text-amber-300 font-semibold underline underline-offset-4 cursor-pointer transition-colors inline-flex items-center gap-1.5"
+                  onClick={handleAccessDemo}
+                  disabled={isLoading}
+                  className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-500/25 to-amber-500/15 hover:from-amber-500/25 hover:to-amber-500/35 text-amber-300 hover:text-amber-200 border border-amber-500/40 hover:border-amber-500/70 font-bold text-xs sm:text-sm shadow-md transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer group"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Usar conta de demonstração rápida (Tesouraria)</span>
+                  <Sparkles className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+                  <span>Acessar Conta Demo (Modo Demonstração)</span>
                 </button>
+                <p className="text-[11px] text-slate-400 text-center leading-tight">
+                  Acesso direto instantâneo sem necessidade de e-mail, senha ou cadastro prévio.
+                </p>
               </div>
             </form>
           )}
@@ -644,6 +737,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
                   </>
                 )}
               </button>
+
+              <div className="pt-3 text-center">
+                <button
+                  type="button"
+                  onClick={handleAccessDemo}
+                  className="text-xs text-amber-400/90 hover:text-amber-300 font-semibold underline underline-offset-4 cursor-pointer transition-colors inline-flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Deseja testar sem cadastrar? Acessar Conta Demo</span>
+                </button>
+              </div>
             </form>
           )}
 
@@ -651,7 +755,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
           {mode === 'forgot' && (
             <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
               <p className="text-xs text-slate-300 leading-relaxed">
-                Digite o endereço de e-mail cadastrado na sua conta do Supabase. Enviaremos um link seguro para você redefinir sua senha.
+                Digite o endereço de e-mail cadastrado na sua conta. Enviaremos um link seguro para você redefinir sua senha.
               </p>
 
               <div>
@@ -689,11 +793,148 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
               </button>
             </form>
           )}
+
+          {/* SEÇÃO: DOWNLOAD DO APLICATIVO ANDROID (APK) - EXCLUSIVO PARA VERSÃO WEB */}
+          {!isApkEnvironment && (
+            <div className="mt-6 pt-5 border-t border-slate-800/80">
+              <div className="bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-emerald-500/30 rounded-2xl p-4 text-center shadow-lg relative overflow-hidden group">
+                <div className="absolute -top-10 -right-10 w-24 h-24 bg-emerald-500/10 rounded-full blur-xl pointer-events-none" />
+                
+                <div className="flex items-center justify-center gap-2 mb-1.5">
+                  <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                    <Smartphone className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-bold text-emerald-300">
+                    Versão Mobile Disponível
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-slate-300 mb-3">
+                  Instale o aplicativo oficial diretamente no seu celular Android para maior comodidade.
+                </p>
+
+                <a
+                  href={apkDownloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-600/25 transition-all duration-200 hover:scale-[1.02] active:scale-95 cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-slate-950" />
+                  <span>Baixar Aplicativo Android (APK)</span>
+                </a>
+
+                {/* BOTÃO E TUTORIAL PASSO A PASSO (EXCLUSIVO WEB) */}
+                <div className="mt-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowApkTutorial(!showApkTutorial)}
+                    className="inline-flex items-center justify-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors font-medium cursor-pointer py-1 px-2 rounded-lg hover:bg-emerald-500/10"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>Como instalar o APK no seu celular? (Passo a Passo)</span>
+                    {showApkTutorial ? (
+                      <ChevronUp className="w-3.5 h-3.5 shrink-0" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                    )}
+                  </button>
+                </div>
+
+                {showApkTutorial && (
+                  <div className="mt-3 text-left p-3.5 bg-slate-900/95 border border-emerald-500/30 rounded-xl text-xs space-y-3 animate-fadeIn">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                      <span className="font-bold text-slate-200 text-xs flex items-center gap-1.5">
+                        <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                        Instruções de Instalação no Android
+                      </span>
+                      <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md font-semibold">
+                        Simples e Rápido
+                      </span>
+                    </div>
+
+                    {/* Passo 1 */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 border border-emerald-500/30">
+                        1
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-200 block text-xs">Passo 1: Fazer o Download</span>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                          Clique em <strong className="text-emerald-300">"Baixar Aplicativo"</strong> para fazer o download do arquivo <code className="text-emerald-300 font-mono">.apk</code> no Google Drive.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Passo 2 */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 border border-amber-500/30">
+                        2
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-200 block text-xs">Passo 2: Aviso de Segurança</span>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                          Ao abrir o arquivo baixado, seu celular exibirá o aviso <strong className="text-slate-200">"Instalar aplicativos desconhecidos"</strong>.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Passo 3 */}
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center shrink-0 mt-0.5 border border-emerald-500/30">
+                        3
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-200 block text-xs">Passo 3: Permitir e Instalar</span>
+                        <p className="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                          Clique em <strong className="text-slate-200">"Configurações"</strong> no aviso, ative a opção <strong className="text-emerald-300">"Permitir desta fonte"</strong> e confirme a instalação.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SEÇÃO DE SUPORTE E ATENDIMENTO */}
+          <div className="mt-6 pt-5 border-t border-slate-800/80 text-center space-y-3">
+            <div>
+              <p className="text-xs font-bold text-slate-200 flex items-center justify-center gap-1.5">
+                <Headphones className="w-3.5 h-3.5 text-amber-400" />
+                <span>Precisa de ajuda ou suporte?</span>
+              </p>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Fale com nossa equipe técnica para tirar dúvidas ou solicitar atendimento:
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-2.5 pt-1">
+              {/* Botão do WhatsApp */}
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all shadow-lg shadow-emerald-950/40 hover:scale-[1.02] active:scale-95 cursor-pointer"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>WhatsApp: {formatWhatsAppDisplay(supportWhatsApp)}</span>
+              </a>
+
+              {/* Link de E-mail */}
+              <a
+                href={`mailto:${supportEmail}?subject=${encodeURIComponent('Suporte - Sistema de Tesouraria')}`}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-950/80 hover:bg-slate-900 text-slate-300 hover:text-white border border-slate-800 text-xs font-bold transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+              >
+                <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>{supportEmail}</span>
+              </a>
+            </div>
+          </div>
         </div>
 
         {/* FOOTER TEXT */}
         <p className="text-center text-xs text-slate-500 mt-6">
-          Gestão de Tesouraria Eclesiástica &bull; Sincronização em Nuvem Supabase
+          Gestão de Tesouraria Eclesiástica &bull; Sincronização em Nuvem Segura
         </p>
       </div>
     </div>
