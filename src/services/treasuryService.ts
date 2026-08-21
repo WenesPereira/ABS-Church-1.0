@@ -31,10 +31,30 @@ export function isSuperAdmin(target?: User | { email?: string } | string | null)
   return email.trim().toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
 }
 
+export interface ContatoRegistro {
+  id: string;
+  data: string;
+  nome: string;
+  igrejaOuCargo?: string;
+  telefone?: string;
+  assunto?: string;
+  observacoes?: string;
+  status: 'pendente' | 'em_atendimento' | 'resolvido';
+}
+
 export interface GlobalAdminConfig {
   whatsappSuporte: string;
   emailSuporte: string;
   apkDownloadUrl: string;
+  contatosFeitos?: string;
+  listaContatos?: ContatoRegistro[];
+  updatedAt?: string;
+}
+
+export interface SaveGlobalConfigResult {
+  success: boolean;
+  savedToDb: boolean;
+  error?: string;
 }
 
 /**
@@ -90,10 +110,22 @@ export function getLocalSupportConfig(): GlobalAdminConfig {
       const raw = localStorage.getItem(LOCAL_SUPPORT_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
+        let listaContatos: ContatoRegistro[] = [];
+        if (Array.isArray(parsed.listaContatos)) {
+          listaContatos = parsed.listaContatos;
+        } else if (typeof parsed.contatosFeitos === 'string' && parsed.contatosFeitos.startsWith('[')) {
+          try {
+            listaContatos = JSON.parse(parsed.contatosFeitos);
+          } catch {}
+        }
+
         return {
           whatsappSuporte: parsed.whatsappSuporte || '5511999999999',
           emailSuporte: parsed.emailSuporte || 'suporte@tesouraria.com',
           apkDownloadUrl: parsed.apkDownloadUrl || 'https://drive.google.com',
+          contatosFeitos: typeof parsed.contatosFeitos === 'string' ? parsed.contatosFeitos : '',
+          listaContatos,
+          updatedAt: parsed.updatedAt || new Date().toISOString(),
         };
       }
     }
@@ -104,18 +136,45 @@ export function getLocalSupportConfig(): GlobalAdminConfig {
     whatsappSuporte: '5511999999999',
     emailSuporte: 'suporte@tesouraria.com',
     apkDownloadUrl: 'https://drive.google.com',
+    contatosFeitos: '',
+    listaContatos: [],
+    updatedAt: new Date().toISOString(),
   };
 }
 
-export function saveLocalSupportConfig(whatsapp?: string, email?: string, apkUrl?: string): void {
+export function saveLocalSupportConfig(
+  whatsappOrConfig?: string | Partial<GlobalAdminConfig>,
+  email?: string,
+  apkUrl?: string,
+  contatosFeitos?: string,
+  listaContatos?: ContatoRegistro[]
+): void {
   try {
     if (typeof window !== 'undefined' && window.localStorage) {
       const current = getLocalSupportConfig();
-      const toSave = {
-        whatsappSuporte: (whatsapp !== undefined && whatsapp !== '') ? whatsapp : current.whatsappSuporte,
-        emailSuporte: (email !== undefined && email !== '') ? email : current.emailSuporte,
-        apkDownloadUrl: (apkUrl !== undefined && apkUrl !== '') ? apkUrl : current.apkDownloadUrl,
-      };
+      let toSave: GlobalAdminConfig;
+
+      if (typeof whatsappOrConfig === 'object' && whatsappOrConfig !== null) {
+        toSave = {
+          whatsappSuporte: whatsappOrConfig.whatsappSuporte || current.whatsappSuporte,
+          emailSuporte: whatsappOrConfig.emailSuporte || current.emailSuporte,
+          apkDownloadUrl: whatsappOrConfig.apkDownloadUrl || current.apkDownloadUrl,
+          contatosFeitos: whatsappOrConfig.contatosFeitos !== undefined ? whatsappOrConfig.contatosFeitos : current.contatosFeitos,
+          listaContatos: whatsappOrConfig.listaContatos !== undefined ? whatsappOrConfig.listaContatos : current.listaContatos,
+          updatedAt: new Date().toISOString(),
+        };
+      } else {
+        const waStr = typeof whatsappOrConfig === 'string' ? whatsappOrConfig : '';
+        toSave = {
+          whatsappSuporte: waStr !== '' ? waStr : current.whatsappSuporte,
+          emailSuporte: (email !== undefined && email !== '') ? email : current.emailSuporte,
+          apkDownloadUrl: (apkUrl !== undefined && apkUrl !== '') ? apkUrl : current.apkDownloadUrl,
+          contatosFeitos: contatosFeitos !== undefined ? contatosFeitos : current.contatosFeitos,
+          listaContatos: listaContatos !== undefined ? listaContatos : current.listaContatos,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
       localStorage.setItem(LOCAL_SUPPORT_KEY, JSON.stringify(toSave));
     }
   } catch (e) {
@@ -124,7 +183,46 @@ export function saveLocalSupportConfig(whatsapp?: string, email?: string, apkUrl
 }
 
 /**
- * Busca a configuração global do sistema (WhatsApp, E-mail e APK) do Supabase.
+ * Helper para extrair dados de configuração global a partir de uma linha retornada pelo Supabase
+ */
+function parseGlobalConfigRow(row: any, localFallback: GlobalAdminConfig): GlobalAdminConfig {
+  let whatsapp = row.whatsapp_suporte || row.whatsappSuporte || row.whatsapp || localFallback.whatsappSuporte;
+  let email = row.email_suporte || row.emailSuporte || row.email || localFallback.emailSuporte;
+  let apk = row.apk_download_url || row.apkDownloadUrl || row.apk_url || localFallback.apkDownloadUrl;
+  let contatosFeitos = row.contatos_feitos || row.contatosFeitos || row.observacoes || localFallback.contatosFeitos || '';
+  let listaContatos: ContatoRegistro[] = localFallback.listaContatos || [];
+
+  if (row.data && typeof row.data === 'object') {
+    if (row.data.whatsappSuporte) whatsapp = row.data.whatsappSuporte;
+    if (row.data.emailSuporte) email = row.data.emailSuporte;
+    if (row.data.apkDownloadUrl) apk = row.data.apkDownloadUrl;
+    if (row.data.contatosFeitos) contatosFeitos = row.data.contatosFeitos;
+    if (Array.isArray(row.data.listaContatos)) listaContatos = row.data.listaContatos;
+  }
+
+  if (Array.isArray(row.lista_contatos)) {
+    listaContatos = row.lista_contatos;
+  } else if (typeof contatosFeitos === 'string' && contatosFeitos.startsWith('[')) {
+    try {
+      const parsedList = JSON.parse(contatosFeitos);
+      if (Array.isArray(parsedList)) {
+        listaContatos = parsedList;
+      }
+    } catch {}
+  }
+
+  return {
+    whatsappSuporte: whatsapp,
+    emailSuporte: email,
+    apkDownloadUrl: apk,
+    contatosFeitos,
+    listaContatos,
+    updatedAt: row.updated_at || row.updatedAt || new Date().toISOString(),
+  };
+}
+
+/**
+ * Busca a configuração global do sistema (WhatsApp, E-mail, APK e Contatos Feitos) do Supabase.
  * Caso não encontre ou esteja offline, retorna o cache do localStorage.
  */
 export async function fetchGlobalAdminConfig(): Promise<GlobalAdminConfig> {
@@ -132,35 +230,55 @@ export async function fetchGlobalAdminConfig(): Promise<GlobalAdminConfig> {
   if (!isSupabaseConfigured) return local;
 
   try {
-    // 1. Tenta buscar da linha identificadora global 'global_admin_settings'
-    const { data: globalRow, error: gErr } = await supabase
-      .from('configuracao_igreja')
+    // 1. Tenta buscar da tabela dedicada 'app_settings' com id 'global_settings'
+    const { data: appSettingsRow, error: appErr } = await supabase
+      .from('app_settings')
       .select('*')
-      .eq('id', 'global_admin_settings')
+      .in('id', ['global_settings', 'global_admin_settings'])
       .maybeSingle();
 
-    if (!gErr && globalRow) {
-      const gAny = globalRow as any;
-      const whatsapp = gAny.whatsapp_suporte || local.whatsappSuporte;
-      const email = gAny.email_suporte || local.emailSuporte;
-      const apk = gAny.apk_download_url || local.apkDownloadUrl;
-      saveLocalSupportConfig(whatsapp, email, apk);
-      return { whatsappSuporte: whatsapp, emailSuporte: email, apkDownloadUrl: apk };
+    if (!appErr && appSettingsRow) {
+      const parsed = parseGlobalConfigRow(appSettingsRow, local);
+      saveLocalSupportConfig(parsed);
+      return parsed;
     }
 
-    // 2. Se não houver linha global específica, tenta carregar da primeira linha de configuracao_igreja disponível
+    // 2. Tenta buscar da tabela 'global_config' com id 'global_settings'
+    const { data: globalConfigRow, error: gcErr } = await supabase
+      .from('global_config')
+      .select('*')
+      .in('id', ['global_settings', 'global_admin_settings'])
+      .maybeSingle();
+
+    if (!gcErr && globalConfigRow) {
+      const parsed = parseGlobalConfigRow(globalConfigRow, local);
+      saveLocalSupportConfig(parsed);
+      return parsed;
+    }
+
+    // 3. Tenta buscar da tabela 'configuracao_igreja' onde id in ('global_settings', 'global_admin_settings')
+    const { data: globalChurchRow, error: gErr } = await supabase
+      .from('configuracao_igreja')
+      .select('*')
+      .in('id', ['global_settings', 'global_admin_settings'])
+      .maybeSingle();
+
+    if (!gErr && globalChurchRow) {
+      const parsed = parseGlobalConfigRow(globalChurchRow, local);
+      saveLocalSupportConfig(parsed);
+      return parsed;
+    }
+
+    // 4. Se não houver linha global específica, tenta carregar da primeira linha de configuracao_igreja disponível
     const { data: firstRows, error: fErr } = await supabase
       .from('configuracao_igreja')
       .select('*')
       .limit(1);
 
     if (!fErr && firstRows && firstRows.length > 0) {
-      const rowAny = firstRows[0] as any;
-      const whatsapp = rowAny.whatsapp_suporte || local.whatsappSuporte;
-      const email = rowAny.email_suporte || local.emailSuporte;
-      const apk = rowAny.apk_download_url || local.apkDownloadUrl;
-      saveLocalSupportConfig(whatsapp, email, apk);
-      return { whatsappSuporte: whatsapp, emailSuporte: email, apkDownloadUrl: apk };
+      const parsed = parseGlobalConfigRow(firstRows[0], local);
+      saveLocalSupportConfig(parsed);
+      return parsed;
     }
   } catch (err) {
     console.warn('Aviso ao buscar configurações globais do admin no Supabase:', err);
@@ -170,59 +288,146 @@ export async function fetchGlobalAdminConfig(): Promise<GlobalAdminConfig> {
 }
 
 /**
- * Salva as configurações globais do Super Admin no Supabase e no localStorage.
+ * Salva as configurações globais do Super Admin no Supabase (utilizando upsert na tabela dedicada e de configurações)
+ * com fallback completo para localStorage.
  */
-export async function saveGlobalAdminConfig(config: GlobalAdminConfig, userId?: string): Promise<boolean> {
-  // Salva no localStorage imediatamente para garantir sincronia local instantânea
-  saveLocalSupportConfig(config.whatsappSuporte, config.emailSuporte, config.apkDownloadUrl);
+export async function saveGlobalAdminConfig(
+  config: GlobalAdminConfig,
+  userId?: string
+): Promise<SaveGlobalConfigResult> {
+  // 1. Salva no localStorage imediatamente para garantir sincronia local e tolerância a falhas
+  saveLocalSupportConfig(config);
 
-  if (!isSupabaseConfigured) return true;
+  if (!isSupabaseConfigured) {
+    return {
+      success: true,
+      savedToDb: false,
+      error: 'Supabase não está configurado na aplicação. Dados salvos localmente.',
+    };
+  }
+
+  const errors: string[] = [];
+  let savedAtLeastOnce = false;
 
   try {
     const uid = await getCurrentUserId(userId);
+    const nowIso = new Date().toISOString();
 
-    // 1. Grava na linha global 'global_admin_settings'
-    const payloadGlobal: any = {
-      id: 'global_admin_settings',
+    const contatosJson = config.listaContatos && config.listaContatos.length > 0
+      ? JSON.stringify(config.listaContatos)
+      : (config.contatosFeitos || '');
+
+    // Payload para tabelas dedicadas 'app_settings' e 'global_config'
+    const appSettingsPayload: any = {
+      id: 'global_settings',
+      whatsapp_suporte: config.whatsappSuporte,
+      email_suporte: config.emailSuporte,
+      apk_download_url: config.apkDownloadUrl,
+      contatos_feitos: contatosJson,
+      updated_at: nowIso,
+    };
+
+    // Payload para tabela 'configuracao_igreja'
+    const churchSettingsPayload: any = {
+      id: 'global_settings',
       nome_igreja: 'Configurações Globais do Sistema',
       pastor_presidente: 'Super Admin',
       tesoureiro_padrao: 'Super Admin',
       whatsapp_suporte: config.whatsappSuporte,
       email_suporte: config.emailSuporte,
       apk_download_url: config.apkDownloadUrl,
+      observacoes: contatosJson,
+      updated_at: nowIso,
     };
     if (uid) {
-      payloadGlobal.user_id = uid;
+      churchSettingsPayload.user_id = uid;
     }
 
-    const { error: gErr } = await supabase
-      .from('configuracao_igreja')
-      .upsert(payloadGlobal, { onConflict: 'id' });
+    // 1. Tenta upsert na tabela 'app_settings'
+    try {
+      const { error: appErr } = await supabase
+        .from('app_settings')
+        .upsert(appSettingsPayload, { onConflict: 'id' });
 
-    if (gErr) {
-      console.warn('Aviso ao salvar global_admin_settings em configuracao_igreja:', gErr.message);
+      if (!appErr) {
+        savedAtLeastOnce = true;
+      } else {
+        errors.push(`app_settings: ${appErr.message}`);
+      }
+    } catch (e: any) {
+      errors.push(`app_settings: ${e?.message || 'erro'}`);
     }
 
-    // 2. Se temos o UID do usuário Super Admin, atualiza também a configuração pessoal dele
-    if (uid) {
-      const { error: userErr } = await supabase
+    // 2. Tenta upsert na tabela 'global_config'
+    try {
+      const { error: gcErr } = await supabase
+        .from('global_config')
+        .upsert(appSettingsPayload, { onConflict: 'id' });
+
+      if (!gcErr) {
+        savedAtLeastOnce = true;
+      } else {
+        errors.push(`global_config: ${gcErr.message}`);
+      }
+    } catch (e: any) {
+      errors.push(`global_config: ${e?.message || 'erro'}`);
+    }
+
+    // 3. Upsert na tabela 'configuracao_igreja' (com chaves 'global_settings' e 'global_admin_settings')
+    try {
+      const { error: ciErr1 } = await supabase
         .from('configuracao_igreja')
-        .update({
-          whatsapp_suporte: config.whatsappSuporte,
-          email_suporte: config.emailSuporte,
-          apk_download_url: config.apkDownloadUrl,
-        } as any)
-        .eq('user_id', uid);
+        .upsert(churchSettingsPayload, { onConflict: 'id' });
 
-      if (userErr) {
-        console.warn('Aviso ao sincronizar dados no perfil do Super Admin:', userErr.message);
+      const { error: ciErr2 } = await supabase
+        .from('configuracao_igreja')
+        .upsert({ ...churchSettingsPayload, id: 'global_admin_settings' }, { onConflict: 'id' });
+
+      if (!ciErr1 || !ciErr2) {
+        savedAtLeastOnce = true;
+      } else {
+        errors.push(`configuracao_igreja: ${ciErr1?.message || ciErr2?.message}`);
+      }
+    } catch (e: any) {
+      errors.push(`configuracao_igreja: ${e?.message || 'erro'}`);
+    }
+
+    // 4. Se o Super Admin estiver logado, atualiza também a linha pessoal dele para manter sincronia
+    if (uid) {
+      try {
+        await supabase
+          .from('configuracao_igreja')
+          .update({
+            whatsapp_suporte: config.whatsappSuporte,
+            email_suporte: config.emailSuporte,
+            apk_download_url: config.apkDownloadUrl,
+            observacoes: contatosJson,
+          } as any)
+          .eq('user_id', uid);
+      } catch (e) {
+        // Atualização complementar silenciosa
       }
     }
 
-    return true;
-  } catch (err) {
+    if (savedAtLeastOnce) {
+      return {
+        success: true,
+        savedToDb: true,
+      };
+    } else {
+      return {
+        success: true,
+        savedToDb: false,
+        error: errors.join(' | ') || 'Não foi possível gravar no banco Supabase.',
+      };
+    }
+  } catch (err: any) {
     console.error('Erro ao persistir configurações globais no Supabase:', err);
-    return false;
+    return {
+      success: true,
+      savedToDb: false,
+      error: err?.message || 'Erro inesperado na conexão com o banco.',
+    };
   }
 }
 

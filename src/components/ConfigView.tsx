@@ -22,6 +22,13 @@ import {
   ExternalLink,
   Save,
   Globe,
+  Plus,
+  PhoneCall,
+  FileText,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Database,
 } from 'lucide-react';
 import { ConfigIgreja, CategoriaEntrada, ActiveTab, User } from '../types';
 import { ALL_ENTRADA_CATEGORIES, CATEGORIA_ENTRADA_LABELS } from '../utils/calculations';
@@ -33,7 +40,10 @@ import {
   fetchGlobalAdminConfig,
   saveGlobalAdminConfig,
   GlobalAdminConfig,
+  ContatoRegistro,
   getLocalSupportConfig,
+  buildWhatsAppLink,
+  formatWhatsAppDisplay,
 } from '../services/treasuryService';
 
 interface ConfigViewProps {
@@ -70,7 +80,22 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
   const isSuper = isSuperAdmin(currentUser);
   const [globalConfig, setGlobalConfig] = useState<GlobalAdminConfig>(() => getLocalSupportConfig());
   const [isSavingGlobal, setIsSavingGlobal] = useState(false);
-  const [globalSavedFeedback, setGlobalSavedFeedback] = useState<string | null>(null);
+  const [globalSavedFeedback, setGlobalSavedFeedback] = useState<{
+    type: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
+
+  // Estado para cadastro de novos contatos/atendimentos feitos no Painel Super Admin
+  const [novoContato, setNovoContato] = useState<Partial<ContatoRegistro>>({
+    data: new Date().toISOString().split('T')[0],
+    nome: '',
+    igrejaOuCargo: '',
+    telefone: '',
+    assunto: '',
+    observacoes: '',
+    status: 'pendente',
+  });
+  const [isAddingContato, setIsAddingContato] = useState(false);
 
   useEffect(() => {
     if (isSuper) {
@@ -143,19 +168,101 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
     setIsSavingGlobal(true);
     setGlobalSavedFeedback(null);
     try {
-      const ok = await saveGlobalAdminConfig(globalConfig);
-      if (ok) {
-        setGlobalSavedFeedback('Configurações globais salvas com sucesso no banco Supabase!');
+      const res = await saveGlobalAdminConfig(globalConfig, currentUser?.id);
+      if (res.savedToDb) {
+        setGlobalSavedFeedback({
+          type: 'success',
+          message: 'Configurações globais e registros de contatos salvos com sucesso no banco de dados Supabase!',
+        });
       } else {
-        setGlobalSavedFeedback('Configurações salvas localmente.');
+        setGlobalSavedFeedback({
+          type: 'warning',
+          message: `Configurações salvas no armazenamento local. Aviso Supabase: ${res.error || 'Não foi possível sincronizar com a nuvem no momento.'}`,
+        });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setGlobalSavedFeedback('Erro ao salvar configurações globais.');
+      setGlobalSavedFeedback({
+        type: 'error',
+        message: `Erro ao salvar: ${err?.message || 'Falha de comunicação.'} (Dados preservados localmente)`,
+      });
     } finally {
       setIsSavingGlobal(false);
-      setTimeout(() => setGlobalSavedFeedback(null), 4000);
+      setTimeout(() => setGlobalSavedFeedback(null), 6000);
     }
+  };
+
+  const handleAddContatoSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novoContato.nome?.trim()) return;
+
+    const registro: ContatoRegistro = {
+      id: `contato_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+      data: novoContato.data || new Date().toISOString().split('T')[0],
+      nome: novoContato.nome.trim(),
+      igrejaOuCargo: novoContato.igrejaOuCargo?.trim() || '',
+      telefone: novoContato.telefone?.trim() || '',
+      assunto: novoContato.assunto?.trim() || '',
+      observacoes: novoContato.observacoes?.trim() || '',
+      status: (novoContato.status as any) || 'pendente',
+    };
+
+    const listaAtual = globalConfig.listaContatos || [];
+    const novaLista = [registro, ...listaAtual];
+
+    const updatedConfig: GlobalAdminConfig = {
+      ...globalConfig,
+      listaContatos: novaLista,
+      contatosFeitos: JSON.stringify(novaLista),
+    };
+
+    setGlobalConfig(updatedConfig);
+    saveGlobalAdminConfig(updatedConfig, currentUser?.id);
+
+    setNovoContato({
+      data: new Date().toISOString().split('T')[0],
+      nome: '',
+      igrejaOuCargo: '',
+      telefone: '',
+      assunto: '',
+      observacoes: '',
+      status: 'pendente',
+    });
+    setIsAddingContato(false);
+
+    setGlobalSavedFeedback({
+      type: 'success',
+      message: `Contato de "${registro.nome}" registrado e gravado com sucesso!`,
+    });
+    setTimeout(() => setGlobalSavedFeedback(null), 4000);
+  };
+
+  const handleRemoveContato = (id: string) => {
+    const listaAtual = globalConfig.listaContatos || [];
+    const novaLista = listaAtual.filter((c) => c.id !== id);
+
+    const updatedConfig: GlobalAdminConfig = {
+      ...globalConfig,
+      listaContatos: novaLista,
+      contatosFeitos: JSON.stringify(novaLista),
+    };
+
+    setGlobalConfig(updatedConfig);
+    saveGlobalAdminConfig(updatedConfig, currentUser?.id);
+  };
+
+  const handleUpdateContatoStatus = (id: string, newStatus: 'pendente' | 'em_atendimento' | 'resolvido') => {
+    const listaAtual = globalConfig.listaContatos || [];
+    const novaLista = listaAtual.map((c) => (c.id === id ? { ...c, status: newStatus } : c));
+
+    const updatedConfig: GlobalAdminConfig = {
+      ...globalConfig,
+      listaContatos: novaLista,
+      contatosFeitos: JSON.stringify(novaLista),
+    };
+
+    setGlobalConfig(updatedConfig);
+    saveGlobalAdminConfig(updatedConfig, currentUser?.id);
   };
 
   const handleOpenResetModal = () => {
@@ -324,7 +431,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                   </span>
                 </div>
                 <p className="text-xs text-purple-300/80 mt-0.5">
-                  Gerenciamento global de canais de suporte e link de download do aplicativo Android (APK).
+                  Gerenciamento global de canais de suporte, download do APK e histórico de contatos de igrejas.
                 </p>
               </div>
             </div>
@@ -334,97 +441,388 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
           </div>
 
           {globalSavedFeedback && (
-            <div className="bg-purple-950/80 border border-purple-500/60 p-4 rounded-2xl text-xs text-purple-200 flex items-center gap-2 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 text-purple-400 shrink-0" />
-              <span className="font-semibold">{globalSavedFeedback}</span>
+            <div
+              className={`p-4 rounded-2xl text-xs flex items-start gap-3 border animate-in fade-in ${
+                globalSavedFeedback.type === 'success'
+                  ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-200'
+                  : globalSavedFeedback.type === 'warning'
+                  ? 'bg-amber-950/80 border-amber-500/60 text-amber-200'
+                  : 'bg-rose-950/80 border-rose-500/60 text-rose-200'
+              }`}
+            >
+              {globalSavedFeedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              ) : globalSavedFeedback.type === 'warning' ? (
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 font-medium leading-relaxed">
+                {globalSavedFeedback.message}
+              </div>
+              <button
+                type="button"
+                onClick={() => setGlobalSavedFeedback(null)}
+                className="text-slate-400 hover:text-slate-200 p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
-          <form onSubmit={handleSaveGlobalAdmin} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
-                  <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>WhatsApp de Suporte (Global):</span>
-                </label>
-                <input
-                  type="text"
-                  value={globalConfig.whatsappSuporte || ''}
-                  onChange={(e) => setGlobalConfig({ ...globalConfig, whatsappSuporte: e.target.value })}
-                  placeholder="Ex: 5511999999999 ou (11) 99999-9999"
-                  className="w-full bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
-                />
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  Usado no botão de WhatsApp da tela de login e suporte.
+          <form onSubmit={handleSaveGlobalAdmin} className="space-y-6">
+            {/* Bloco 1: Canais de Atendimento e Link do APK */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-purple-300">
+                  1. Configurações Públicas do Aplicativo
                 </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>WhatsApp de Suporte (Global):</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={globalConfig.whatsappSuporte || ''}
+                    onChange={(e) => setGlobalConfig({ ...globalConfig, whatsappSuporte: e.target.value })}
+                    placeholder="Ex: 5511999999999 ou (11) 99999-9999"
+                    className="w-full bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Usado no botão de WhatsApp da tela de login e suporte geral.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-amber-400" />
+                    <span>E-mail de Suporte (Global):</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={globalConfig.emailSuporte || ''}
+                    onChange={(e) => setGlobalConfig({ ...globalConfig, emailSuporte: e.target.value })}
+                    placeholder="Ex: suporte@tesouraria.com"
+                    className="w-full bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-1 block">
+                    Usado no botão de envio de e-mail na tela de login.
+                  </span>
+                </div>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-amber-400" />
-                  <span>E-mail de Suporte (Global):</span>
+                  <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Link para Download do Aplicativo Android (.APK):</span>
                 </label>
-                <input
-                  type="email"
-                  value={globalConfig.emailSuporte || ''}
-                  onChange={(e) => setGlobalConfig({ ...globalConfig, emailSuporte: e.target.value })}
-                  placeholder="Ex: suporte@tesouraria.com"
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={globalConfig.apkDownloadUrl || ''}
+                    onChange={(e) => setGlobalConfig({ ...globalConfig, apkDownloadUrl: e.target.value })}
+                    placeholder="Ex: https://drive.google.com/file/d/... ou https://onedrive.live.com/..."
+                    className="flex-1 bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                  />
+                  {globalConfig.apkDownloadUrl && (
+                    <a
+                      href={globalConfig.apkDownloadUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-xs font-bold transition-colors border border-purple-500/40 shrink-0"
+                      title="Testar link de download"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Testar Link</span>
+                    </a>
+                  )}
+                </div>
+                <p className="text-[10px] text-purple-300/70 mt-1">
+                  Link público direto para o APK (Google Drive, OneDrive, etc.). Aberto quando clicam em "Baixar Aplicativo Android (APK)" na Web.
+                </p>
+              </div>
+            </div>
+
+            {/* Bloco 2: Gestão de Contatos e Atendimentos Feitos */}
+            <div className="pt-2 border-t border-purple-500/20 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-purple-300">
+                      2. Registro de Contatos e Atendimentos Feitos
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 font-bold border border-purple-500/40">
+                      {(globalConfig.listaContatos || []).length} contatos
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Histórico permanente de pastores, tesoureiros e solicitações atendidas.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddingContato(!isAddingContato)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 text-xs font-semibold border border-purple-500/40 transition-colors w-fit"
+                >
+                  {isAddingContato ? (
+                    <>
+                      <X className="w-3.5 h-3.5" />
+                      <span>Fechar Cadastro</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Adicionar Registro de Contato</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Formulário para Inserir Novo Contato */}
+              {isAddingContato && (
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-purple-500/40 space-y-3 animate-in fade-in">
+                  <div className="flex items-center justify-between pb-2 border-b border-purple-500/20">
+                    <span className="text-xs font-bold text-purple-200 flex items-center gap-1.5">
+                      <PhoneCall className="w-3.5 h-3.5 text-purple-400" />
+                      Novo Atendimento / Contato Realizado
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-medium mb-1">Data:</label>
+                      <input
+                        type="date"
+                        value={novoContato.data || ''}
+                        onChange={(e) => setNovoContato({ ...novoContato, data: e.target.value })}
+                        className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-medium mb-1">Nome do Solicitante / Pastor:</label>
+                      <input
+                        type="text"
+                        value={novoContato.nome || ''}
+                        onChange={(e) => setNovoContato({ ...novoContato, nome: e.target.value })}
+                        placeholder="Ex: Pr. João Silva"
+                        className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-medium mb-1">Igreja / Cidade / Cargo:</label>
+                      <input
+                        type="text"
+                        value={novoContato.igrejaOuCargo || ''}
+                        onChange={(e) => setNovoContato({ ...novoContato, igrejaOuCargo: e.target.value })}
+                        placeholder="Ex: Igreja Central - SP"
+                        className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-medium mb-1">WhatsApp / Telefone:</label>
+                      <input
+                        type="text"
+                        value={novoContato.telefone || ''}
+                        onChange={(e) => setNovoContato({ ...novoContato, telefone: e.target.value })}
+                        placeholder="Ex: 5511999999999"
+                        className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-medium mb-1">Assunto / Solicitação:</label>
+                      <input
+                        type="text"
+                        value={novoContato.assunto || ''}
+                        onChange={(e) => setNovoContato({ ...novoContato, assunto: e.target.value })}
+                        placeholder="Ex: Ativação Pro / Suporte APK"
+                        className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] text-slate-300 font-medium mb-1">Status:</label>
+                      <select
+                        value={novoContato.status || 'pendente'}
+                        onChange={(e) => setNovoContato({ ...novoContato, status: e.target.value as any })}
+                        className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100"
+                      >
+                        <option value="pendente">Pendente</option>
+                        <option value="em_atendimento">Em Atendimento</option>
+                        <option value="resolvido">Resolvido / Concluído</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] text-slate-300 font-medium mb-1">Observações / Detalhes:</label>
+                    <textarea
+                      rows={2}
+                      value={novoContato.observacoes || ''}
+                      onChange={(e) => setNovoContato({ ...novoContato, observacoes: e.target.value })}
+                      placeholder="Anotações sobre o atendimento ou alinhamentos combinados..."
+                      className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsAddingContato(false)}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleAddContatoSubmit}
+                      disabled={!novoContato.nome?.trim()}
+                      className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold disabled:opacity-50 flex items-center gap-1.5"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Salvar Registro</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Lista de Contatos Salvos */}
+              <div className="space-y-2">
+                {(!globalConfig.listaContatos || globalConfig.listaContatos.length === 0) ? (
+                  <div className="p-4 rounded-xl bg-slate-950/40 border border-purple-500/20 text-center text-xs text-slate-400">
+                    Nenhum contato registrado ainda. Clique em "Adicionar Registro de Contato" para cadastrar os atendimentos feitos.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {globalConfig.listaContatos.map((contato) => {
+                      const waLink = buildWhatsAppLink(contato.telefone, `Olá ${contato.nome}, referente ao seu atendimento no Tesouraria Pro.`);
+                      return (
+                        <div
+                          key={contato.id}
+                          className="p-3 rounded-xl bg-slate-950/60 border border-purple-500/20 hover:border-purple-500/40 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="space-y-1 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-100 text-xs">{contato.nome}</span>
+                              {contato.igrejaOuCargo && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                                  {contato.igrejaOuCargo}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {contato.data}
+                              </span>
+                              <span
+                                className={`text-[9px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                                  contato.status === 'resolvido'
+                                    ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                    : contato.status === 'em_atendimento'
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                    : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                                }`}
+                              >
+                                {contato.status === 'resolvido'
+                                  ? 'Resolvido'
+                                  : contato.status === 'em_atendimento'
+                                  ? 'Em Atendimento'
+                                  : 'Pendente'}
+                              </span>
+                            </div>
+
+                            {contato.assunto && (
+                              <p className="text-[11px] text-purple-200/90 font-medium">
+                                <span className="text-slate-400">Assunto:</span> {contato.assunto}
+                              </p>
+                            )}
+
+                            {contato.observacoes && (
+                              <p className="text-[11px] text-slate-400 italic">
+                                {contato.observacoes}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {contato.telefone && (
+                              <a
+                                href={waLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 text-[11px] font-medium"
+                                title="Abrir WhatsApp direto"
+                              >
+                                <MessageCircle className="w-3 h-3" />
+                                <span>{formatWhatsAppDisplay(contato.telefone)}</span>
+                              </a>
+                            )}
+
+                            <select
+                              value={contato.status}
+                              onChange={(e) => handleUpdateContatoStatus(contato.id, e.target.value as any)}
+                              className="bg-slate-900 border border-purple-500/30 rounded-lg px-2 py-1 text-[11px] text-slate-200"
+                            >
+                              <option value="pendente">Pendente</option>
+                              <option value="em_atendimento">Em Atendimento</option>
+                              <option value="resolvido">Resolvido</option>
+                            </select>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveContato(contato.id)}
+                              className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/30 text-rose-400 border border-rose-500/20 transition-colors"
+                              title="Remover este registro"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Anotações Gerais de Suporte */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Anotações Gerais & Histórico de Alinhamentos:</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={globalConfig.contatosFeitos || ''}
+                  onChange={(e) => setGlobalConfig({ ...globalConfig, contatosFeitos: e.target.value })}
+                  placeholder="Espaço livre para anotações gerais do Super Administrador sobre demandas, feedback de usuários e atualizações pendentes..."
                   className="w-full bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  Usado no botão de envio de e-mail na tela de login.
-                </span>
               </div>
             </div>
 
             <div className="pt-2">
-              <label className="block text-xs font-semibold text-slate-200 mb-1 flex items-center gap-1.5">
-                <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Link para Download do Aplicativo Android (.APK):</span>
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="url"
-                  value={globalConfig.apkDownloadUrl || ''}
-                  onChange={(e) => setGlobalConfig({ ...globalConfig, apkDownloadUrl: e.target.value })}
-                  placeholder="Ex: https://drive.google.com/file/d/... ou https://onedrive.live.com/..."
-                  className="flex-1 bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
-                />
-                {globalConfig.apkDownloadUrl && (
-                  <a
-                    href={globalConfig.apkDownloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-purple-200 text-xs font-bold transition-colors border border-purple-500/40 shrink-0"
-                    title="Testar link de download"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Testar Link</span>
-                  </a>
+              <button
+                type="submit"
+                disabled={isSavingGlobal}
+                className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white py-3.5 rounded-2xl font-bold text-xs transition-all shadow-lg shadow-purple-600/30 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 active:scale-98"
+              >
+                {isSavingGlobal ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Salvando no Supabase e Armazenamento Local...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Salvar Configurações e Contatos Globais</span>
+                  </>
                 )}
-              </div>
-              <p className="text-[10px] text-purple-300/70 mt-1">
-                Link público direto para o APK (OneDrive, MediaFire, Google Drive, etc.). Esse link é aberto quando os usuários clicam em "Baixar Aplicativo Android (APK)" na tela de login da Web.
-              </p>
+              </button>
             </div>
-
-            <button
-              type="submit"
-              disabled={isSavingGlobal}
-              className="w-full bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white py-3 rounded-2xl font-bold text-xs transition-all shadow-lg shadow-purple-600/30 cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {isSavingGlobal ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Salvando no Supabase...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  <span>Salvar Configurações Globais</span>
-                </>
-              )}
-            </button>
           </form>
         </div>
       )}

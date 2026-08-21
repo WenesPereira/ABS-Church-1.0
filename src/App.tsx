@@ -19,6 +19,7 @@ import {
   updateUserSubscriptionStatus,
   isSubscriptionActive,
   isSuperAdmin,
+  fetchGlobalAdminConfig,
 } from './services/treasuryService';
 import { supabase, isSupabaseConfigured } from './services/supabase';
 
@@ -182,6 +183,11 @@ export default function App() {
      ========================================================= */
 
   useEffect(() => {
+    // Carrega configurações globais (WhatsApp, E-mail, APK, Contatos) do Supabase / cache local
+    fetchGlobalAdminConfig().catch((err) => {
+      console.warn('Aviso ao carregar configurações globais:', err);
+    });
+
     // 1. Verifica se há sessão ativa de Modo Demonstração
     const isDemoSession = sessionStorage.getItem('tesouraria_demo_session') === 'true';
     if (isDemoSession) {
