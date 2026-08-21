@@ -40,6 +40,7 @@ import { DEMO_USER, DEMO_CONFIG } from '../data/mockData';
 interface AuthViewProps {
   onLoginSuccess: (user: User, isNewAccount?: boolean, churchName?: string) => void;
   configIgreja?: ConfigIgreja;
+  globalConfig?: GlobalAdminConfig;
 }
 
 interface StoredUserAccount extends User {
@@ -76,7 +77,7 @@ function parseSupabaseAuthError(error: { message?: string; status?: number } | n
   return 'Não foi possível completar a operação no momento. Tente novamente em instantes.';
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja }) => {
+export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja, globalConfig: initialGlobalConfig }) => {
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
 
   // Form State - Login
@@ -103,7 +104,15 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
   const [showApkTutorial, setShowApkTutorial] = useState(false);
 
   // Suporte e Atendimento Global gerenciado pelo Super Admin
-  const [globalSupport, setGlobalSupport] = useState<GlobalAdminConfig>(() => getLocalSupportConfig());
+  const [globalSupport, setGlobalSupport] = useState<GlobalAdminConfig>(
+    () => initialGlobalConfig || getLocalSupportConfig()
+  );
+
+  useEffect(() => {
+    if (initialGlobalConfig) {
+      setGlobalSupport(initialGlobalConfig);
+    }
+  }, [initialGlobalConfig]);
 
   useEffect(() => {
     fetchGlobalAdminConfig().then((data) => {

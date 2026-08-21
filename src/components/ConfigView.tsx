@@ -54,6 +54,7 @@ interface ConfigViewProps {
   onOpenSubscriptionModal?: () => void;
   onStatusUpdated?: (updatedUser: User) => void;
   onResetAllData?: () => Promise<boolean>;
+  onGlobalConfigUpdated?: (newConfig: GlobalAdminConfig) => void;
 }
 
 export const ConfigView: React.FC<ConfigViewProps> = ({
@@ -64,6 +65,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
   onOpenSubscriptionModal,
   onStatusUpdated,
   onResetAllData,
+  onGlobalConfigUpdated,
 }) => {
   const [form, setForm] = useState<ConfigIgreja>(config);
   const [saved, setSaved] = useState(false);
@@ -169,6 +171,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
     setGlobalSavedFeedback(null);
     try {
       const res = await saveGlobalAdminConfig(globalConfig, currentUser?.id);
+      if (onGlobalConfigUpdated) onGlobalConfigUpdated(globalConfig);
       if (res.savedToDb) {
         setGlobalSavedFeedback({
           type: 'success',
@@ -217,6 +220,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
     };
 
     setGlobalConfig(updatedConfig);
+    if (onGlobalConfigUpdated) onGlobalConfigUpdated(updatedConfig);
     saveGlobalAdminConfig(updatedConfig, currentUser?.id);
 
     setNovoContato({
@@ -248,6 +252,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
     };
 
     setGlobalConfig(updatedConfig);
+    if (onGlobalConfigUpdated) onGlobalConfigUpdated(updatedConfig);
     saveGlobalAdminConfig(updatedConfig, currentUser?.id);
   };
 
@@ -262,6 +267,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
     };
 
     setGlobalConfig(updatedConfig);
+    if (onGlobalConfigUpdated) onGlobalConfigUpdated(updatedConfig);
     saveGlobalAdminConfig(updatedConfig, currentUser?.id);
   };
 

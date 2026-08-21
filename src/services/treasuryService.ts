@@ -186,17 +186,17 @@ export function saveLocalSupportConfig(
  * Helper para extrair dados de configuração global a partir de uma linha retornada pelo Supabase
  */
 function parseGlobalConfigRow(row: any, localFallback: GlobalAdminConfig): GlobalAdminConfig {
-  let whatsapp = row.whatsapp_suporte || row.whatsappSuporte || row.whatsapp || localFallback.whatsappSuporte;
-  let email = row.email_suporte || row.emailSuporte || row.email || localFallback.emailSuporte;
-  let apk = row.apk_download_url || row.apkDownloadUrl || row.apk_url || localFallback.apkDownloadUrl;
+  let whatsapp = row.support_phone || row.whatsapp_suporte || row.whatsappSuporte || row.whatsapp || row.telefone || localFallback.whatsappSuporte;
+  let email = row.support_email || row.email_suporte || row.emailSuporte || row.email || localFallback.emailSuporte;
+  let apk = row.apk_url || row.apk_download_url || row.apkDownloadUrl || row.apk || localFallback.apkDownloadUrl;
   let contatosFeitos = row.contatos_feitos || row.contatosFeitos || row.observacoes || localFallback.contatosFeitos || '';
   let listaContatos: ContatoRegistro[] = localFallback.listaContatos || [];
 
   if (row.data && typeof row.data === 'object') {
-    if (row.data.whatsappSuporte) whatsapp = row.data.whatsappSuporte;
-    if (row.data.emailSuporte) email = row.data.emailSuporte;
-    if (row.data.apkDownloadUrl) apk = row.data.apkDownloadUrl;
-    if (row.data.contatosFeitos) contatosFeitos = row.data.contatosFeitos;
+    if (row.data.support_phone || row.data.whatsappSuporte) whatsapp = row.data.support_phone || row.data.whatsappSuporte;
+    if (row.data.support_email || row.data.emailSuporte) email = row.data.support_email || row.data.emailSuporte;
+    if (row.data.apk_url || row.data.apkDownloadUrl) apk = row.data.apk_url || row.data.apkDownloadUrl;
+    if (row.data.contatos_feitos || row.data.contatosFeitos) contatosFeitos = row.data.contatos_feitos || row.data.contatosFeitos;
     if (Array.isArray(row.data.listaContatos)) listaContatos = row.data.listaContatos;
   }
 
@@ -230,28 +230,28 @@ export async function fetchGlobalAdminConfig(): Promise<GlobalAdminConfig> {
   if (!isSupabaseConfigured) return local;
 
   try {
-    // 1. Tenta buscar da tabela dedicada 'app_settings' com id 'global_settings'
-    const { data: appSettingsRow, error: appErr } = await supabase
+    // 1. Tenta buscar da tabela dedicada 'app_settings'
+    const { data: appSettingsRows, error: appErr } = await supabase
       .from('app_settings')
       .select('*')
-      .in('id', ['global_settings', 'global_admin_settings'])
-      .maybeSingle();
+      .limit(10);
 
-    if (!appErr && appSettingsRow) {
-      const parsed = parseGlobalConfigRow(appSettingsRow, local);
+    if (!appErr && appSettingsRows && appSettingsRows.length > 0) {
+      const match = appSettingsRows.find((r: any) => r.id === 'global_settings' || r.id === 'global_admin_settings') || appSettingsRows[0];
+      const parsed = parseGlobalConfigRow(match, local);
       saveLocalSupportConfig(parsed);
       return parsed;
     }
 
-    // 2. Tenta buscar da tabela 'global_config' com id 'global_settings'
-    const { data: globalConfigRow, error: gcErr } = await supabase
+    // 2. Tenta buscar da tabela 'global_config'
+    const { data: globalConfigRows, error: gcErr } = await supabase
       .from('global_config')
       .select('*')
-      .in('id', ['global_settings', 'global_admin_settings'])
-      .maybeSingle();
+      .limit(10);
 
-    if (!gcErr && globalConfigRow) {
-      const parsed = parseGlobalConfigRow(globalConfigRow, local);
+    if (!gcErr && globalConfigRows && globalConfigRows.length > 0) {
+      const match = globalConfigRows.find((r: any) => r.id === 'global_settings' || r.id === 'global_admin_settings') || globalConfigRows[0];
+      const parsed = parseGlobalConfigRow(match, local);
       saveLocalSupportConfig(parsed);
       return parsed;
     }
@@ -317,12 +317,22 @@ export async function saveGlobalAdminConfig(
       ? JSON.stringify(config.listaContatos)
       : (config.contatosFeitos || '');
 
-    // Payload para tabelas dedicadas 'app_settings' e 'global_config'
-    const appSettingsPayload: any = {
+    // Payload 1: Padrão com nomes de coluna padrão (id, apk_url, support_email, support_phone, contatos_feitos, updated_at)
+    const payloadStandard: any = {
       id: 'global_settings',
-      whatsapp_suporte: config.whatsappSuporte,
-      email_suporte: config.emailSuporte,
+      apk_url: config.apkDownloadUrl,
+      support_email: config.emailSuporte,
+      support_phone: config.whatsappSuporte,
+      contatos_feitos: contatosJson,
+      updated_at: nowIso,
+    };
+
+    // Payload 2: Padrão alternativo (apk_download_url, email_suporte, whatsapp_suporte)
+    const payloadAlt: any = {
+      id: 'global_settings',
       apk_download_url: config.apkDownloadUrl,
+      email_suporte: config.emailSuporte,
+      whatsapp_suporte: config.whatsappSuporte,
       contatos_feitos: contatosJson,
       updated_at: nowIso,
     };
@@ -343,16 +353,25 @@ export async function saveGlobalAdminConfig(
       churchSettingsPayload.user_id = uid;
     }
 
-    // 1. Tenta upsert na tabela 'app_settings'
+    // 1. Tenta upsert na tabela 'app_settings' com schema padrão (apk_url, support_email, support_phone)
     try {
-      const { error: appErr } = await supabase
+      const { error: appErr1 } = await supabase
         .from('app_settings')
-        .upsert(appSettingsPayload, { onConflict: 'id' });
+        .upsert(payloadStandard, { onConflict: 'id' });
 
-      if (!appErr) {
+      if (!appErr1) {
         savedAtLeastOnce = true;
       } else {
-        errors.push(`app_settings: ${appErr.message}`);
+        // Se falhar (por exemplo, nome de colunas em português), tenta com schema alternativo
+        const { error: appErr2 } = await supabase
+          .from('app_settings')
+          .upsert(payloadAlt, { onConflict: 'id' });
+
+        if (!appErr2) {
+          savedAtLeastOnce = true;
+        } else {
+          errors.push(`app_settings: ${appErr1.message || appErr2.message}`);
+        }
       }
     } catch (e: any) {
       errors.push(`app_settings: ${e?.message || 'erro'}`);
@@ -360,17 +379,22 @@ export async function saveGlobalAdminConfig(
 
     // 2. Tenta upsert na tabela 'global_config'
     try {
-      const { error: gcErr } = await supabase
+      const { error: gcErr1 } = await supabase
         .from('global_config')
-        .upsert(appSettingsPayload, { onConflict: 'id' });
+        .upsert(payloadStandard, { onConflict: 'id' });
 
-      if (!gcErr) {
+      if (!gcErr1) {
         savedAtLeastOnce = true;
       } else {
-        errors.push(`global_config: ${gcErr.message}`);
+        const { error: gcErr2 } = await supabase
+          .from('global_config')
+          .upsert(payloadAlt, { onConflict: 'id' });
+        if (!gcErr2) {
+          savedAtLeastOnce = true;
+        }
       }
     } catch (e: any) {
-      errors.push(`global_config: ${e?.message || 'erro'}`);
+      // silencioso
     }
 
     // 3. Upsert na tabela 'configuracao_igreja' (com chaves 'global_settings' e 'global_admin_settings')

@@ -20,6 +20,8 @@ import {
   isSubscriptionActive,
   isSuperAdmin,
   fetchGlobalAdminConfig,
+  getLocalSupportConfig,
+  GlobalAdminConfig,
 } from './services/treasuryService';
 import { supabase, isSupabaseConfigured } from './services/supabase';
 
@@ -96,6 +98,9 @@ export default function App() {
 
   // Supabase Cloud Sync State
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Global Support & Admin Config State (APK, WhatsApp, Email, Contatos)
+  const [globalConfig, setGlobalConfig] = useState<GlobalAdminConfig>(() => getLocalSupportConfig());
 
   // Demo Mode Alert State
   const [demoAlertMessage, setDemoAlertMessage] = useState<string | null>(null);
@@ -184,9 +189,15 @@ export default function App() {
 
   useEffect(() => {
     // Carrega configurações globais (WhatsApp, E-mail, APK, Contatos) do Supabase / cache local
-    fetchGlobalAdminConfig().catch((err) => {
-      console.warn('Aviso ao carregar configurações globais:', err);
-    });
+    fetchGlobalAdminConfig()
+      .then((data) => {
+        if (data) {
+          setGlobalConfig(data);
+        }
+      })
+      .catch((err) => {
+        console.warn('Aviso ao carregar configurações globais:', err);
+      });
 
     // 1. Verifica se há sessão ativa de Modo Demonstração
     const isDemoSession = sessionStorage.getItem('tesouraria_demo_session') === 'true';
@@ -586,6 +597,7 @@ export default function App() {
       <AuthView
         onLoginSuccess={handleLoginSuccess}
         configIgreja={configIgreja}
+        globalConfig={globalConfig}
       />
     );
   }
@@ -723,6 +735,7 @@ export default function App() {
                 onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
                 onStatusUpdated={(updated) => setCurrentUser(updated)}
                 onResetAllData={handleResetAllData}
+                onGlobalConfigUpdated={(updatedGlobal) => setGlobalConfig(updatedGlobal)}
               />
             )}
           </div>
