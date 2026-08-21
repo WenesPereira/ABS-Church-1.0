@@ -140,7 +140,7 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
             <History className="w-8 h-8 text-slate-600 mx-auto" />
             <p className="text-sm font-semibold text-slate-300">Nenhum fechamento encontrado</p>
             <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Os fechamentos salvos nesta conta do Supabase aparecerão aqui automaticamente organizados com histórico e comparativos.
+              Os fechamentos salvos nesta conta aparecerão aqui automaticamente organizados com histórico e comparativos.
             </p>
           </div>
         ) : (

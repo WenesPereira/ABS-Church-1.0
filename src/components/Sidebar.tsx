@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { ActiveTab, FechamentoCulto, User } from '../types';
 import { isSupabaseConfigured } from '../services/supabase';
-import { isSubscriptionActive } from '../services/treasuryService';
+import { isSubscriptionActive, isSuperAdmin } from '../services/treasuryService';
 
 interface SidebarProps {
   activeTab: ActiveTab;
@@ -48,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSubscriptionModal,
 }) => {
   const isSubscribed = isSubscriptionActive(currentUser);
+  const isSuper = isSuperAdmin(currentUser);
 
   const navGroups: NavGroup[] = [
     {
@@ -280,10 +281,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }`}
               />
               <span className="text-[11px] text-slate-300 font-medium">
-                {isSupabaseConfigured ? 'Supabase Conectado' : 'Armazenamento Local'}
+                {isSuper
+                  ? (isSupabaseConfigured ? 'Supabase Conectado' : 'Armazenamento Local')
+                  : (isSupabaseConfigured ? 'Servidor On-line' : 'Modo Local')}
               </span>
             </div>
-            <Database className="w-3.5 h-3.5 text-slate-500" />
+            {isSuper ? (
+              <span className="text-[9px] font-mono text-purple-400 bg-purple-950/60 px-1.5 py-0.5 rounded border border-purple-800/50">
+                ADMIN
+              </span>
+            ) : (
+              <Database className="w-3.5 h-3.5 text-slate-500" />
+            )}
           </div>
 
           <div className="bg-slate-900/80 rounded-xl p-2.5 border border-slate-800/80 flex items-start gap-2">
