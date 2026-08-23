@@ -684,6 +684,7 @@ export default function App() {
                 onGoToContagem={() => setActiveTab('contagem')}
                 onGoToRelatorioIA={() => setActiveTab('relatorio_ia')}
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
+                currentUser={currentUser}
               />
             )}
 
@@ -692,6 +693,7 @@ export default function App() {
                 fechamento={fechamentoAtual}
                 setFechamento={handleSetFechamentoAtual}
                 onNavigate={setActiveTab}
+                currentUser={currentUser}
               />
             )}
 

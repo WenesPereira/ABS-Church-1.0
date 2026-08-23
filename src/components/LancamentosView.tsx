@@ -14,6 +14,8 @@ import {
   FileCheck,
   AlertTriangle,
   X,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 
 import {
@@ -24,22 +26,26 @@ import {
   CategoriaSaida,
   FormaPagamento,
   ActiveTab,
+  User as UserType,
 } from '../types';
 
 import {
   formatCurrency,
 } from '../utils/calculations';
+import { deleteLancamento } from '../services/treasuryService';
 
 interface LancamentosViewProps {
   fechamento: FechamentoCulto;
   setFechamento: React.Dispatch<React.SetStateAction<FechamentoCulto>>;
   onNavigate?: (tab: ActiveTab) => void;
+  currentUser?: UserType | null;
 }
 
 export const LancamentosView: React.FC<LancamentosViewProps> = ({
   fechamento,
   setFechamento,
   onNavigate,
+  currentUser,
 }) => {
   const [tipo, setTipo] =
     useState<TipoLancamento>('entrada');
@@ -64,6 +70,9 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
 
   const [filterTipo, setFilterTipo] =
     useState<string>('todos');
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [duplicateModal, setDuplicateModal] = useState<{
     isOpen: boolean;
@@ -460,21 +469,45 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
   };
 
   /*
-   * Exclui lançamento.
+   * Exclui lançamento com confirmação no banco de dados Supabase antes de remover da tela.
    */
-  const handleDeleteLancamento = (
+  const handleDeleteLancamento = async (
     id: string
   ) => {
-    setFechamento((prev) => ({
-      ...prev,
+    if (deletingId) return;
 
-      lancamentos:
-        Array.isArray(prev.lancamentos)
-          ? prev.lancamentos.filter(
-              (l) => l.id !== id
-            )
-          : [],
-    }));
+    setDeletingId(id);
+    setDeleteError(null);
+
+    try {
+      // 1. Executa a chamada assíncrona 'DELETE' no banco de dados do Supabase
+      const res = await deleteLancamento(id, currentUser?.id);
+
+      if (!res.success) {
+        const errMsg = res.error || 'Erro de permissão ou regras de segurança (RLS) ao excluir no Supabase.';
+        setDeleteError(errMsg);
+        alert(`Não foi possível excluir o lançamento:\n${errMsg}`);
+        return;
+      }
+
+      // 2. Confirmação garantida no banco de dados ANTES de atualizar a lista da tela
+      setFechamento((prev) => ({
+        ...prev,
+        lancamentos:
+          Array.isArray(prev.lancamentos)
+            ? prev.lancamentos.filter(
+                (l) => l.id !== id
+              )
+            : [],
+      }));
+    } catch (err: any) {
+      console.error('Erro ao excluir lançamento:', err);
+      const errMsg = err?.message || 'Falha inesperada ao tentar excluir o lançamento.';
+      setDeleteError(errMsg);
+      alert(`Erro ao excluir lançamento: ${errMsg}`);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   /*
@@ -953,10 +986,15 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleDeleteLancamento(l.id)}
-                      className="p-1.5 hover:bg-rose-500/20 rounded-lg text-slate-500 hover:text-rose-400 transition-colors"
+                      disabled={deletingId === l.id}
+                      className="p-1.5 hover:bg-rose-500/20 rounded-lg text-slate-500 hover:text-rose-400 disabled:opacity-50 transition-colors cursor-pointer"
                       title="Remover lançamento"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {deletingId === l.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -1116,10 +1154,15 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
                                 l.id
                               )
                             }
-                            className="p-1 hover:text-rose-400 text-slate-600 transition-colors"
+                            disabled={deletingId === l.id}
+                            className="p-1 hover:text-rose-400 text-slate-600 disabled:opacity-50 transition-colors cursor-pointer"
                             title="Remover lançamento"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            {deletingId === l.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
                           </button>
                         </td>
                       </tr>

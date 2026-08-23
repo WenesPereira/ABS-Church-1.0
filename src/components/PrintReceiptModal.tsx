@@ -112,12 +112,14 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     const originalWidth = element.style.width;
     const originalMaxWidth = element.style.maxWidth;
     const originalMinWidth = element.style.minWidth;
+    const originalBoxSizing = element.style.boxSizing;
 
     try {
       // Force fixed A4 pixel width (210mm equivalent at 96dpi) during capture
       element.style.width = '794px';
       element.style.minWidth = '794px';
       element.style.maxWidth = '794px';
+      element.style.boxSizing = 'border-box';
 
       const canvas = await html2canvas(element, {
         scale: 2,
@@ -140,18 +142,28 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
       const maxWidth = pdfWidth - margin * 2; // 194mm
       const maxHeight = pdfHeight - margin * 2; // 281mm
 
-      // Calculate dimensions so it fits on 1 SINGLE A4 page without spilling over
+      // Calculate dimensions so it fits cleanly on A4 without spilling over or cutting right side
       let imgWidth = maxWidth;
       let imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      if (imgHeight > maxHeight) {
-        imgHeight = maxHeight;
-        imgWidth = (canvas.width * imgHeight) / canvas.height;
+      if (imgHeight <= maxHeight) {
+        const xOffset = (pdfWidth - imgWidth) / 2;
+        pdf.addImage(imgData, 'JPEG', xOffset, margin, imgWidth, imgHeight);
+      } else {
+        let heightLeft = imgHeight;
+        let position = margin;
+        const xOffset = (pdfWidth - imgWidth) / 2;
+
+        pdf.addImage(imgData, 'JPEG', xOffset, position, imgWidth, imgHeight);
+        heightLeft -= maxHeight;
+
+        while (heightLeft > 0) {
+          position = heightLeft - imgHeight + margin;
+          pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', xOffset, position, imgWidth, imgHeight);
+          heightLeft -= maxHeight;
+        }
       }
-
-      const xOffset = (pdfWidth - imgWidth) / 2;
-
-      pdf.addImage(imgData, 'JPEG', xOffset, margin, imgWidth, imgHeight);
 
       const dataFormatted = fechamento.data
         ? fechamento.data
@@ -166,13 +178,14 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
       element.style.width = originalWidth;
       element.style.minWidth = originalMinWidth;
       element.style.maxWidth = originalMaxWidth;
+      element.style.boxSizing = originalBoxSizing;
       setIsGeneratingPdf(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-4 md:p-6 flex justify-center items-start scroll-touch">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-6 shadow-2xl relative text-slate-100 my-4 sm:my-8">
+    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm overflow-y-auto p-3 sm:p-4 md:p-6 flex justify-center items-start scroll-touch print:static print:inset-auto print:p-0 print:m-0 print:bg-transparent print:backdrop-blur-none print:block print:w-full print:max-w-full print:overflow-visible">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full p-4 sm:p-6 space-y-6 shadow-2xl relative text-slate-100 my-4 sm:my-8 print:my-0 print:p-0 print:max-w-full print:w-full print:bg-transparent print:border-none print:shadow-none">
         {/* Modal Header Actions (Not Printed) */}
         <div className="print:hidden flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
           <div className="flex items-center gap-2 text-xs font-bold text-amber-400">
@@ -282,9 +295,9 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
         </div>
 
         {/* PRINTABLE RECEIPT CONTENT (Styling optimized for both screen and paper) */}
-        <div id="printable-receipt" className="bg-white text-slate-900 p-6 rounded-2xl space-y-6 text-xs font-sans border border-slate-300 shadow-inner">
+        <div id="printable-receipt" className="bg-white text-slate-900 p-6 rounded-2xl space-y-6 text-xs font-sans border border-slate-300 shadow-inner w-full max-w-full box-border print:p-2 print:border-none print:shadow-none print:rounded-none">
           {/* Header */}
-          <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1">
+          <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1 print-avoid-break">
             <h2 className="text-base font-black uppercase tracking-wide text-slate-900">
               {config.nomeIgreja || 'Igreja Evangélica'}
             </h2>
@@ -295,7 +308,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           </div>
 
           {/* Metadata */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-100 p-3 rounded-lg border border-slate-300 text-[11px]">
+          <div className="grid grid-cols-2 gap-2 bg-slate-100 p-3 rounded-lg border border-slate-300 text-[11px] print-avoid-break">
             <div>
               <p><strong>Registro:</strong> Fechamento de Caixa por Período</p>
               <p>
@@ -313,7 +326,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           </div>
 
           {/* Summary Financial Table */}
-          <div>
+          <div className="print-avoid-break">
             <h3 className="font-bold text-[11px] uppercase border-b border-slate-400 pb-1 mb-2 text-slate-800">
               1. Resumo da Arrecadação e Despesas
             </h3>
@@ -445,7 +458,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           </div>
 
           {/* Physical Cash Verification */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-300 space-y-1 text-[10px]">
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-300 space-y-1 text-[10px] print-avoid-break">
             <p className="font-bold uppercase text-slate-800">Conferência de Espécie na Mesa da Tesouraria:</p>
             <div className="flex justify-between font-mono">
               <span>Dinheiro Lançado: {formatCurrency(resumo.totalDinheiro)}</span>
@@ -455,7 +468,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           </div>
 
           {/* Signatures Line */}
-          <div className="pt-10 grid grid-cols-3 gap-4 text-center text-[10px] border-t border-slate-300">
+          <div className="pt-10 grid grid-cols-3 gap-4 text-center text-[10px] border-t border-slate-300 print-avoid-break">
             <div>
               <div className="border-t border-slate-800 pt-1 font-bold min-h-[1.4rem] text-slate-900">
                 {pastorPresidenteAssinatura || ''}

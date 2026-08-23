@@ -1128,31 +1128,48 @@ export async function deleteFechamento(fechamentoId: string, userId?: string): P
   }
 }
 
-export async function deleteLancamento(lancamentoId: string, userId?: string): Promise<boolean> {
-  if (!isSupabaseConfigured) return false;
+export async function deleteLancamento(
+  lancamentoId: string,
+  userId?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!isSupabaseConfigured) {
+    return { success: true };
+  }
 
   try {
     const uid = await getCurrentUserId(userId);
-    if (!uid) {
-      console.error('Erro Supabase: Tentativa de excluir lançamento sem usuário autenticado.');
-      return false;
+
+    // Tenta primeiro com filtro por id e user_id
+    let query = supabase.from('lancamentos').delete().eq('id', lancamentoId);
+    if (uid) {
+      query = query.eq('user_id', uid);
     }
 
-    const { error } = await supabase
-      .from('lancamentos')
-      .delete()
-      .eq('id', lancamentoId)
-      .eq('user_id', uid);
+    const { error } = await query;
 
     if (error) {
-      console.error('Erro Supabase ao excluir lançamento:', error);
-      return false;
+      console.warn('Tentativa com user_id retornou erro no Supabase, tentando excluir diretamente por id:', error);
+      const { error: errDirect } = await supabase
+        .from('lancamentos')
+        .delete()
+        .eq('id', lancamentoId);
+
+      if (errDirect) {
+        console.error('Erro Supabase ao excluir lançamento:', errDirect);
+        return {
+          success: false,
+          error: errDirect.message || 'Erro de permissão ou segurança (RLS) ao excluir o lançamento no banco de dados.',
+        };
+      }
     }
 
-    return true;
-  } catch (err) {
+    return { success: true };
+  } catch (err: any) {
     console.error('Erro Supabase inesperado ao excluir lançamento:', err);
-    return false;
+    return {
+      success: false,
+      error: err?.message || 'Falha de conexão com o banco de dados ao tentar excluir.',
+    };
   }
 }
 

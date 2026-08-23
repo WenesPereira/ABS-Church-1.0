@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Church,
   Coins,
@@ -16,12 +16,14 @@ import {
   Wallet,
   Building2,
   Check,
+  Loader2,
 } from 'lucide-react';
 
 import {
   FechamentoCulto,
   CategoriaEntrada,
   ContagemDinheiro,
+  User as UserType,
 } from '../types';
 
 import {
@@ -31,6 +33,7 @@ import {
   ALL_ENTRADA_CATEGORIES,
   CATEGORIA_ENTRADA_LABELS,
 } from '../utils/calculations';
+import { deleteLancamento } from '../services/treasuryService';
 
 interface FechamentoAtualViewProps {
   fechamento: FechamentoCulto;
@@ -39,6 +42,7 @@ interface FechamentoAtualViewProps {
   onGoToContagem: () => void;
   onGoToRelatorioIA: () => void;
   onOpenPrintModal: () => void;
+  currentUser?: UserType | null;
 }
 
 export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
@@ -48,6 +52,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   onGoToContagem,
   onGoToRelatorioIA,
   onOpenPrintModal,
+  currentUser,
 }) => {
   /*
    * Proteções para dados antigos/incompletos.
@@ -87,6 +92,8 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
   const aplicarPrebenda =
     fechamento.aplicarPrebenda ?? false;
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const resumo = calcularResumoLancamentos(
     lancamentos,
@@ -183,15 +190,35 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   };
 
   /*
-   * Exclui lançamento.
+   * Exclui lançamento com confirmação no banco de dados Supabase antes de atualizar a tela.
    */
-  const handleDeleteLancamento = (id: string) => {
-    setFechamento((prev) => ({
-      ...prev,
-      lancamentos: Array.isArray(prev.lancamentos)
-        ? prev.lancamentos.filter((l) => l.id !== id)
-        : [],
-    }));
+  const handleDeleteLancamento = async (id: string) => {
+    if (deletingId) return;
+
+    setDeletingId(id);
+
+    try {
+      const res = await deleteLancamento(id, currentUser?.id);
+
+      if (!res.success) {
+        const errMsg = res.error || 'Erro de permissão ou regras de segurança (RLS) ao excluir no Supabase.';
+        alert(`Não foi possível excluir o lançamento:\n${errMsg}`);
+        return;
+      }
+
+      setFechamento((prev) => ({
+        ...prev,
+        lancamentos: Array.isArray(prev.lancamentos)
+          ? prev.lancamentos.filter((l) => l.id !== id)
+          : [],
+      }));
+    } catch (err: any) {
+      console.error('Erro ao excluir lançamento:', err);
+      const errMsg = err?.message || 'Falha inesperada ao tentar excluir o lançamento.';
+      alert(`Erro ao excluir lançamento: ${errMsg}`);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   /*
@@ -1159,10 +1186,15 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                           onClick={() =>
                             handleDeleteLancamento(l.id)
                           }
-                          className="p-1 hover:text-rose-400 text-slate-600 transition-colors"
+                          disabled={deletingId === l.id}
+                          className="p-1 hover:text-rose-400 text-slate-600 disabled:opacity-50 transition-colors cursor-pointer"
                           title="Remover lançamento"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          {deletingId === l.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5" />
+                          )}
                         </button>
                       </td>
                     </tr>

@@ -142,13 +142,20 @@ select {
 @media print {
   @page {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 6mm 6mm;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box !important;
   }
 
   html,
   body,
   #root {
     width: 100% !important;
+    max-width: 100% !important;
     height: auto !important;
     min-height: 0 !important;
     margin: 0 !important;
@@ -156,6 +163,8 @@ select {
     overflow: visible !important;
     background: white !important;
     color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .print\:hidden {
@@ -165,12 +174,18 @@ select {
   #printable-receipt {
     width: 100% !important;
     max-width: 100% !important;
+    min-width: 0 !important;
     border: none !important;
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
     background: white !important;
     color: black !important;
+    box-sizing: border-box !important;
+  }
+
+  .print-avoid-break,
+  .page-break-avoid {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
   }
