@@ -937,7 +937,7 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
             <div>
               <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center justify-between">
                 <span>Porcentagem de Repasse para Matriz / Sede (%):</span>
-                <span className="text-[10px] text-amber-400 font-bold">Calculado sobre Entradas</span>
+                <span className="text-[10px] text-purple-400 font-bold">Calculado sobre Entradas</span>
               </label>
               <div className="relative">
                 <input
@@ -948,6 +948,26 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                   value={form.porcentagemMatriz ?? 20}
                   onChange={(e) => setForm({ ...form, porcentagemMatriz: parseFloat(e.target.value) || 0 })}
                   placeholder="Ex: 20"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 pr-8 text-xs font-bold font-mono text-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-500"
+                />
+                <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center justify-between">
+                <span>Porcentagem da Prebenda Pastoral (%):</span>
+                <span className="text-[10px] text-amber-400 font-bold">Dedução Pastoral</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  value={form.porcentagemPrebenda ?? 0}
+                  onChange={(e) => setForm({ ...form, porcentagemPrebenda: parseFloat(e.target.value) || 0 })}
+                  placeholder="Ex: 10"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 pr-8 text-xs font-bold font-mono text-amber-300 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
                 <span className="absolute right-3 top-2.5 text-xs font-bold text-slate-400">%</span>
@@ -955,12 +975,29 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
             </div>
 
             <div className="md:col-span-2 pt-2 border-t border-slate-800/80 space-y-3">
-              <label className="flex items-center gap-3 text-xs text-slate-200 cursor-pointer bg-slate-950 p-3 rounded-xl border border-slate-800">
+              {/* Toggle Prebenda Pastoral Padrão */}
+              <label className="flex items-center gap-3 text-xs text-slate-200 cursor-pointer bg-slate-950 p-3 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={form.aplicarPrebenda ?? false}
+                  onChange={(e) => setForm({ ...form, aplicarPrebenda: e.target.checked })}
+                  className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500"
+                />
+                <div>
+                  <span className="font-bold text-slate-100 block">Aplicar Prebenda Pastoral por Padrão</span>
+                  <span className="text-[11px] text-slate-400 block">
+                    Calcula e deduz automaticamente a prebenda pastoral do saldo disponível no fechamento do culto.
+                  </span>
+                </div>
+              </label>
+
+              {/* Toggle Repasse Matriz Padrão */}
+              <label className="flex items-center gap-3 text-xs text-slate-200 cursor-pointer bg-slate-950 p-3 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors">
                 <input
                   type="checkbox"
                   checked={form.aplicarRepasseMatriz ?? true}
                   onChange={(e) => setForm({ ...form, aplicarRepasseMatriz: e.target.checked })}
-                  className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500"
+                  className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-purple-500 focus:ring-purple-500"
                 />
                 <div>
                   <span className="font-bold text-slate-100 block">Aplicar Repasse para a Matriz / Sede por Padrão</span>

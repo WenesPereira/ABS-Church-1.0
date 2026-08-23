@@ -71,6 +71,8 @@ CREATE TABLE IF NOT EXISTS public.configuracao_igreja (
     aplicar_repasse_matriz BOOLEAN DEFAULT true,
     tipo_base_repasse_matriz TEXT DEFAULT 'todas',
     categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00,
+    aplicar_prebenda BOOLEAN DEFAULT false,
     logo_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
@@ -126,6 +128,8 @@ CREATE TABLE IF NOT EXISTS public.fechamentos_culto (
     aplicar_repasse_matriz BOOLEAN DEFAULT true,
     tipo_base_repasse_matriz TEXT DEFAULT 'todas',
     categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00,
+    aplicar_prebenda BOOLEAN DEFAULT false,
     observacoes TEXT,
     contagem_dinheiro JSONB NOT NULL DEFAULT '{"c200":0,"c100":0,"c50":0,"c20":0,"c10":0,"c5":0,"c2":0,"m100":0,"m050":0,"m025":0,"m010":0,"m005":0}'::jsonb,
     status TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'fechado')),
@@ -266,3 +270,28 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ==============================================================================
+-- MIGRAÇÕES PARA BANCOS SUPABASE JÁ EXISTENTES (EXECUTE SE JÁ TIVER TABELAS CRIADAS)
+-- ==============================================================================
+ALTER TABLE IF EXISTS public.fechamentos_culto 
+    ADD COLUMN IF NOT EXISTS data_inicio DATE,
+    ADD COLUMN IF NOT EXISTS data_fim DATE,
+    ADD COLUMN IF NOT EXISTS porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
+    ADD COLUMN IF NOT EXISTS aplicar_repasse_matriz BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS tipo_base_repasse_matriz TEXT DEFAULT 'todas',
+    ADD COLUMN IF NOT EXISTS categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    ADD COLUMN IF NOT EXISTS porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00,
+    ADD COLUMN IF NOT EXISTS aplicar_prebenda BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS relatorio_ia TEXT;
+
+ALTER TABLE IF EXISTS public.configuracao_igreja
+    ADD COLUMN IF NOT EXISTS porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
+    ADD COLUMN IF NOT EXISTS aplicar_repasse_matriz BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS tipo_base_repasse_matriz TEXT DEFAULT 'todas',
+    ADD COLUMN IF NOT EXISTS categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    ADD COLUMN IF NOT EXISTS porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00,
+    ADD COLUMN IF NOT EXISTS aplicar_prebenda BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS logo_url TEXT;
+

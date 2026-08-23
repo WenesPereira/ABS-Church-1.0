@@ -74,6 +74,8 @@ export interface FechamentoCulto {
   aplicarRepasseMatriz?: boolean; // Se deve ou não aplicar o repasse para a matriz
   tipoBaseRepasseMatriz?: 'todas' | 'selecionadas'; // Se o repasse é sobre todas as entradas ou apenas categorias selecionadas
   categoriasRepasseMatriz?: CategoriaEntrada[]; // Lista de categorias que entram na base do repasse (ex: ['dizimo', 'oferta_culto', 'doacao'])
+  porcentagemPrebenda?: number; // Porcentagem da Prebenda Pastoral (ex: 10%)
+  aplicarPrebenda?: boolean; // Se deve ou não deduzir a Prebenda Pastoral
   observacoes?: string;
   lancamentos: Lancamento[];
   contagemDinheiro: ContagemDinheiro;
@@ -95,6 +97,8 @@ export interface ConfigIgreja {
   aplicarRepasseMatriz?: boolean; // Padrão se aplica ou não repasse para a matriz
   tipoBaseRepasseMatriz?: 'todas' | 'selecionadas';
   categoriasRepasseMatriz?: CategoriaEntrada[];
+  porcentagemPrebenda?: number; // Porcentagem padrão de Prebenda Pastoral (ex: 10%)
+  aplicarPrebenda?: boolean; // Padrão se deduz ou não a Prebenda Pastoral
   logoUrl?: string;
   whatsappSuporte?: string; // Número de WhatsApp para atendimento e suporte
   emailSuporte?: string; // E-mail para atendimento e suporte
@@ -148,6 +152,8 @@ export interface SupabaseConfiguracaoIgrejaRow {
   aplicar_repasse_matriz: boolean | null;
   tipo_base_repasse_matriz: string | null;
   categorias_repasse_matriz: string[] | null;
+  porcentagem_prebenda?: number | null;
+  aplicar_prebenda?: boolean | null;
   logo_url: string | null;
   created_at?: string;
   updated_at?: string;
@@ -174,6 +180,8 @@ export interface SupabaseFechamentoCultoRow {
   aplicar_repasse_matriz: boolean | null;
   tipo_base_repasse_matriz: string | null;
   categorias_repasse_matriz: string[] | null;
+  porcentagem_prebenda?: number | null;
+  aplicar_prebenda?: boolean | null;
   observacoes: string | null;
   contagem_dinheiro: ContagemDinheiro;
   status: 'aberto' | 'fechado';

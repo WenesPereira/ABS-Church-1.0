@@ -50,7 +50,9 @@ export function calcularResumoLancamentos(
   porcentagemMatriz: number = 20,
   aplicarRepasse: boolean = true,
   tipoBaseRepasse: 'todas' | 'selecionadas' = 'todas',
-  categoriasRepasse: CategoriaEntrada[] = ALL_ENTRADA_CATEGORIES
+  categoriasRepasse: CategoriaEntrada[] = ALL_ENTRADA_CATEGORIES,
+  porcentagemPrebenda: number = 0,
+  aplicarPrebenda: boolean = false
 ) {
   let totalEntradas = 0;
   let totalSaidas = 0;
@@ -106,10 +108,20 @@ export function calcularResumoLancamentos(
   });
 
   const saldoLiquido = totalEntradas - totalSaidas;
+  
+  // Cálculo do Repasse da Matriz / Sede
   const repasseAtivo = aplicarRepasse !== false;
   const pctMatriz = repasseAtivo ? Math.max(0, porcentagemMatriz ?? 20) : 0;
   const valorMatriz = repasseAtivo ? (baseCalculoMatriz * pctMatriz) / 100 : 0;
-  const saldoCongregacao = saldoLiquido - valorMatriz;
+
+  // Cálculo da Prebenda Pastoral
+  const prebendaAtiva = aplicarPrebenda === true || (aplicarPrebenda !== false && (porcentagemPrebenda ?? 0) > 0);
+  const pctPrebenda = prebendaAtiva ? Math.max(0, porcentagemPrebenda ?? 0) : 0;
+  const valorPrebenda = prebendaAtiva ? (totalEntradas * pctPrebenda) / 100 : 0;
+
+  // Fórmula do Saldo Disponível em Caixa Local: [Saldo Disponível = Entradas - Saídas - Repasse Matriz - Prebenda Pastoral]
+  const saldoDisponivel = totalEntradas - totalSaidas - valorMatriz - valorPrebenda;
+  const saldoCongregacao = saldoDisponivel;
 
   return {
     totalEntradas,
@@ -121,6 +133,10 @@ export function calcularResumoLancamentos(
     baseCalculoMatriz,
     porcentagemMatriz: pctMatriz,
     valorMatriz,
+    aplicarPrebenda: prebendaAtiva,
+    porcentagemPrebenda: pctPrebenda,
+    valorPrebenda,
+    saldoDisponivel,
     saldoCongregacao,
     totalDizimos,
     totalOfertasCulto,

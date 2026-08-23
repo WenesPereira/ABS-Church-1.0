@@ -492,6 +492,8 @@ export const DEFAULT_CONFIG: ConfigIgreja = {
   aplicarRepasseMatriz: true,
   tipoBaseRepasseMatriz: 'todas',
   categoriasRepasseMatriz: ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
+  porcentagemPrebenda: 0,
+  aplicarPrebenda: false,
   whatsappSuporte: '5511999999999',
   emailSuporte: 'suporte@tesouraria.com',
   apkDownloadUrl: 'https://drive.google.com',
@@ -589,6 +591,8 @@ function mapRowToConfig(row: SupabaseConfiguracaoIgrejaRow): ConfigIgreja {
     aplicarRepasseMatriz: row.aplicar_repasse_matriz ?? true,
     tipoBaseRepasseMatriz: (row.tipo_base_repasse_matriz as 'todas' | 'selecionadas') || 'todas',
     categoriasRepasseMatriz: (row.categorias_repasse_matriz as CategoriaEntrada[]) || undefined,
+    porcentagemPrebenda: row.porcentagem_prebenda != null ? Number(row.porcentagem_prebenda) : 0,
+    aplicarPrebenda: row.aplicar_prebenda ?? false,
     logoUrl: row.logo_url || undefined,
     whatsappSuporte,
     emailSuporte,
@@ -614,6 +618,8 @@ function mapConfigToRow(config: ConfigIgreja, userId: string): Partial<SupabaseC
     aplicar_repasse_matriz: config.aplicarRepasseMatriz ?? true,
     tipo_base_repasse_matriz: config.tipoBaseRepasseMatriz || 'todas',
     categorias_repasse_matriz: (config.categoriasRepasseMatriz as string[]) || null,
+    porcentagem_prebenda: config.porcentagemPrebenda != null ? Number(config.porcentagemPrebenda) : 0,
+    aplicar_prebenda: config.aplicarPrebenda ?? false,
     logo_url: config.logoUrl || null,
   };
 }
@@ -676,6 +682,8 @@ function mapRowToFechamento(
     aplicarRepasseMatriz: row.aplicar_repasse_matriz ?? true,
     tipoBaseRepasseMatriz: (row.tipo_base_repasse_matriz as 'todas' | 'selecionadas') || 'todas',
     categoriasRepasseMatriz: (row.categorias_repasse_matriz as CategoriaEntrada[]) || undefined,
+    porcentagemPrebenda: row.porcentagem_prebenda != null ? Number(row.porcentagem_prebenda) : 0,
+    aplicarPrebenda: row.aplicar_prebenda ?? false,
     observacoes: row.observacoes || undefined,
     contagemDinheiro: row.contagem_dinheiro || {
       c200: 0, c100: 0, c50: 0, c20: 0, c10: 0, c5: 0, c2: 0,
@@ -729,6 +737,17 @@ export async function fetchConfiguracaoIgreja(userId?: string): Promise<{ data: 
   }
 }
 
+// Helper para extrair coluna não encontrada do erro PGRST204 ou mensagem de schema cache
+function extractMissingColumn(error: any): string | null {
+  if (!error) return null;
+  const msg = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
+  const match = msg.match(/Could not find the '([^']+)' column/i);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return null;
+}
+
 export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
@@ -739,17 +758,52 @@ export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: stri
       return false;
     }
 
-    const row = mapConfigToRow(config, uid);
-    const { data, error } = await supabase
-      .from('configuracao_igreja')
-      .upsert(row, { onConflict: 'id' })
-      .select();
+    const initialRow = mapConfigToRow(config, uid);
+    let currentRow = { ...initialRow };
+    let lastError: any = null;
+    let success = false;
 
-    if (error) {
-      console.error('Erro Supabase ao salvar configuracao_igreja:', error);
+    // Tenta salvar com auto-remoção graciosa de colunas caso a tabela no Supabase não tenha as migrações mais recentes
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const { data, error } = await supabase
+        .from('configuracao_igreja')
+        .upsert(currentRow, { onConflict: 'id' })
+        .select();
+
+      if (!error) {
+        success = !!data;
+        lastError = null;
+        break;
+      }
+
+      lastError = error;
+      const missingCol = extractMissingColumn(error);
+      if (missingCol && missingCol in currentRow) {
+        console.warn(`Supabase: coluna '${missingCol}' ausente na tabela configuracao_igreja. Removendo do payload para salvar compatível...`);
+        delete (currentRow as any)[missingCol];
+        continue;
+      } else if (error.code === 'PGRST204') {
+        if ('aplicar_prebenda' in currentRow) {
+          delete (currentRow as any).aplicar_prebenda;
+          continue;
+        }
+        if ('porcentagem_prebenda' in currentRow) {
+          delete (currentRow as any).porcentagem_prebenda;
+          continue;
+        }
+        if ('logo_url' in currentRow) {
+          delete (currentRow as any).logo_url;
+          continue;
+        }
+      }
+      break;
+    }
+
+    if (lastError) {
+      console.error('Erro Supabase ao salvar configuracao_igreja:', lastError);
       return false;
     }
-    return !!data;
+    return success;
   } catch (err) {
     console.error('Erro Supabase inesperado ao salvar configuracao_igreja:', err);
     return false;
@@ -852,6 +906,8 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       categorias_repasse_matriz: Array.isArray(fechamento.categoriasRepasseMatriz)
         ? (fechamento.categoriasRepasseMatriz as string[])
         : ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
+      porcentagem_prebenda: fechamento.porcentagemPrebenda != null ? Number(fechamento.porcentagemPrebenda) : 0,
+      aplicar_prebenda: fechamento.aplicarPrebenda ?? false,
       observacoes: fechamento.observacoes || null,
       contagem_dinheiro: cleanContagem,
       status: fechamento.status === 'fechado' ? 'fechado' : 'aberto',
@@ -860,10 +916,45 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       relatorio_ia: fechamento.relatorioIA || null,
     };
 
-    const { data: fData, error: fError } = await supabase
-      .from('fechamentos_culto')
-      .upsert(fechamentoRow, { onConflict: 'id' })
-      .select();
+    let currentRow = { ...fechamentoRow };
+    let fError: any = null;
+    let fData: any = null;
+
+    // Tentativa resiliente com auto-remoção de colunas que não existam no schema cache atual do Supabase
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const res = await supabase
+        .from('fechamentos_culto')
+        .upsert(currentRow, { onConflict: 'id' })
+        .select();
+
+      if (!res.error) {
+        fData = res.data;
+        fError = null;
+        break;
+      }
+
+      fError = res.error;
+      const missingCol = extractMissingColumn(fError);
+      if (missingCol && missingCol in currentRow) {
+        console.warn(`Supabase: coluna '${missingCol}' ausente na tabela fechamentos_culto. Removendo do payload para salvar compatível...`);
+        delete (currentRow as any)[missingCol];
+        continue;
+      } else if (fError.code === 'PGRST204') {
+        if ('aplicar_prebenda' in currentRow) {
+          delete (currentRow as any).aplicar_prebenda;
+          continue;
+        }
+        if ('porcentagem_prebenda' in currentRow) {
+          delete (currentRow as any).porcentagem_prebenda;
+          continue;
+        }
+        if ('relatorio_ia' in currentRow) {
+          delete (currentRow as any).relatorio_ia;
+          continue;
+        }
+      }
+      break;
+    }
 
     if (fError) {
       console.error('Erro Supabase ao salvar fechamentos_culto:', fError);

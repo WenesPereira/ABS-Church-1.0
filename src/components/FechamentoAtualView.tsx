@@ -80,12 +80,22 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   const aplicarRepasseMatriz =
     fechamento.aplicarRepasseMatriz ?? true;
 
+  const porcentagemPrebenda =
+    typeof fechamento.porcentagemPrebenda === 'number'
+      ? fechamento.porcentagemPrebenda
+      : 0;
+
+  const aplicarPrebenda =
+    fechamento.aplicarPrebenda ?? false;
+
   const resumo = calcularResumoLancamentos(
     lancamentos,
     porcentagemMatriz,
     aplicarRepasseMatriz,
     tipoBase,
-    catsRepasse
+    catsRepasse,
+    porcentagemPrebenda,
+    aplicarPrebenda
   );
 
   const totalContagemFisica = calcularTotalContagem(contagemDinheiro);
@@ -296,7 +306,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
         {/* =========================================================
             METADADOS
         ========================================================== */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
           {/* Data inicial */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
@@ -427,7 +437,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
             />
           </div>
 
-          {/* Repasse */}
+          {/* Repasse Matriz */}
           <div>
             <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
               <span>Repasse Matriz</span>
@@ -475,6 +485,63 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                     );
                   }}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 pr-7 text-xs text-purple-300 font-bold font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-40"
+                />
+
+                <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">
+                  %
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Prebenda Pastoral */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+              <span>Prebenda Pastoral</span>
+
+              <span className="text-[9px] text-amber-300 font-bold font-mono">
+                {resumo.aplicarPrebenda
+                  ? formatCurrency(resumo.valorPrebenda)
+                  : 'NÃO DEDUZIR'}
+              </span>
+            </label>
+
+            <div className="flex items-center gap-2">
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={aplicarPrebenda}
+                  onChange={(e) =>
+                    handleUpdateMeta(
+                      'aplicarPrebenda',
+                      e.target.checked
+                    )
+                  }
+                  className="sr-only peer"
+                />
+
+                <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600" />
+              </label>
+
+              <div className="relative flex-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                  disabled={!aplicarPrebenda}
+                  value={porcentagemPrebenda}
+                  onChange={(e) => {
+                    const value = Number(e.target.value);
+
+                    handleUpdateMeta(
+                      'porcentagemPrebenda',
+                      Number.isFinite(value)
+                        ? Math.min(100, Math.max(0, value))
+                        : 0
+                    );
+                  }}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 pr-7 text-xs text-amber-300 font-bold font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-40"
                 />
 
                 <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">
@@ -596,11 +663,11 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           </div>
         </button>
 
-        {/* Saldo */}
+        {/* Saldo Disponível */}
         <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 border border-amber-500/30 rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-              Saldo do Culto
+              Saldo Disponível em Caixa
             </span>
 
             <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -610,105 +677,69 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
           <div>
             <h3 className="text-2xl font-black font-mono text-amber-300">
-              {formatCurrency(resumo.saldoLiquido)}
+              {formatCurrency(resumo.saldoDisponivel)}
             </h3>
 
-            <p className="text-[11px] text-slate-400 mt-1">
-              Pix/Banco:{' '}
-              <strong className="text-slate-200">
-                {formatCurrency(
-                  (resumo.totalPix || 0) +
-                  (resumo.totalTransferencia || 0)
-                )}
-              </strong>
+            <p className="text-[11px] text-slate-400 mt-1 flex items-center justify-between">
+              <span>
+                Líquido Bruto:{' '}
+                <strong className="text-slate-200">
+                  {formatCurrency(resumo.saldoLiquido)}
+                </strong>
+              </span>
+              {(resumo.aplicarRepasseMatriz || resumo.aplicarPrebenda) && (
+                <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">
+                  Deduções Aplicadas
+                </span>
+              )}
             </p>
           </div>
         </div>
       </div>
 
       {/* =========================================================
-          REPASSE MATRIZ
+          REPASSE MATRIZ & PREBENDA PASTORAL (DEDUÇÕES)
       ========================================================== */}
-      <div
-        className={`border rounded-3xl p-5 shadow-xl flex flex-col space-y-4 transition-all ${
-          resumo.aplicarRepasseMatriz
-            ? 'bg-gradient-to-r from-purple-950/40 via-slate-900 to-amber-950/30 border-purple-500/40'
-            : 'bg-slate-900/80 border-slate-800 opacity-90'
-        }`}
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className={`p-3 rounded-2xl shrink-0 ${
-                resumo.aplicarRepasseMatriz
-                  ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700'
-              }`}
-            >
-              <Building2 className="w-6 h-6" />
-            </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Bloco 1: Repasse para a Matriz / Sede */}
+        <div
+          className={`border rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4 transition-all ${
+            resumo.aplicarRepasseMatriz
+              ? 'bg-gradient-to-br from-purple-950/40 via-slate-900 to-slate-900 border-purple-500/40'
+              : 'bg-slate-900/80 border-slate-800 opacity-90'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-3 rounded-2xl shrink-0 ${
+                  resumo.aplicarRepasseMatriz
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                    : 'bg-slate-800 text-slate-500 border border-slate-700'
+                }`}
+              >
+                <Building2 className="w-6 h-6" />
+              </div>
 
-            <div>
-              <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2 flex-wrap">
-                <span>Repasse para a Matriz / Sede</span>
-
-                {resumo.aplicarRepasseMatriz ? (
-                  <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2.5 py-0.5 rounded-full font-bold border border-purple-500/30">
-                    {resumo.porcentagemMatriz}% sobre Base (
-                    {formatCurrency(resumo.baseCalculoMatriz)})
-                  </span>
-                ) : (
-                  <span className="text-[10px] bg-slate-800 text-slate-400 px-2.5 py-0.5 rounded-full font-bold border border-slate-700">
-                    DESATIVADO / ISENTO
-                  </span>
-                )}
-              </h4>
-
-              <div className="text-xs text-slate-300 mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-                {resumo.aplicarRepasseMatriz ? (
-                  <>
-                    <span>
-                      Base:{' '}
-                      <strong className="text-slate-100 font-mono">
-                        {formatCurrency(resumo.baseCalculoMatriz)}
-                      </strong>
+              <div>
+                <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2 flex-wrap">
+                  <span>Repasse Matriz / Sede</span>
+                  {resumo.aplicarRepasseMatriz ? (
+                    <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold border border-purple-500/30">
+                      {resumo.porcentagemMatriz}%
                     </span>
-
-                    <span className="text-slate-600 hidden sm:inline">
-                      |
+                  ) : (
+                    <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-bold border border-slate-700">
+                      ISENTO
                     </span>
-
-                    <span>
-                      Valor à Sede:{' '}
-                      <strong className="text-purple-300 font-mono text-sm font-black">
-                        {formatCurrency(resumo.valorMatriz)}
-                      </strong>
-                    </span>
-
-                    <span className="text-slate-600 hidden sm:inline">
-                      |
-                    </span>
-
-                    <span>
-                      Saldo Congregação:{' '}
-                      <strong className="text-emerald-400 font-mono text-sm font-black">
-                        {formatCurrency(resumo.saldoCongregacao)}
-                      </strong>
-                    </span>
-                  </>
-                ) : (
-                  <span>
-                    Sem repasse para a matriz. Saldo da Congregação:{' '}
-                    <strong className="text-emerald-400 font-mono text-sm font-black">
-                      {formatCurrency(resumo.saldoLiquido)}
-                    </strong>
-                  </span>
-                )}
+                  )}
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Repasse institucional obrigatório ou estatutário da congregação.
+                </p>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-4 shrink-0 justify-between md:justify-end">
             <button
               type="button"
               onClick={() =>
@@ -717,29 +748,30 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                   !resumo.aplicarRepasseMatriz
                 )
               }
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 ${
                 resumo.aplicarRepasseMatriz
                   ? 'bg-purple-950/60 hover:bg-purple-900/60 text-purple-300 border-purple-500/50'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
               }`}
             >
-              {resumo.aplicarRepasseMatriz
-                ? 'Repasse Ativado (Clique p/ Desativar)'
-                : 'Repasse Desativado (Clique p/ Ativar)'}
+              {resumo.aplicarRepasseMatriz ? 'Ativo' : 'Desativado'}
             </button>
+          </div>
 
+          <div className="bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80 flex items-center justify-between">
+            <div className="space-y-0.5 text-xs text-slate-300">
+              <span className="text-[10px] uppercase font-bold text-slate-500 block">Base de Cálculo:</span>
+              <span className="font-mono font-bold text-slate-200">
+                {formatCurrency(resumo.baseCalculoMatriz)}
+              </span>
+            </div>
             <div className="text-right">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                {resumo.aplicarRepasseMatriz
-                  ? `Envio p/ Matriz (${resumo.porcentagemMatriz}%)`
-                  : 'Envio p/ Matriz'}
+                Valor à Matriz:
               </span>
-
               <span
                 className={`text-xl font-black font-mono ${
-                  resumo.aplicarRepasseMatriz
-                    ? 'text-purple-300'
-                    : 'text-slate-500'
+                  resumo.aplicarRepasseMatriz ? 'text-purple-300' : 'text-slate-500'
                 }`}
               >
                 {resumo.aplicarRepasseMatriz
@@ -748,71 +780,177 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               </span>
             </div>
           </div>
-        </div>
 
-        {/* Categorias */}
-        {resumo.aplicarRepasseMatriz && (
-          <div className="pt-3 border-t border-purple-500/20 space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-purple-200 uppercase tracking-wider flex items-center gap-1.5">
-                Categorias que compõem o repasse à Matriz:
-              </span>
+          {/* Categorias */}
+          {resumo.aplicarRepasseMatriz && (
+            <div className="pt-2 border-t border-purple-500/20 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-purple-200 uppercase tracking-wider">
+                  Categorias do Repasse:
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSelectTodaEntrada}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all border cursor-pointer ${
+                    tipoBase === 'todas'
+                      ? 'bg-purple-600 text-white border-purple-400'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                  }`}
+                >
+                  ★ Toda Entrada
+                </button>
+              </div>
 
-              <button
-                type="button"
-                onClick={handleSelectTodaEntrada}
-                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer ${
-                  tipoBase === 'todas'
-                    ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-600/30'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                }`}
-              >
-                ★ Selecionar Toda a Entrada (100%)
-              </button>
-            </div>
+              <div className="flex flex-wrap gap-1.5">
+                {ALL_ENTRADA_CATEGORIES.map((cat) => {
+                  const isSelected =
+                    tipoBase === 'todas' ||
+                    catsRepasse.includes(cat);
 
-            <div className="flex flex-wrap gap-2">
-              {ALL_ENTRADA_CATEGORIES.map((cat) => {
-                const isSelected =
-                  tipoBase === 'todas' ||
-                  catsRepasse.includes(cat);
+                  const label =
+                    CATEGORIA_ENTRADA_LABELS[cat] ||
+                    getCategoryLabel(cat);
 
-                const label =
-                  CATEGORIA_ENTRADA_LABELS[cat] ||
-                  getCategoryLabel(cat);
-
-                return (
-                  <button
-                    type="button"
-                    key={cat}
-                    onClick={() =>
-                      handleToggleCategoriaRepasse(cat)
-                    }
-                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-purple-900/60 border-purple-500/70 text-purple-200 shadow-sm'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:text-slate-300 hover:border-slate-700'
-                    }`}
-                  >
-                    <div
-                      className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[10px] ${
+                  return (
+                    <button
+                      type="button"
+                      key={cat}
+                      onClick={() =>
+                        handleToggleCategoriaRepasse(cat)
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-purple-500 text-white font-black'
-                          : 'border border-slate-700 bg-slate-900'
+                          ? 'bg-purple-900/60 border-purple-500/70 text-purple-200'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:text-slate-300'
                       }`}
                     >
-                      {isSelected && (
-                        <Check className="w-2.5 h-2.5 stroke-[3]" />
-                      )}
-                    </div>
+                      <span className="text-[9px]">{isSelected ? '✓' : '○'}</span>
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
 
-                    <span>{label}</span>
-                  </button>
-                );
-              })}
+        {/* Bloco 2: Prebenda Pastoral */}
+        <div
+          className={`border rounded-3xl p-5 shadow-xl flex flex-col justify-between space-y-4 transition-all ${
+            resumo.aplicarPrebenda
+              ? 'bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-900 border-amber-500/40'
+              : 'bg-slate-900/80 border-slate-800 opacity-90'
+          }`}
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div
+                className={`p-3 rounded-2xl shrink-0 ${
+                  resumo.aplicarPrebenda
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-slate-800 text-slate-500 border border-slate-700'
+                }`}
+              >
+                <Wallet className="w-6 h-6" />
+              </div>
+
+              <div>
+                <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2 flex-wrap">
+                  <span>Prebenda Pastoral</span>
+                  {resumo.aplicarPrebenda ? (
+                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30">
+                      {resumo.porcentagemPrebenda}% das Entradas
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-bold border border-slate-700">
+                      NÃO DEDUZIR
+                    </span>
+                  )}
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Proventos ministeriais / sustento pastoral descontados do saldo local.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                handleUpdateMeta(
+                  'aplicarPrebenda',
+                  !resumo.aplicarPrebenda
+                )
+              }
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer shrink-0 ${
+                resumo.aplicarPrebenda
+                  ? 'bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border-amber-500/50'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+              }`}
+            >
+              {resumo.aplicarPrebenda ? 'Ativo' : 'Desativado'}
+            </button>
+          </div>
+
+          <div className="bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80 flex items-center justify-between">
+            <div className="space-y-0.5 text-xs text-slate-300">
+              <span className="text-[10px] uppercase font-bold text-slate-500 block">Total de Entradas Base:</span>
+              <span className="font-mono font-bold text-slate-200">
+                {formatCurrency(resumo.totalEntradas)}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                Valor da Prebenda:
+              </span>
+              <span
+                className={`text-xl font-black font-mono ${
+                  resumo.aplicarPrebenda ? 'text-amber-300' : 'text-slate-500'
+                }`}
+              >
+                {resumo.aplicarPrebenda
+                  ? formatCurrency(resumo.valorPrebenda)
+                  : 'R$ 0,00'}
+              </span>
             </div>
           </div>
-        )}
+
+          <div className="pt-2 border-t border-amber-500/20 text-xs text-slate-400 flex items-center justify-between">
+            <span>Pastor Beneficiário:</span>
+            <span className="font-bold text-slate-200">
+              {fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Resumo da Fórmula de Saldo Disponível em Caixa Local */}
+      <div className="bg-slate-950 border border-slate-800/90 rounded-3xl p-4 sm:p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+              Demonstrativo de Saldo Disponível em Caixa Local
+            </span>
+            <span className="text-[10px] font-mono bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              Fórmula Oficial
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 font-mono">
+            [ Saldo Disponível = Entradas ({formatCurrency(resumo.totalEntradas)}) - Saídas ({formatCurrency(resumo.totalSaidas)})
+            {resumo.aplicarRepasseMatriz ? ` - Repasse Matriz (${formatCurrency(resumo.valorMatriz)})` : ''}
+            {resumo.aplicarPrebenda ? ` - Prebenda Pastoral (${formatCurrency(resumo.valorPrebenda)})` : ''} ]
+          </p>
+        </div>
+
+        <div className="flex items-center gap-4 shrink-0 bg-slate-900/90 px-4 py-2.5 rounded-2xl border border-slate-800">
+          <div className="text-right">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+              Saldo Líquido Disponível
+            </span>
+            <span className="text-xl sm:text-2xl font-black font-mono text-emerald-400">
+              {formatCurrency(resumo.saldoDisponivel)}
+            </span>
+          </div>
+        </div>
       </div>
 
       {/* =========================================================

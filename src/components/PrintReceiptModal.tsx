@@ -20,18 +20,24 @@ interface PrintReceiptModalProps {
 export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento, config, onClose }) => {
   const [exibirDizimistas, setExibirDizimistas] = React.useState<boolean>(true);
   const [aplicarRepasse, setAplicarRepasse] = React.useState<boolean>(fechamento.aplicarRepasseMatriz ?? true);
+  const [aplicarPrebenda, setAplicarPrebenda] = React.useState<boolean>(fechamento.aplicarPrebenda ?? false);
   const [tipoBase, setTipoBase] = React.useState<'todas' | 'selecionadas'>(fechamento.tipoBaseRepasseMatriz || 'todas');
   const [catsRepasse, setCatsRepasse] = React.useState<CategoriaEntrada[]>(
     fechamento.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES
   );
   const [isGeneratingPdf, setIsGeneratingPdf] = React.useState<boolean>(false);
 
+  const porcentagemPrebenda = fechamento.porcentagemPrebenda ?? config.porcentagemPrebenda ?? 0;
+  const porcentagemMatriz = fechamento.porcentagemMatriz ?? config.porcentagemMatriz ?? 20;
+
   const resumo = calcularResumoLancamentos(
     fechamento.lancamentos, 
-    fechamento.porcentagemMatriz ?? config.porcentagemMatriz ?? 20,
+    porcentagemMatriz,
     aplicarRepasse,
     tipoBase,
-    catsRepasse
+    catsRepasse,
+    porcentagemPrebenda,
+    aplicarPrebenda
   );
   const totalContagem = calcularTotalContagem(fechamento.contagemDinheiro);
   const diferenca = totalContagem - resumo.totalDinheiro;
@@ -182,7 +188,17 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                 onChange={(e) => setAplicarRepasse(e.target.checked)}
                 className="rounded bg-slate-900 border-slate-700 text-purple-500 focus:ring-purple-500 w-3.5 h-3.5"
               />
-              <span>Repasse p/ Matriz ({fechamento.porcentagemMatriz ?? config.porcentagemMatriz ?? 20}%)</span>
+              <span>Repasse Matriz ({porcentagemMatriz}%)</span>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs text-slate-300 hover:text-white cursor-pointer bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/80 transition-colors">
+              <input
+                type="checkbox"
+                checked={aplicarPrebenda}
+                onChange={(e) => setAplicarPrebenda(e.target.checked)}
+                className="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500 w-3.5 h-3.5"
+              />
+              <span>Prebenda Pastoral ({porcentagemPrebenda}%)</span>
             </label>
 
             {dizimoLancamentos.length > 0 && (
@@ -374,46 +390,56 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                     </td>
                   </tr>
                 )}
-                <tr className="bg-amber-100 font-bold border-t-2 border-slate-900">
-                  <td className="py-1.5 px-1">SALDO LÍQUIDO DO CULTO:</td>
+                <tr className="bg-slate-100 font-bold border-t-2 border-slate-900">
+                  <td className="py-1.5 px-1">SALDO LÍQUIDO OPERACIONAL (Entradas - Saídas):</td>
                   <td className="py-1.5 px-1 text-right font-mono text-sm text-slate-900">{formatCurrency(resumo.saldoLiquido)}</td>
                 </tr>
-                {resumo.aplicarRepasseMatriz ? (
-                  <>
-                    <tr className="border-t border-purple-300 bg-purple-50 font-bold text-purple-950">
-                      <td className="py-1.5 px-1">
-                        <div>
-                          (-) Repasse para a Matriz / Sede ({resumo.porcentagemMatriz}%):
-                          <span className="block text-[9px] text-purple-800 font-normal">
-                            Base: {tipoBase === 'todas' || catsRepasse.length === ALL_ENTRADA_CATEGORIES.length ? 'Toda a Entrada' : catsRepasse.map(c => CATEGORIA_ENTRADA_LABELS[c]).join(' + ')} ({formatCurrency(resumo.baseCalculoMatriz)})
-                          </span>
-                        </div>
-                      </td>
-                      <td className="py-1.5 px-1 text-right font-mono font-bold text-purple-900">
-                        -{formatCurrency(resumo.valorMatriz)}
-                      </td>
-                    </tr>
-                    <tr className="bg-emerald-100 font-black border-t-2 border-slate-900 text-emerald-950">
-                      <td className="py-2 px-1">SALDO REMANESCENTE DA CONGREGAÇÃO:</td>
-                      <td className="py-2 px-1 text-right font-mono text-sm text-emerald-900">{formatCurrency(resumo.saldoCongregacao)}</td>
-                    </tr>
-                  </>
-                ) : (
-                  <>
-                    <tr className="border-t border-slate-300 bg-slate-50 text-slate-600 font-semibold italic">
-                      <td className="py-1 px-1">
-                        Repasse para a Matriz / Sede:
-                      </td>
-                      <td className="py-1 px-1 text-right font-mono text-slate-500">
-                        ISENTO / NÃO APLICADO (0%)
-                      </td>
-                    </tr>
-                    <tr className="bg-emerald-100 font-black border-t-2 border-slate-900 text-emerald-950">
-                      <td className="py-2 px-1">SALDO TOTAL DA CONGREGAÇÃO:</td>
-                      <td className="py-2 px-1 text-right font-mono text-sm text-emerald-900">{formatCurrency(resumo.saldoLiquido)}</td>
-                    </tr>
-                  </>
+
+                {resumo.aplicarRepasseMatriz && (
+                  <tr className="border-t border-purple-200 bg-purple-50/70 font-semibold text-purple-950">
+                    <td className="py-1.5 px-1">
+                      <div>
+                        (-) Repasse para a Matriz / Sede ({resumo.porcentagemMatriz}%):
+                        <span className="block text-[9px] text-purple-800 font-normal">
+                          Base: {tipoBase === 'todas' || catsRepasse.length === ALL_ENTRADA_CATEGORIES.length ? 'Toda a Entrada' : catsRepasse.map(c => CATEGORIA_ENTRADA_LABELS[c]).join(' + ')} ({formatCurrency(resumo.baseCalculoMatriz)})
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-1 text-right font-mono font-bold text-purple-900">
+                      -{formatCurrency(resumo.valorMatriz)}
+                    </td>
+                  </tr>
                 )}
+
+                {resumo.aplicarPrebenda && (
+                  <tr className="border-t border-amber-200 bg-amber-50/70 font-semibold text-amber-950">
+                    <td className="py-1.5 px-1">
+                      <div>
+                        (-) Prebenda Pastoral ({resumo.porcentagemPrebenda}%):
+                        <span className="block text-[9px] text-amber-800 font-normal">
+                          Beneficiário: {fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'} (Base: {formatCurrency(resumo.totalEntradas)})
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-1.5 px-1 text-right font-mono font-bold text-amber-900">
+                      -{formatCurrency(resumo.valorPrebenda)}
+                    </td>
+                  </tr>
+                )}
+
+                <tr className="bg-emerald-100 font-black border-t-2 border-slate-900 text-emerald-950">
+                  <td className="py-2 px-1">
+                    <div>
+                      <span>SALDO DISPONÍVEL EM CAIXA LOCAL:</span>
+                      <span className="block text-[9px] text-emerald-800 font-mono font-normal">
+                        Fórmula: Entradas - Saídas {resumo.aplicarRepasseMatriz ? '- Repasse Matriz ' : ''}{resumo.aplicarPrebenda ? '- Prebenda Pastoral' : ''}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-2 px-1 text-right font-mono text-sm text-emerald-900">
+                    {formatCurrency(resumo.saldoDisponivel)}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>

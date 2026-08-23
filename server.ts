@@ -49,22 +49,31 @@ Analise os seguintes dados do fechamento de caixa do culto e elabore um **Relat�
 DADOS DO CULTO E FECHAMENTO:
 ${JSON.stringify(fechamentoData, null, 2)}
 
-INSTRUÇÕES DO RELATÓRIO:
-1. **Cabeçalho Formal**: Nome da Igreja, Período do Fechamento de Caixa (Data Inicial até Data Final) e Tesoureiro Responsável.
+INSTRUÇÕES DETALHADAS DO RELATÓRIO:
+1. **Cabeçalho Formal**: Nome da Igreja, Período do Fechamento de Caixa (Data Inicial até Data Final), Pastor Presidente, Pastor Local e Tesoureiro Responsável.
 2. **Resumo Financeiro Executivo**:
    - Total Arrecadado em Dízimos
-   - **Relação de Dizimistas (Opcional/Discriminação)**: Se houver nomes de dizimistas informados nos lançamentos, inclua a lista com os nomes dos dizimistas, forma de pagamento e valor individual.
-   - Total Arrecadado em Ofertas (Oferta Geral, Missões, Especial)
+   - **Relação de Dizimistas (Discriminação)**: Se houver nomes de dizimistas informados nos lançamentos, inclua a lista com os nomes dos dizimistas, forma de pagamento e valor individual.
+   - Total Arrecadado em Ofertas (Oferta Geral do Culto, Missões, Ofertas Especiais e Doações)
    - Distribuição por Forma de Pagamento (Espécie/Dinheiro, Pix, Cartão/Transferência)
    - **Discriminação Detalhada de Cada Saída/Despesa**: Liste obrigatoriamente cada saída realizada com sua categoria exata e descrição (ex: Conta de Água, Conta de Luz, Internet, Alimentação/Lanche, Aluguel do Templo, Manutenção, etc.) e o respectivo valor.
-   - Total Geral de Saídas
-   - Saldo Líquido do Caixa (Entradas - Saídas)
-   - **Porcentagem e Repasse para a Matriz / Sede**: Se a opção aplicarRepasseMatriz for verdadeira (ou true), destaque a porcentagem configurada e o valor exato a ser enviado para a Matriz (Sede), e o Saldo Final Remanescente da Congregação Local. Se a opção aplicarRepasseMatriz for falsa, informe explicitamente que este fechamento é isento / não possui repasse para a Matriz e o saldo total pertence à congregação.
+   - Total Geral de Saídas / Despesas
+   - **Saldo Líquido Operacional do Caixa** (Entradas - Saídas)
+   - **Repasse para a Matriz / Sede**: 
+     - Se 'aplicarRepasseMatriz' for verdadeiro (true), destaque a porcentagem configurada (ex: ${fechamentoData.porcentagemMatriz || 20}%), a base de cálculo e o valor exato a ser enviado para a Matriz/Sede.
+     - Se 'aplicarRepasseMatriz' for falso (false), declare expressamente que o fechamento é isento de repasse à Matriz.
+   - **Prebenda Pastoral / Proventos Ministeriais**:
+     - Se 'aplicarPrebenda' for verdadeiro (true), discrimine expressamente a porcentagem da Prebenda Pastoral (ex: ${fechamentoData.porcentagemPrebenda || 0}%), o valor calculado da dedução pastoral e o pastor titular/local beneficiário (${fechamentoData.pastorLocal || fechamentoData.pastorPresidente || 'Pastor Titular'}).
+     - Se 'aplicarPrebenda' for falso (false), informe que não houve dedução de prebenda pastoral neste período.
+   - **Saldo Disponível em Caixa Local**:
+     - Apresente claramente a fórmula oficial e o resultado final:
+       **[Saldo Disponível = Entradas - Saídas - Repasse Matriz - Prebenda Pastoral]**.
 3. **Análise de Conferência do Caixa Físico (Espécie)**:
    - Compare o valor lançado em Dinheiro vs o Total Contado na Calculadora de Cédulas e Moedas.
    - Diga se o caixa fechou exato, com sobra ou com falta em dinheiro físico. Se houver discrepância, utilize o termo técnico "inconsistência" contábil.
-4. **Anotações de Transparência e Parecer da Tesouraria / Orientação de Auditoria**:
-   - Utilize a seção "Orientação de Auditoria" para recomendações fiscais.
+4. **Parecer Executivo de Tesouraria e Anotações de Transparência / Orientação de Auditoria**:
+   - Destaque o Parecer Executivo de Tesouraria avaliando a conformidade dos repasses, a dedução regular da Prebenda Pastoral (se aplicável), e a saúde financeira do caixa local.
+   - Utilize a seção "Orientação de Auditoria" para recomendações fiscais e administrativas.
    - Use a forma correta "Expressamos nossa gratidão pela fidelidade..." ao concluir.
    - NUNCA utilize termos incorretos como "Exgressamos", "Orientação Auditiva" ou "inconsciência".
 5. **Campo de Assinaturas Oficiais**: Inclua obrigatoriamente as linhas de assinatura para apenas: **Pastor Presidente**, **Tesoureiro** e **Pastor Local**.
