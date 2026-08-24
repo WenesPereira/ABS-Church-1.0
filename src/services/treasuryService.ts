@@ -546,22 +546,18 @@ export function toSqlTimestamp(val?: string | null): string | null {
    ========================================================= */
 
 export async function getCurrentUserId(explicitUserId?: string): Promise<string | null> {
-  if (!isSupabaseConfigured) return explicitUserId || null;
+  if (explicitUserId) return explicitUserId;
+  if (!isSupabaseConfigured) return null;
 
   try {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (user?.id) {
-      return user.id;
-    }
-    if (error) {
-      console.warn('getCurrentUserId auth.getUser aviso:', error.message);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user?.id) {
+      return session.user.id;
     }
   } catch (err) {
-    console.warn('getCurrentUserId erro ao obter user:', err);
+    // Silencioso se não houver sessão ativa
   }
 
-  // Se explicitUserId for fornecido como fallback
-  if (explicitUserId) return explicitUserId;
   return null;
 }
 

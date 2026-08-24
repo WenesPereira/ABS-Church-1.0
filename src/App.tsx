@@ -148,13 +148,20 @@ export default function App() {
 
   const loadUserDataFromSupabase = useCallback(async (userId: string, userObj?: User | null) => {
     try {
-      // Garante a sessão ativa do usuário antes de realizar consultas
-      const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
-      if (authError) {
-        console.error('Erro Supabase ao validar sessão do usuário:', authError);
+      let effectiveUserId = userId;
+
+      // Se nenhum ID for passado diretamente, tenta recuperar o ID da sessão ativa
+      if (!effectiveUserId) {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            effectiveUserId = session.user.id;
+          }
+        } catch {
+          // fallback silencioso
+        }
       }
 
-      const effectiveUserId = authUser?.id || userId;
       if (!effectiveUserId) {
         console.warn('loadUserDataFromSupabase: ID de usuário não encontrado.');
         return;
