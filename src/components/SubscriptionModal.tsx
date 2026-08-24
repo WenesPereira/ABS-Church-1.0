@@ -19,11 +19,11 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import {
-  getMercadoPagoSubscriptionUrl,
   isSubscriptionActive,
   fetchUserProfile,
   isSuperAdmin,
 } from '../services/treasuryService';
+import { MercadoPagoCheckoutSection } from './MercadoPagoCheckoutSection';
 
 interface SubscriptionModalProps {
   isOpen: boolean;
@@ -48,11 +48,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
   const isSubscribed = isSubscriptionActive(currentUser);
   const isSuper = isSuperAdmin(currentUser);
-  const checkoutUrl = getMercadoPagoSubscriptionUrl(currentUser?.id);
-
-  const handleOpenMercadoPago = () => {
-    window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
-  };
 
   const handleCheckStatus = async () => {
     if (!currentUser?.id) {
@@ -81,7 +76,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           setVerificationFeedback({
             type: 'info',
             message:
-              'Ainda não identificamos a confirmação do pagamento no sistema. Se você acabou de pagar pelo Mercado Pago, pode levar alguns instantes para a compensação bancária.',
+              'Ainda não identificamos a confirmação do pagamento no sistema. Se você acabou de pagar pelo Mercado Pago (Pix ou Cartão), pode levar alguns instantes para a compensação bancária.',
           });
         }
       } else {
@@ -185,12 +180,12 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           </p>
         </div>
 
-        <div className="p-6 sm:p-8 space-y-6">
+        <div className="p-6 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto">
           {/* Price Highlight Banner */}
           <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-1">
-                <Sparkles className="w-4 h-4" /> {isSuper ? 'Acesso Global Super Admin' : 'Assinatura Mensal com Mercado Pago'}
+                <Sparkles className="w-4 h-4" /> {isSuper ? 'Acesso Global Super Admin' : 'Assinatura Mensal com Mercado Pago (PIX e Cartão)'}
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-extrabold text-slate-100">
@@ -202,35 +197,34 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               </div>
               <p className="text-xs text-slate-400 mt-1">
                 {isSuper
-                  ? 'Isenção automática permanente aplicada ao Super Admin wenes13@hotmail.com'
-                  : 'Cancele quando quiser • Ativação automática e segura'}
+                  ? 'Isenção automática permanente aplicada ao Super Admin'
+                  : 'Cancele quando quiser • Ativação imediata via Pix ou Cartão'}
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
-              {isSuper ? (
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold">
-                  <Crown className="w-4 h-4 text-purple-400 fill-purple-400" />
-                  <span>Acesso Super Admin Liberado</span>
-                </div>
-              ) : !isSubscribed ? (
-                <button
-                  type="button"
-                  onClick={handleOpenMercadoPago}
-                  className="flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer w-full sm:w-auto"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>Assinar Agora</span>
-                  <ExternalLink className="w-4 h-4 ml-1 opacity-80" />
-                </button>
-              ) : (
-                <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Sua conta já possui acesso Pro ativo</span>
-                </div>
-              )}
-            </div>
+            {isSuper ? (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 text-xs font-bold">
+                <Crown className="w-4 h-4 text-purple-400 fill-purple-400" />
+                <span>Acesso Super Admin Liberado</span>
+              </div>
+            ) : isSubscribed ? (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Sua conta já possui acesso Pro ativo</span>
+              </div>
+            ) : null}
           </div>
+
+          {/* Seletor e Checkout Mercado Pago (PIX / Cartão) */}
+          {!isSuper && !isSubscribed && (
+            <MercadoPagoCheckoutSection
+              currentUser={currentUser}
+              onStatusUpdated={onStatusUpdated}
+              onSuccess={() => {
+                setTimeout(() => onClose(), 1500);
+              }}
+            />
+          )}
 
           {/* Feedback messages */}
           {verificationFeedback && (

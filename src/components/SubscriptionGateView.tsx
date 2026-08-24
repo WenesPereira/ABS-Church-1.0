@@ -3,7 +3,6 @@ import {
   Crown,
   Sparkles,
   Lock,
-  ExternalLink,
   RefreshCw,
   LogOut,
   CheckCircle2,
@@ -19,11 +18,11 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import {
-  getMercadoPagoSubscriptionUrl,
   fetchUserProfile,
   isSubscriptionActive,
   isSuperAdmin,
 } from '../services/treasuryService';
+import { MercadoPagoCheckoutSection } from './MercadoPagoCheckoutSection';
 
 interface SubscriptionGateViewProps {
   currentUser: User;
@@ -53,12 +52,6 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
     }
   }, [currentUser, onStatusUpdated]);
 
-  const checkoutUrl = getMercadoPagoSubscriptionUrl(currentUser.id);
-
-  const handleOpenCheckout = () => {
-    window.open(checkoutUrl, '_blank', 'noopener,noreferrer');
-  };
-
   const handleCheckStatus = async () => {
     setIsVerifying(true);
     setFeedback(null);
@@ -73,12 +66,12 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
           });
           setTimeout(() => {
             onStatusUpdated(freshUser);
-          }, 1200);
+          }, 1000);
         } else {
           setFeedback({
             type: 'info',
             message:
-              'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de assinar pelo Mercado Pago, pode levar alguns instantes para a compensação.',
+              'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de pagar via Pix ou Cartão pelo Mercado Pago, pode levar alguns instantes para a compensação.',
           });
         }
       } else {
@@ -180,17 +173,17 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
           </h2>
 
           <p className="text-sm sm:text-base text-slate-400 max-w-xl mx-auto leading-relaxed">
-            Seu cadastro está ativo, mas o acesso completo requer a assinatura mensal do <strong className="text-slate-200">Tesouraria Pro</strong>. Ative agora para desbloquear todos os recursos para a sua igreja.
+            Seu cadastro está ativo, mas o acesso completo requer a assinatura mensal do <strong className="text-slate-200">Tesouraria Pro</strong>. Escolha pagar via <strong className="text-emerald-400">Pix Instantâneo</strong> ou <strong className="text-amber-400">Cartão de Crédito</strong>.
           </p>
         </div>
 
-        {/* Pricing & CTA Card */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900/95 to-slate-950 border-2 border-amber-500/40 p-6 sm:p-8 lg:p-10 shadow-2xl shadow-amber-500/10">
+        {/* Pricing & Checkout Card */}
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-slate-900 via-slate-900/95 to-slate-950 border-2 border-amber-500/40 p-6 sm:p-8 lg:p-10 shadow-2xl shadow-amber-500/10 space-y-6">
           <div className="absolute top-0 right-0 -mt-10 -mr-10 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
           <div className="absolute bottom-0 left-0 -mb-10 -ml-10 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-          <div className="relative flex flex-col md:flex-row items-center justify-between gap-6 md:gap-10">
-            <div className="space-y-2 text-center md:text-left">
+          <div className="relative flex flex-col md:flex-row items-center justify-between gap-6 pb-6 border-b border-slate-800/80">
+            <div className="space-y-1 text-center md:text-left">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold">
                 <Sparkles className="w-3.5 h-3.5" /> Plano Mensal Completo
               </div>
@@ -199,22 +192,21 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
                 <span className="text-sm text-slate-400 font-medium">/ mês</span>
               </div>
               <p className="text-xs text-slate-400">
-                Pagamento seguro via Mercado Pago • Cancele a qualquer momento
+                Pagamento seguro via Mercado Pago • PIX ou Cartão • Cancele quando quiser
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-              <button
-                type="button"
-                onClick={handleOpenCheckout}
-                className="flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-base shadow-xl shadow-amber-500/30 transition-all hover:scale-[1.02] active:scale-98 cursor-pointer w-full sm:w-auto"
-              >
-                <Crown className="w-5 h-5 text-slate-950 fill-current" />
-                <span>Assinar Plano PRO Agora</span>
-                <ExternalLink className="w-4 h-4 ml-1 opacity-80" />
-              </button>
+            <div className="text-center md:text-right text-xs text-slate-400">
+              <span className="text-emerald-400 font-bold block mb-0.5">Liberação Imediata</span>
+              <span>Reconhecimento instantâneo da assinatura</span>
             </div>
           </div>
+
+          {/* Seletor Dinâmico PIX & Cartão de Crédito Mercado Pago */}
+          <MercadoPagoCheckoutSection
+            currentUser={currentUser}
+            onStatusUpdated={onStatusUpdated}
+          />
 
           {/* Real-time Verification Feedback */}
           {feedback && (

@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,6 +11,109 @@ const app = express();
 const PORT = 3000;
 
 app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// Supabase Admin Client no Backend
+const defaultSupabaseUrl = "https://ikizzszskfpafdppupgc.supabase.co";
+const defaultSupabaseAnonKey =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlraXp6c3pza2ZwYWZkcHB1cGdjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYxMzM0NzksImV4cCI6MjEwMTcwOTQ3OX0.pPlhTo9toQzbrA8b_mGJdDJd10KBcSp4f8L8W3_oK10";
+
+const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || defaultSupabaseUrl;
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  defaultSupabaseAnonKey;
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+
+// Cache em memória para pagamentos Pix simulados/locais caso token não esteja configurado
+const localPaymentStore = new Map<string, any>();
+
+/**
+ * Atualiza o status de assinatura do usuário no Supabase para 'active'
+ */
+async function activateUserSubscription(
+  userIdOrRef?: string,
+  email?: string,
+  paymentId?: string | number
+): Promise<boolean> {
+  try {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const nowIso = now.toISOString();
+
+    const baseUpdate: Record<string, any> = {
+      subscription_status: "active",
+      subscription_plan: "mensal",
+      subscription_expires_at: expiresAt,
+      updated_at: nowIso,
+    };
+
+    if (paymentId) {
+      baseUpdate.mp_payment_id = String(paymentId);
+    }
+
+    let updated = false;
+
+    // 1. Tenta atualizar pelo ID de usuário
+    if (userIdOrRef) {
+      const { data, error } = await supabaseAdmin
+        .from("profiles")
+        .update(baseUpdate)
+        .or(`id.eq.${userIdOrRef},user_id.eq.${userIdOrRef}`)
+        .select();
+
+      if (!error && data && data.length > 0) {
+        console.log(`[Mercado Pago] Assinatura ativada no Supabase para o usuário ID: ${userIdOrRef}`);
+        return true;
+      }
+    }
+
+    // 2. Se não encontrou por ID, tenta por e-mail
+    if (email) {
+      const { data: dataEmail, error: errEmail } = await supabaseAdmin
+        .from("profiles")
+        .update(baseUpdate)
+        .eq("email", email.trim().toLowerCase())
+        .select();
+
+      if (!errEmail && dataEmail && dataEmail.length > 0) {
+        console.log(`[Mercado Pago] Assinatura ativada no Supabase para o e-mail: ${email}`);
+        return true;
+      }
+    }
+
+    // Se a coluna mp_payment_id não existir na tabela profiles, tenta sem ela
+    delete baseUpdate.mp_payment_id;
+
+    if (userIdOrRef) {
+      const { data } = await supabaseAdmin
+        .from("profiles")
+        .update(baseUpdate)
+        .or(`id.eq.${userIdOrRef},user_id.eq.${userIdOrRef}`)
+        .select();
+
+      if (data && data.length > 0) return true;
+    }
+
+    if (email) {
+      const { data } = await supabaseAdmin
+        .from("profiles")
+        .update(baseUpdate)
+        .eq("email", email.trim().toLowerCase())
+        .select();
+
+      if (data && data.length > 0) return true;
+    }
+
+    console.warn(`[Mercado Pago] Perfil não encontrado no Supabase para userId=${userIdOrRef}, email=${email}`);
+    return false;
+  } catch (err) {
+    console.error("[Mercado Pago] Erro ao ativar assinatura no Supabase:", err);
+    return false;
+  }
+}
 
 const getAIClient = () => {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -29,6 +133,270 @@ const getAIClient = () => {
 // Health Check
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", app: "Fechamento de Caixa de Igreja", timestamp: new Date().toISOString() });
+});
+
+/* =========================================================
+   ROTAS DE PAGAMENTO & ASSINATURA MERCADO PAGO (PIX & CARTÃO)
+   ========================================================= */
+
+/**
+ * Criação de Cobrança Pix via API do Mercado Pago (/v1/payments)
+ */
+app.post("/api/mercadopago/create-pix", async (req, res) => {
+  try {
+    const { userId, email, nome, valor } = req.body;
+    const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
+    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+    const amount = Number(valor) || 19.9;
+
+    const payerEmail = (email && email.includes("@")) ? email.trim() : "pastor@igreja.com";
+    const fullName = (nome || "Pastor Responsavel").trim();
+    const nameParts = fullName.split(" ");
+    const firstName = nameParts[0] || "Pastor";
+    const lastName = nameParts.slice(1).join(" ") || "Tesoureiro";
+
+    // Se o token do Mercado Pago estiver configurado, chama a API oficial
+    if (mpToken && mpToken.trim().length > 10) {
+      console.log(`[Mercado Pago] Gerando cobrança Pix real de R$ ${amount} para ${payerEmail}...`);
+      
+      const payload: Record<string, any> = {
+        transaction_amount: amount,
+        description: "Assinatura Mensal - Tesouraria da Igreja Pro",
+        payment_method_id: "pix",
+        payer: {
+          email: payerEmail,
+          first_name: firstName,
+          last_name: lastName,
+        },
+        external_reference: userId || payerEmail,
+        notification_url: `${appUrl}/api/mercadopago/webhook`,
+      };
+
+      const idempotencyKey = `pix-${userId || Date.now()}-${Date.now()}`;
+
+      const mpResponse = await fetch("https://api.mercadopago.com/v1/payments", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${mpToken.trim()}`,
+          "Content-Type": "application/json",
+          "X-Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const mpData = await mpResponse.json();
+
+      if (!mpResponse.ok) {
+        console.error("[Mercado Pago] Erro retornado pela API:", mpData);
+        return res.status(mpResponse.status).json({
+          error: mpData.message || "Erro ao gerar Pix no Mercado Pago",
+          details: mpData,
+        });
+      }
+
+      const pointOfInteraction = mpData.point_of_interaction?.transaction_data;
+      const paymentId = String(mpData.id);
+
+      localPaymentStore.set(paymentId, {
+        id: paymentId,
+        status: mpData.status || "pending",
+        userId: userId || payerEmail,
+        email: payerEmail,
+        amount,
+        createdAt: new Date().toISOString(),
+      });
+
+      return res.json({
+        success: true,
+        paymentId,
+        status: mpData.status || "pending",
+        statusDetail: mpData.status_detail,
+        qrCode: pointOfInteraction?.qr_code || "",
+        qrCodeBase64: pointOfInteraction?.qr_code_base64 || "",
+        ticketUrl: pointOfInteraction?.ticket_url || "",
+        expiresAt: mpData.date_of_expiration,
+        amount,
+      });
+    }
+
+    // Se o token ainda não foi inserido nas variáveis de ambiente,
+    // gera uma estrutura com QR Code Pix demonstrativo funcional para visualização e testes
+    console.log("[Mercado Pago] Aviso: MERCADO_PAGO_ACCESS_TOKEN não configurado no .env. Gerando Pix de demonstração.");
+    
+    const mockPaymentId = `DEMO-PIX-${Date.now()}`;
+    const mockPixCopiaECola = `00020126580014br.gov.bcb.pix0136tesourariapro-${Date.now()}@mercadopago.com520400005303986540519.905802BR5925Tesouraria da Igreja Pro6009Sao Paulo62070503***6304`;
+    
+    // QR Code PNG 1x1 base64 limpo para fallback
+    const mockQrCodeBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+    localPaymentStore.set(mockPaymentId, {
+      id: mockPaymentId,
+      status: "pending",
+      userId: userId || payerEmail,
+      email: payerEmail,
+      amount,
+      isDemo: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    return res.json({
+      success: true,
+      paymentId: mockPaymentId,
+      status: "pending",
+      statusDetail: "pending_waiting_transfer",
+      qrCode: mockPixCopiaECola,
+      qrCodeBase64: mockQrCodeBase64,
+      ticketUrl: "https://www.mercadopago.com.br",
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      amount,
+      isDemo: true,
+      notice: "Para processar pagamentos reais na sua conta, informe MERCADO_PAGO_ACCESS_TOKEN nas configurações do aplicativo.",
+    });
+  } catch (err: any) {
+    console.error("[Mercado Pago] Erro inesperado ao criar Pix:", err);
+    return res.status(500).json({ error: err.message || "Erro interno ao processar Pix." });
+  }
+});
+
+/**
+ * Consulta de Status do Pagamento (Polling pelo Frontend)
+ */
+app.get("/api/mercadopago/check-payment/:paymentId", async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
+
+    if (!paymentId) {
+      return res.status(400).json({ error: "ID do pagamento obrigatório." });
+    }
+
+    let status = "pending";
+    let externalRef = "";
+    let payerEmail = "";
+
+    // 1. Se houver token do Mercado Pago, consulta a API oficial
+    if (mpToken && mpToken.trim().length > 10 && !paymentId.startsWith("DEMO-PIX-")) {
+      try {
+        const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+          headers: {
+            Authorization: `Bearer ${mpToken.trim()}`,
+          },
+        });
+
+        if (mpRes.ok) {
+          const mpData = await mpRes.json();
+          status = mpData.status; // 'approved', 'pending', 'rejected', 'cancelled'
+          externalRef = mpData.external_reference || "";
+          payerEmail = mpData.payer?.email || "";
+        }
+      } catch (e) {
+        console.warn("[Mercado Pago] Erro ao consultar pagamento na API:", e);
+      }
+    } else {
+      // Verifica store em memória local
+      const local = localPaymentStore.get(paymentId);
+      if (local) {
+        status = local.status;
+        externalRef = local.userId;
+        payerEmail = local.email;
+      }
+    }
+
+    const isApproved = status === "approved";
+    let userUpdated = false;
+
+    if (isApproved) {
+      userUpdated = await activateUserSubscription(externalRef, payerEmail, paymentId);
+    }
+
+    return res.json({
+      paymentId,
+      status,
+      approved: isApproved,
+      userUpdated,
+    });
+  } catch (err: any) {
+    console.error("[Mercado Pago] Erro ao checar status do pagamento:", err);
+    return res.status(500).json({ error: err.message || "Erro ao checar pagamento." });
+  }
+});
+
+/**
+ * Webhook Oficial do Mercado Pago (Notificações de Pagamentos e Assinaturas)
+ */
+const handleMercadoPagoWebhook = async (req: express.Request, res: express.Response) => {
+  try {
+    const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
+    
+    // Captura o ID do pagamento de diferentes formatos enviados pelo Mercado Pago
+    const body = req.body || {};
+    const query = req.query || {};
+
+    const action = body.action || query.action || "";
+    const type = body.type || query.type || query.topic || "";
+    const paymentId =
+      body.data?.id ||
+      body.id ||
+      query.id ||
+      query["data.id"] ||
+      (body.resource ? body.resource.split("/").pop() : null);
+
+    console.log(`[Mercado Pago Webhook] Notificação recebida: type=${type}, action=${action}, paymentId=${paymentId}`);
+
+    // Se tivermos um paymentId e o token do Mercado Pago, buscamos os dados na API
+    if (paymentId && mpToken) {
+      try {
+        const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+          headers: {
+            Authorization: `Bearer ${mpToken.trim()}`,
+          },
+        });
+
+        if (mpRes.ok) {
+          const mpData = await mpRes.json();
+          const status = mpData.status;
+          const externalRef = mpData.external_reference;
+          const payerEmail = mpData.payer?.email;
+
+          console.log(`[Mercado Pago Webhook] Pagamento ${paymentId}: status=${status}, ref=${externalRef}`);
+
+          if (status === "approved") {
+            await activateUserSubscription(externalRef, payerEmail, paymentId);
+          }
+        }
+      } catch (mpErr) {
+        console.error("[Mercado Pago Webhook] Erro ao validar pagamento com token:", mpErr);
+      }
+    }
+
+    // Mercado Pago requer status 200 OK para confirmar o recebimento do webhook
+    return res.status(200).json({ received: true });
+  } catch (err: any) {
+    console.error("[Mercado Pago Webhook] Erro ao processar webhook:", err);
+    return res.status(200).json({ received: true, error: err.message });
+  }
+};
+
+app.post("/api/mercadopago/webhook", handleMercadoPagoWebhook);
+app.post("/api/webhooks/mercadopago", handleMercadoPagoWebhook);
+
+/**
+ * Rota de simulação/teste para aprovar pagamento imediatamente
+ */
+app.post("/api/mercadopago/simulate-approval", async (req, res) => {
+  try {
+    const { paymentId, userId, email } = req.body;
+    if (paymentId && localPaymentStore.has(paymentId)) {
+      const stored = localPaymentStore.get(paymentId);
+      stored.status = "approved";
+      localPaymentStore.set(paymentId, stored);
+    }
+    const updated = await activateUserSubscription(userId, email, paymentId);
+    return res.json({ success: true, approved: true, userUpdated: updated });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 // Endpoint de Auditoria e Relatório de Fechamento de Caixa da Igreja com IA Gemini
