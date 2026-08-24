@@ -328,34 +328,26 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
         </div>
 
         {/* PRINTABLE RECEIPT CONTENT (Styling optimized for both screen and paper) */}
-        <div id="printable-receipt" className="bg-white text-slate-900 p-6 rounded-2xl space-y-6 text-xs font-sans border border-slate-300 shadow-inner w-full max-w-full box-border print:p-2 print:border-none print:shadow-none print:rounded-none">
-          {/* Header */}
-          <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1 print-avoid-break">
-            <h2 className="text-base font-black uppercase tracking-wide text-slate-900">
-              {config.nomeIgreja || 'Igreja Evangélica'}
+        <div id="printable-receipt" className="bg-white text-slate-900 p-6 sm:p-8 rounded-2xl space-y-6 text-xs font-sans border border-slate-300 shadow-inner w-full max-w-full box-border print:p-2 print:border-none print:shadow-none print:rounded-none">
+          {/* Header Centralizado */}
+          <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1.5 print-avoid-break">
+            <h2 className="text-lg sm:text-xl font-black uppercase tracking-wider text-slate-900">
+              {config.nomeIgreja || 'ABS CHURCH'}
             </h2>
-            {config.cnpj && <p className="text-[10px] text-slate-600 font-mono">CNPJ: {config.cnpj}</p>}
-            <p className="text-[11px] font-semibold text-slate-700">
+            {config.cnpj && (
+              <p className="text-[10px] text-slate-600 font-mono tracking-normal">
+                CNPJ: {config.cnpj}
+              </p>
+            )}
+            <p className="text-xs font-bold text-slate-800 uppercase tracking-wide pt-0.5">
               ATA DE FECHAMENTO DE CAIXA DE CULTO — TESOURARIA
             </p>
-          </div>
-
-          {/* Metadata */}
-          <div className="grid grid-cols-2 gap-2 bg-slate-100 p-3 rounded-lg border border-slate-300 text-[11px] print-avoid-break">
-            <div>
-              <p><strong>Registro:</strong> Fechamento de Caixa por Período</p>
-              <p>
-                <strong>Período:</strong>{' '}
-                {fechamento.dataInicio ? new Date(fechamento.dataInicio + 'T00:00:00').toLocaleDateString('pt-BR') : ''}{' '}
-                a {fechamento.dataFim || fechamento.data ? new Date((fechamento.dataFim || fechamento.data) + 'T00:00:00').toLocaleDateString('pt-BR') : ''}
-              </p>
-              {fechamento.qtdMembros ? <p><strong>Membros Presentes:</strong> {fechamento.qtdMembros}</p> : null}
-            </div>
-            <div>
-              <p><strong>Pastor Presidente:</strong> {pastorPresidenteAssinatura || 'Não Informado'}</p>
-              <p><strong>Tesoureiro:</strong> {tesoureiroAssinatura || 'Não Informado'}</p>
-              <p><strong>Pastor Local:</strong> {pastorLocalAssinatura || 'Não Informado'}</p>
-            </div>
+            <p className="text-[11px] font-medium text-slate-600">
+              <strong>Período:</strong>{' '}
+              {fechamento.dataInicio ? new Date(fechamento.dataInicio + 'T00:00:00').toLocaleDateString('pt-BR') : ''}{' '}
+              a {fechamento.dataFim || fechamento.data ? new Date((fechamento.dataFim || fechamento.data) + 'T00:00:00').toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')}
+              {fechamento.qtdMembros ? ` • Membros Presentes: ${fechamento.qtdMembros}` : ''}
+            </p>
           </div>
 
           {/* Summary Financial Table */}
@@ -500,30 +492,50 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
             </div>
           </div>
 
-          {/* Signatures Line */}
-          <div className="pt-10 grid grid-cols-3 gap-4 text-center text-[10px] border-t border-slate-300 print-avoid-break">
-            <div>
-              <div className="border-t border-slate-800 pt-1 font-bold min-h-[1.4rem] text-slate-900">
-                {pastorPresidenteAssinatura || ''}
+          {/* Signatures Line - Exclusivamente ao final do relatório (rodapé) */}
+          <div className="pt-14 pb-2 border-t border-slate-300 print-avoid-break mt-6">
+            <div className={`grid gap-8 text-center text-[10px] ${
+              pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura
+                ? 'grid-cols-3'
+                : 'grid-cols-2'
+            }`}>
+              <div>
+                <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                  {tesoureiroAssinatura || 'Tesoureiro'}
+                </div>
+                <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Tesoureiro Responsável</p>
               </div>
-              <p className="text-slate-700 font-medium">Pastor Presidente</p>
-            </div>
-            <div>
-              <div className="border-t border-slate-800 pt-1 font-bold min-h-[1.4rem] text-slate-900">
-                {tesoureiroAssinatura || ''}
-              </div>
-              <p className="text-slate-700 font-medium">Tesoureiro</p>
-            </div>
-            <div>
-              <div className="border-t border-slate-800 pt-1 font-bold min-h-[1.4rem] text-slate-900">
-                {pastorLocalAssinatura || ''}
-              </div>
-              <p className="text-slate-700 font-medium">Pastor Local</p>
+
+              {pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura ? (
+                <>
+                  <div>
+                    <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                      {pastorLocalAssinatura}
+                    </div>
+                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Local / Titular</p>
+                  </div>
+                  <div>
+                    <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                      {pastorPresidenteAssinatura}
+                    </div>
+                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Presidente</p>
+                  </div>
+                </>
+              ) : (
+                <div>
+                  <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                    {pastorLocalAssinatura || pastorPresidenteAssinatura || 'Pastor Responsável'}
+                  </div>
+                  <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                    {pastorPresidenteAssinatura && !pastorLocalAssinatura ? 'Pastor Presidente' : 'Pastor Responsável'}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 
-          <div className="text-center text-[9px] text-slate-500 pt-2 border-t border-slate-200">
-            Documento emitido pelo Sistema de Tesouraria em {new Date().toLocaleString('pt-BR')}
+          <div className="text-center text-[9px] text-slate-500 pt-3 border-t border-slate-200">
+            Documento emitido pelo Sistema Oficial de Tesouraria em {new Date().toLocaleString('pt-BR')}
           </div>
         </div>
 

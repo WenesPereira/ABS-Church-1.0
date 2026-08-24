@@ -720,6 +720,7 @@ export default function App() {
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
                 currentUser={currentUser}
                 onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+                config={configIgreja}
               />
             )}
 

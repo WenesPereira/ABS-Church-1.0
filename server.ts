@@ -49,8 +49,8 @@ Analise os seguintes dados do fechamento de caixa do culto e elabore um **Relat�
 DADOS DO CULTO E FECHAMENTO:
 ${JSON.stringify(fechamentoData, null, 2)}
 
-INSTRUÇÕES DETALHADAS DO RELATÓRIO:
-1. **Cabeçalho Formal**: Nome da Igreja, Período do Fechamento de Caixa (Data Inicial até Data Final), Pastor Presidente, Pastor Local e Tesoureiro Responsável.
+INSTRUÇÕES DETALHADAS DE FORMATAÇÃO E ESTRUTURA DO RELATÓRIO:
+1. **Cabeçalho Formal**: Centralize visualmente com Nome da Igreja (${fechamentoData.nomeIgreja || 'ABS CHURCH'}), Título Oficial ("RELATÓRIO OFICIAL DA TESOURARIA") e Período do Fechamento (Data Inicial até Data Final). NÃO inclua nomes de pastores ou tesoureiros no cabeçalho nem no meio do texto.
 2. **Resumo Financeiro Executivo**:
    - Total Arrecadado em Dízimos
    - **Relação de Dizimistas (Discriminação)**: Se houver nomes de dizimistas informados nos lançamentos, inclua a lista com os nomes dos dizimistas, forma de pagamento e valor individual.
@@ -76,7 +76,7 @@ INSTRUÇÕES DETALHADAS DO RELATÓRIO:
    - Utilize a seção "Orientação de Auditoria" para recomendações fiscais e administrativas.
    - Use a forma correta "Expressamos nossa gratidão pela fidelidade..." ao concluir.
    - NUNCA utilize termos incorretos como "Exgressamos", "Orientação Auditiva" ou "inconsciência".
-5. **Campo de Assinaturas Oficiais**: Inclua obrigatoriamente as linhas de assinatura para apenas: **Pastor Presidente**, **Tesoureiro** e **Pastor Local**.
+5. **Campo de Assinaturas Oficiais**: No rodapé ao final do relatório, posicione as linhas de assinatura exclusivamente para o Tesoureiro Responsável e o Pastor Responsável.
 
 Responda em Português do Brasil com excelente clareza, rigor gramatical e formatação impecável em Markdown (usando tabelas, tópicos e negritos).
 `;

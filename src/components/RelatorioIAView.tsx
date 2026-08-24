@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Sparkles, FileText, CheckCircle2, Copy, Printer, Loader2, AlertCircle, Church, Download, ArrowLeft, Coins, Crown, Lock, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
-import { FechamentoCulto, ActiveTab, User } from '../types';
+import { FechamentoCulto, ActiveTab, User, ConfigIgreja } from '../types';
 import { generateChurchReport } from '../services/api';
 import { isSubscriptionActive, getMercadoPagoSubscriptionUrl } from '../services/treasuryService';
 
@@ -14,6 +14,7 @@ interface RelatorioIAViewProps {
   onOpenPrintModal?: () => void;
   currentUser?: User | null;
   onOpenSubscriptionModal?: () => void;
+  config?: ConfigIgreja;
 }
 
 export function sanitizeReportText(text: string): string {
@@ -37,6 +38,7 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
   onOpenPrintModal,
   currentUser,
   onOpenSubscriptionModal,
+  config,
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,20 +47,73 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
 
   const isSubscribed = isSubscriptionActive(currentUser);
 
+  const getValidSignerName = (value?: string, placeholder?: string) => {
+    if (!value) return '';
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    if (placeholder && trimmed.toLowerCase() === placeholder.toLowerCase()) return '';
+    return trimmed;
+  };
+
+  const churchName = config?.nomeIgreja || fechamento.nomeIgreja || currentUser?.nomeIgreja || 'ABS CHURCH';
+  const cnpjNumber = config?.cnpj;
+  const pastorPresidenteAssinatura = getValidSignerName(fechamento.pastorPresidente || config?.pastorPresidente, 'Pastor Presidente');
+  const tesoureiroAssinatura = getValidSignerName(fechamento.tesoureiro || config?.tesoureiroPadrao, 'Tesoureiro Principal');
+  const pastorLocalAssinatura = getValidSignerName(fechamento.pastorLocal || config?.pastorLocal, 'Pastor Local');
+
   const handleDownloadPdf = async () => {
-    const element = document.getElementById('ai-report-content');
+    const element = document.getElementById('ai-report-printable-card');
     if (!element) return;
 
     setIsGeneratingPdf(true);
     const originalWidth = element.style.width;
+    const originalMinWidth = element.style.minWidth;
+    const originalMaxWidth = element.style.maxWidth;
+    const originalBoxSizing = element.style.boxSizing;
+
     try {
       element.style.width = '794px';
+      element.style.minWidth = '794px';
+      element.style.maxWidth = '794px';
+      element.style.boxSizing = 'border-box';
+
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
         logging: false,
         windowWidth: 1024,
-        backgroundColor: '#020617',
+        backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          try {
+            const styles = clonedDoc.querySelectorAll('style');
+            styles.forEach((style) => {
+              if (style.textContent && style.textContent.includes('oklch')) {
+                style.textContent = style.textContent.replace(/oklch\([^)]+\)/gi, (match) => {
+                  try {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = 1;
+                    tempCanvas.height = 1;
+                    const ctx = tempCanvas.getContext('2d');
+                    if (ctx) {
+                      ctx.fillStyle = '#ffffff';
+                      ctx.fillStyle = match;
+                      ctx.fillRect(0, 0, 1, 1);
+                      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+                      return a === 255
+                        ? `rgb(${r}, ${g}, ${b})`
+                        : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+                    }
+                  } catch {
+                    // ignore
+                  }
+                  return '#000000';
+                });
+              }
+            });
+          } catch (e) {
+            console.warn('Sanitizing oklch warning:', e);
+          }
+        },
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
@@ -77,21 +132,38 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
       let imgWidth = maxWidth;
       let imgHeight = (canvas.height * imgWidth) / canvas.width;
 
-      if (imgHeight > maxHeight) {
-        imgHeight = maxHeight;
-        imgWidth = (canvas.width * imgHeight) / canvas.height;
+      if (imgHeight <= maxHeight) {
+        const xOffset = (pdfWidth - imgWidth) / 2;
+        pdf.addImage(imgData, 'JPEG', xOffset, margin, imgWidth, imgHeight);
+      } else {
+        let heightLeft = imgHeight;
+        let position = margin;
+        const xOffset = (pdfWidth - imgWidth) / 2;
+
+        pdf.addImage(imgData, 'JPEG', xOffset, position, imgWidth, imgHeight);
+        heightLeft -= maxHeight;
+
+        while (heightLeft > 0) {
+          position = heightLeft - imgHeight + margin;
+          pdf.addPage();
+          pdf.addImage(imgData, 'JPEG', xOffset, position, imgWidth, imgHeight);
+          heightLeft -= maxHeight;
+        }
       }
 
-      const xOffset = (pdfWidth - imgWidth) / 2;
+      const dataFormatted = fechamento.data
+        ? fechamento.data
+        : new Date().toISOString().split('T')[0];
 
-      pdf.addImage(imgData, 'JPEG', xOffset, margin, imgWidth, imgHeight);
-
-      pdf.save(`Relatorio_IA_Tesouraria_${fechamento.data || 'culto'}.pdf`);
+      pdf.save(`Relatorio_IA_Tesouraria_${dataFormatted}.pdf`);
     } catch (err) {
       console.error('Erro ao baixar PDF:', err);
       window.print();
     } finally {
       element.style.width = originalWidth;
+      element.style.minWidth = originalMinWidth;
+      element.style.maxWidth = originalMaxWidth;
+      element.style.boxSizing = originalBoxSizing;
       setIsGeneratingPdf(false);
     }
   };
@@ -107,7 +179,10 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const rawReport = await generateChurchReport(fechamento);
+      const rawReport = await generateChurchReport({
+        ...fechamento,
+        nomeIgreja: churchName,
+      });
       const report = sanitizeReportText(rawReport);
       setFechamento((prev) => ({
         ...prev,
@@ -131,10 +206,10 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
   };
 
   return (
-    <div id="relatorio-ia-container" className="space-y-6 w-full">
-      {/* Barra de Navegação Contextual */}
+    <div id="relatorio-ia-container" className="space-y-6 w-full print:p-0 print:m-0">
+      {/* Barra de Navegação Contextual (Não impressa) */}
       {onNavigate && (
-        <div className="flex items-center justify-between gap-3 max-w-5xl mx-auto w-full">
+        <div className="print:hidden flex items-center justify-between gap-3 max-w-5xl mx-auto w-full">
           <button
             type="button"
             onClick={() => onNavigate('fechamento')}
@@ -157,9 +232,9 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
         </div>
       )}
 
-      {/* Subscription Lock Warning if not subscribed */}
+      {/* Subscription Lock Warning if not subscribed (Não impresso) */}
       {!isSubscribed && (
-        <div className="bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/40 border border-amber-500/40 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 max-w-5xl mx-auto w-full">
+        <div className="print:hidden bg-gradient-to-r from-amber-950/60 via-slate-900 to-amber-950/40 border border-amber-500/40 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 max-w-5xl mx-auto w-full">
           <div className="flex items-center gap-3">
             <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
               <Crown className="w-6 h-6 fill-current" />
@@ -190,8 +265,8 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
         </div>
       )}
 
-      {/* Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-5xl mx-auto w-full">
+      {/* Banner de Ação (Não impresso) */}
+      <div className="print:hidden bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-5xl mx-auto w-full">
         <div className="flex items-center gap-3">
           <div className="p-3 rounded-2xl bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
             <Sparkles className="w-6 h-6" />
@@ -229,17 +304,18 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
       </div>
 
       {error && (
-        <div className="bg-rose-950/50 border border-rose-500/50 p-4 rounded-2xl text-xs text-rose-300 flex items-center gap-3 max-w-5xl mx-auto w-full">
+        <div className="print:hidden bg-rose-950/50 border border-rose-500/50 p-4 rounded-2xl text-xs text-rose-300 flex items-center gap-3 max-w-5xl mx-auto w-full">
           <AlertCircle className="w-5 h-5 shrink-0" />
           <span>{error}</span>
         </div>
       )}
 
       {/* Main Report Body */}
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl max-w-5xl mx-auto w-full min-h-[400px]">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-xl max-w-5xl mx-auto w-full min-h-[400px] print:bg-transparent print:border-none print:shadow-none print:p-0">
         {fechamento.relatorioIA ? (
           <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
+            {/* Header com botões de ação na tela (Não impresso) */}
+            <div className="print:hidden flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
               <div className="flex items-center gap-2 text-xs font-bold text-indigo-400 uppercase tracking-wider">
                 <Church className="w-4 h-4" />
                 <span>Parecer Formal do Fechamento do Culto</span>
@@ -273,8 +349,82 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
               </div>
             </div>
 
-            <div id="ai-report-content" className="prose prose-invert max-w-none text-xs md:text-sm leading-relaxed text-slate-200 bg-slate-950/60 p-5 rounded-2xl border border-slate-800/80">
-              <ReactMarkdown>{currentReportText}</ReactMarkdown>
+            {/* DOCUMENTO FORMAL UNIFORMIZADO PARA TELA, IMPRESSÃO E PDF */}
+            <div
+              id="ai-report-printable-card"
+              className="bg-white text-slate-900 p-6 sm:p-8 rounded-2xl space-y-6 text-xs font-sans border border-slate-300 shadow-inner w-full max-w-full box-border print:p-2 print:border-none print:shadow-none print:rounded-none"
+            >
+              {/* 1. CABEÇALHO CENTRALIZADO */}
+              <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1.5 print-avoid-break">
+                <h2 className="text-lg sm:text-xl font-black uppercase tracking-wider text-slate-900">
+                  {churchName}
+                </h2>
+                {cnpjNumber && (
+                  <p className="text-[10px] text-slate-600 font-mono tracking-normal">
+                    CNPJ: {cnpjNumber}
+                  </p>
+                )}
+                <p className="text-xs font-bold text-slate-800 uppercase tracking-wide pt-0.5">
+                  RELATÓRIO OFICIAL DA TESOURARIA — PARECER DE AUDITORIA COM IA
+                </p>
+                <p className="text-[11px] font-medium text-slate-600">
+                  <strong>Período:</strong>{' '}
+                  {fechamento.dataInicio ? new Date(fechamento.dataInicio + 'T00:00:00').toLocaleDateString('pt-BR') : ''}{' '}
+                  a {fechamento.dataFim || fechamento.data ? new Date((fechamento.dataFim || fechamento.data) + 'T00:00:00').toLocaleDateString('pt-BR') : new Date().toLocaleDateString('pt-BR')}
+                  {fechamento.qtdMembros ? ` • Membros Presentes: ${fechamento.qtdMembros}` : ''}
+                </p>
+              </div>
+
+              {/* 2. CONTEÚDO DO PARECER DA IA (Markdown formatado para leitura oficial) */}
+              <div id="ai-report-content" className="prose prose-slate max-w-none text-xs md:text-sm leading-relaxed text-slate-800 space-y-4">
+                <ReactMarkdown>{currentReportText}</ReactMarkdown>
+              </div>
+
+              {/* 3. ASSINATURAS EXCLUSIVAMENTE NO FINAL DO RELATÓRIO (RODAPÉ) */}
+              <div className="pt-14 pb-2 border-t border-slate-300 print-avoid-break mt-8">
+                <div className={`grid gap-8 text-center text-[10px] ${
+                  pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura
+                    ? 'grid-cols-3'
+                    : 'grid-cols-2'
+                }`}>
+                  <div>
+                    <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                      {tesoureiroAssinatura || 'Tesoureiro'}
+                    </div>
+                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Tesoureiro Responsável</p>
+                  </div>
+
+                  {pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura ? (
+                    <>
+                      <div>
+                        <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                          {pastorLocalAssinatura}
+                        </div>
+                        <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Local / Titular</p>
+                      </div>
+                      <div>
+                        <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                          {pastorPresidenteAssinatura}
+                        </div>
+                        <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Presidente</p>
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
+                        {pastorLocalAssinatura || pastorPresidenteAssinatura || 'Pastor Responsável'}
+                      </div>
+                      <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                        {pastorPresidenteAssinatura && !pastorLocalAssinatura ? 'Pastor Presidente' : 'Pastor Responsável'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-center text-[9px] text-slate-500 pt-3 border-t border-slate-200">
+                Documento e Parecer emitidos pelo Sistema Oficial de Tesouraria em {new Date().toLocaleString('pt-BR')}
+              </div>
             </div>
           </div>
         ) : (
@@ -290,3 +440,4 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
     </div>
   );
 };
+
