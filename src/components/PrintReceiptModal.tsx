@@ -1,6 +1,6 @@
 import React from 'react';
 import { Printer, X, Church, CheckCircle, FileText, Check, Download, Loader2 } from 'lucide-react';
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { FechamentoCulto, ConfigIgreja, CategoriaEntrada } from '../types';
 import {
@@ -127,6 +127,39 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
         logging: false,
         windowWidth: 1024,
         backgroundColor: '#ffffff',
+        onclone: (clonedDoc) => {
+          try {
+            // Sanitize all inline and embedded style tags in cloned document to convert any oklch to standard color
+            const styles = clonedDoc.querySelectorAll('style');
+            styles.forEach((style) => {
+              if (style.textContent && style.textContent.includes('oklch')) {
+                // Remove or replace oklch declarations if necessary
+                style.textContent = style.textContent.replace(/oklch\([^)]+\)/gi, (match) => {
+                  try {
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = 1;
+                    tempCanvas.height = 1;
+                    const ctx = tempCanvas.getContext('2d');
+                    if (ctx) {
+                      ctx.fillStyle = '#ffffff';
+                      ctx.fillStyle = match;
+                      ctx.fillRect(0, 0, 1, 1);
+                      const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
+                      return a === 255
+                        ? `rgb(${r}, ${g}, ${b})`
+                        : `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+                    }
+                  } catch {
+                    // ignore
+                  }
+                  return '#000000';
+                });
+              }
+            });
+          } catch (e) {
+            console.warn('Sanitizing oklch in cloned document warning:', e);
+          }
+        },
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.98);
