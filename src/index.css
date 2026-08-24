@@ -171,7 +171,8 @@ select {
     display: none !important;
   }
 
-  #printable-receipt {
+  #printable-receipt,
+  #ai-report-printable-card {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
