@@ -15,50 +15,81 @@ function sanitizeReport(text: string): string {
     .replace(/inconsciência/gi, 'inconsistência')
     .replace(/inconsciencia/gi, 'inconsistência')
     .replace(/Inconsciência/gi, 'Inconsistência')
-    .replace(/Inconsciencia/gi, 'Inconsistência');
+    .replace(/Inconsciencia/gi, 'Inconsistência')
+    .replace(/aplicarRepasseMatriz:\s*true/gi, 'Repasse à Matriz: Ativo')
+    .replace(/aplicarRepasseMatriz:\s*false/gi, 'Repasse à Matriz: Isento')
+    .replace(/aplicarPrebenda:\s*true/gi, 'Prebenda Pastoral: Ativa')
+    .replace(/aplicarPrebenda:\s*false/gi, 'Prebenda Pastoral: Não Aplicada');
 }
 
 /**
  * Monta o prompt detalhado para a auditoria do caixa da igreja com IA.
+ * Padrão visual: LIMPO, EXECUTIVO, DIRETO e SEM POLUIÇÃO.
  */
 function buildAuditPrompt(fechamentoData: FechamentoCulto): string {
   return `
 Você é um auditor fiscal de tesouraria de igrejas cristãs experiente, zeloso, ético e transparente.
-Analise os seguintes dados do fechamento de caixa do culto e elabore um **Relatório Oficial da Tesouraria da Igreja** bem formatado em Markdown, pronto para ser lido no culto administrativo ou apresentado ao Pastor Presidente e Conselho Fiscal.
+Elabore um **Relatório Oficial da Tesouraria da Igreja** com padrão visual LIMPO, EXECUTIVO, DIRETO e SEM POLUIÇÃO visual.
 
-DADOS DO CULTO E FECHAMENTO:
+DADOS BRUTOS DO FECHAMENTO:
 ${JSON.stringify(fechamentoData, null, 2)}
 
-INSTRUÇÕES DETALHADAS DE FORMATAÇÃO E ESTRUTURA DO RELATÓRIO:
-1. **Cabeçalho Formal**: Centralize visualmente com Nome da Igreja (${fechamentoData.nomeIgreja || 'ABS CHURCH'}), Título Oficial ("RELATÓRIO OFICIAL DA TESOURARIA") e Período do Fechamento (Data Inicial até Data Final). NÃO inclua nomes de pastores ou tesoureiros no cabeçalho nem no meio do texto.
-2. **Resumo Financeiro Executivo**:
-   - Total Arrecadado em Dízimos
-   - **Relação de Dizimistas (Discriminação)**: Se houver nomes de dizimistas informados nos lançamentos, inclua a lista com os nomes dos dizimistas, forma de pagamento e valor individual.
-   - Total Arrecadado em Ofertas (Oferta Geral do Culto, Missões, Ofertas Especiais e Doações)
-   - Distribuição por Forma de Pagamento (Espécie/Dinheiro, Pix, Cartão/Transferência)
-   - **Discriminação Detalhada de Cada Saída/Despesa**: Liste obrigatoriamente cada saída realizada com sua categoria exata e descrição (ex: Conta de Água, Conta de Luz, Internet, Alimentação/Lanche, Aluguel do Templo, Manutenção, etc.) e o respectivo valor.
-   - Total Geral de Saídas / Despesas
-   - **Saldo Líquido Operacional do Caixa** (Entradas - Saídas)
-   - **Repasse para a Matriz / Sede**: 
-     - Se 'aplicarRepasseMatriz' for verdadeiro (true), destaque a porcentagem configurada (ex: ${fechamentoData.porcentagemMatriz || 20}%), a base de cálculo e o valor exato a ser enviado para a Matriz/Sede.
-     - Se 'aplicarRepasseMatriz' for falso (false), declare expressamente que o fechamento é isento de repasse à Matriz.
-   - **Prebenda Pastoral / Proventos Ministeriais**:
-     - Se 'aplicarPrebenda' for verdadeiro (true), discrimine expressamente a porcentagem da Prebenda Pastoral (ex: ${fechamentoData.porcentagemPrebenda || 0}%), o valor calculado da dedução pastoral e o pastor titular/local beneficiário (${fechamentoData.pastorLocal || fechamentoData.pastorPresidente || 'Pastor Titular'}).
-     - Se 'aplicarPrebenda' for falso (false), informe que não houve dedução de prebenda pastoral neste período.
-   - **Saldo Disponível em Caixa Local**:
-     - Apresente claramente a fórmula oficial e o resultado final:
-       **[Saldo Disponível = Entradas - Saídas - Repasse Matriz - Prebenda Pastoral]**.
-3. **Análise de Conferência do Caixa Físico (Espécie)**:
-   - Compare o valor lançado em Dinheiro vs o Total Contado na Calculadora de Cédulas e Moedas.
-   - Diga se o caixa fechou exato, com sobra ou com falta em dinheiro físico. Se houver discrepância, utilize o termo técnico "inconsistência" contábil.
-4. **Parecer Executivo de Tesouraria e Anotações de Transparência / Orientação de Auditoria**:
-   - Destaque o Parecer Executivo de Tesouraria avaliando a conformidade dos repasses, a dedução regular da Prebenda Pastoral (se aplicável), e a saúde financeira do caixa local.
-   - Utilize a seção "Orientação de Auditoria" para recomendações fiscais e administrativas.
-   - Use a forma correta "Expressamos nossa gratidão pela fidelidade..." ao concluir.
-   - NUNCA utilize termos incorretos como "Exgressamos", "Orientação Auditiva" ou "inconsciência".
-5. **Campo de Assinaturas Oficiais**: No rodapé ao final do relatório, posicione as linhas de assinatura exclusivamente para o Tesoureiro Responsável e o Pastor Responsável.
+DIRETRIZES FUNDAMENTAIS DE FORMATAÇÃO E APRESENTAÇÃO (ESTRITAMENTE OBRIGATÓRIAS):
+1. **NUNCA EXIBA NOMES DE VARIÁVEIS DE CÓDIGO OU BOOLEANOS BRUTOS**:
+   - NUNCA escreva expressões como 'aplicarRepasseMatriz: true', 'aplicarPrebenda: false', 'fechamentoData', 'null' ou 'undefined'.
+   - Escreva sempre em linguagem formal e natural:
+     * Para repasse à sede: "Repasse à Matriz: Ativo (50%) - Valor: R$ X,XX" ou "Repasse à Matriz: Isento / Não Aplicável".
+     * Para prebenda pastoral: "Prebenda Pastoral: Ativa (X%) - Valor: R$ Y,YY" ou "Prebenda Pastoral: Não Aplicada".
 
-Responda em Português do Brasil com excelente clareza, rigor gramatical e formatação impecável em Markdown (usando tabelas, tópicos e negritos).
+2. **NUNCA EXIBA FÓRMULAS MATEMÁTICAS EM CÓDIGO LATEX OU CONTAGEM UNITÁRIA DE NOTAS**:
+   - NÃO utilize blocos LaTeX ($$...$$).
+   - NUNCA detalhe nota por nota ou moeda por moeda de troco (ex: "10 x R$ 50 + 4 x R$ 20...").
+   - Mostre apenas a síntese consolidada direta:
+     "Total Físico Apurado: R$ 727,40 (Cédulas: R$ 724,00 | Moedas: R$ 3,40)".
+
+3. **TABELAS DE RECEITAS E DESPESAS ENXUTAS (FILTRO > R$ 0,00)**:
+   - Exiba nas tabelas EXCLUSIVAMENTE as categorias e itens que tiveram movimentação superior a R$ 0,00.
+   - OCULTE E NUNCA exiba linhas com valor zerado (R$ 0,00).
+   - Se houver nomes de dizimistas informados, relacione-os sucintamente com nome, forma e valor.
+   - Liste as despesas com sua respectiva categoria e descrição somente se valor > 0.
+
+4. **FORMAS DE PAGAMENTO AGRUPADAS**:
+   - Agrupe as formas de pagamento em um resumo direto (ex: Dinheiro/Espécie: R$ X,XX | Pix: R$ Y,YY | Cartão/Transferência: R$ Z,ZZ) em vez de criar tópicos extensos.
+
+ESTRUTURA DO RELATÓRIO (DIVIDIDO ESTRITAMENTE EM 4 BLOCOS OBJETIVOS):
+
+### 1. Cabeçalho e Resumo Financeiro
+- Título: Relatório Oficial de Fechamento de Caixa
+- Igreja: ${fechamentoData.nomeIgreja || 'ABS CHURCH'}
+- Período: ${fechamentoData.dataInicio || fechamentoData.data || 'Data Inicial'} a ${fechamentoData.dataFim || fechamentoData.data || 'Data Final'}
+- Tabela enxuta de Entradas (apenas itens > R$ 0,00)
+- Tabela enxuta de Saídas / Despesas (apenas itens > R$ 0,00)
+- Resumo agrupado das Formas de Pagamento
+- Totais Consolidados:
+  * Total de Entradas
+  * Total de Saídas
+  * Repasse à Matriz (Percentual e Valor, ou "Isento")
+  * Prebenda Pastoral (Percentual e Valor, ou "Não Aplicada")
+  * **Saldo Final Disponível em Caixa Local**
+
+### 2. Apuração do Caixa Físico
+- Comparativo direto entre Lançado no Sistema x Contado na Tesouraria:
+  * Total Lançado em Dinheiro (Espécie)
+  * Total Físico Apurado na Contagem (Cédulas + Moedas consolidadas)
+  * Resultado da Conferência: Conclusão direta (Caixa Exato / Sobra de R$ X,XX / Inconsistência de Falta de R$ X,XX).
+
+### 3. Parecer Sintético e Recomendações
+- Parecer conciso de auditoria avaliando a integridade dos lançamentos, regularidade das deduções e saúde financeira da igreja.
+- Recomendações pontuais e diretas de governança.
+- Conclusão com a expressão formal: "Expressamos nossa gratidão pela fidelidade dos membros e pelo zelo na administração dos recursos." (NUNCA utilize 'Exgressamos', 'Orientação Auditiva' ou 'inconsciência').
+
+### 4. Assinaturas
+- Linhas de assinatura para:
+  * **Tesoureiro Responsável**
+  * **Pastor Responsável**
+(Sem repetição de cabeçalho ou dados redundantes).
+
+Responda em Português do Brasil com excelente clareza, rigor gramatical e formatação limpa e executiva em Markdown.
 `;
 }
 

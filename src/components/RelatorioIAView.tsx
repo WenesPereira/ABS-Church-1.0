@@ -28,7 +28,11 @@ export function sanitizeReportText(text: string): string {
     .replace(/inconsciência/gi, 'inconsistência')
     .replace(/inconsciencia/gi, 'inconsistência')
     .replace(/Inconsciência/gi, 'Inconsistência')
-    .replace(/Inconsciencia/gi, 'Inconsistência');
+    .replace(/Inconsciencia/gi, 'Inconsistência')
+    .replace(/aplicarRepasseMatriz:\s*true/gi, 'Repasse à Matriz: Ativo')
+    .replace(/aplicarRepasseMatriz:\s*false/gi, 'Repasse à Matriz: Isento')
+    .replace(/aplicarPrebenda:\s*true/gi, 'Prebenda Pastoral: Ativa')
+    .replace(/aplicarPrebenda:\s*false/gi, 'Prebenda Pastoral: Não Aplicada');
 }
 
 export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
