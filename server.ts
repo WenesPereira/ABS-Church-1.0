@@ -399,6 +399,11 @@ const handleMercadoPagoWebhook = async (req: express.Request, res: express.Respo
 
 app.post("/api/mercadopago/webhook", handleMercadoPagoWebhook);
 app.post("/api/webhooks/mercadopago", handleMercadoPagoWebhook);
+app.post("/.netlify/functions/mercadopago-webhook", handleMercadoPagoWebhook);
+app.post("/netlify/functions/mercadopago-webhook", handleMercadoPagoWebhook);
+app.get("/.netlify/functions/mercadopago-webhook", (_req, res) => {
+  res.json({ status: "online", message: "Webhook Mercado Pago ativo." });
+});
 
 /**
  * Rota de simulação/teste para aprovar pagamento imediatamente

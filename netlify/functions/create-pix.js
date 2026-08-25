@@ -60,6 +60,12 @@ exports.handler = async function (event, context) {
       const firstName = parts[0] || 'Cliente';
       const lastName = parts.slice(1).join(' ') || 'Tesouraria';
 
+      // Detectar URL base para notification_url
+      const host = event.headers?.host || event.headers?.['x-forwarded-host'] || '';
+      const protocol = event.headers?.['x-forwarded-proto'] || 'https';
+      const baseUrl = process.env.APP_URL || (host ? `${protocol}://${host}` : '');
+      const notificationUrl = baseUrl ? `${baseUrl}/.netlify/functions/mercadopago-webhook` : undefined;
+
       const mpRequestBody = {
         transaction_amount: amount,
         description: description || 'Assinatura Mensal - Tesouraria Pro',
@@ -76,6 +82,7 @@ exports.handler = async function (event, context) {
             : undefined,
         },
         external_reference: userId || `user-${Date.now()}`,
+        ...(notificationUrl ? { notification_url: notificationUrl } : {}),
       };
 
       const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {

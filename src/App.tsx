@@ -773,7 +773,14 @@ export default function App() {
         isOpen={isSubscriptionModalOpen}
         onClose={() => setIsSubscriptionModalOpen(false)}
         currentUser={currentUser}
-        onStatusUpdated={(updated) => setCurrentUser(updated)}
+        onStatusUpdated={(updated) => {
+          setCurrentUser(updated);
+          if (isSubscriptionActive(updated)) {
+            setIsSubscriptionModalOpen(false);
+            setIsPaymentSuccessModalOpen(true);
+            setActiveTab('fechamento');
+          }
+        }}
       />
 
       {/* Modal de Confirmação de Assinatura Ativada / Retorno de Pagamento */}

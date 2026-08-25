@@ -102,46 +102,57 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
     setTimeout(() => setPixCopied(false), 3000);
   };
 
-  // Verificação manual e atualização no Supabase
+  // Verificação no Supabase e Mercado Pago
   const handleVerifyStatus = async (silent: boolean = false) => {
     if (!currentUser?.id) return;
     if (!silent) setIsVerifying(true);
 
     try {
-      // 1. Se tiver um Pix ativo, consulta status direto no endpoint do Mercado Pago
+      // 1. Consulta prioritária no Supabase para verificar se o Webhook já ativou o perfil
+      const freshUser = await fetchUserProfile(currentUser.id);
+      if (freshUser && isSubscriptionActive(freshUser)) {
+        if (pollingTimerRef.current) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
+        }
+        setVerificationFeedback({
+          type: 'success',
+          message: 'Pagamento confirmado com sucesso! Acesso PRO liberado. Redirecionando...',
+        });
+        if (onStatusUpdated) onStatusUpdated(freshUser);
+        if (onSuccess) onSuccess();
+        return;
+      }
+
+      // 2. Se o status ainda não estiver ativo no Supabase mas temos o ID do Pix, consulta a API do Mercado Pago
       if (pixData?.paymentId) {
         const checkRes = await checkMercadoPagoPayment(pixData.paymentId);
         if (checkRes.approved) {
-          const freshUser = await fetchUserProfile(currentUser.id);
-          if (freshUser) {
+          const userAfterPayment = await fetchUserProfile(currentUser.id);
+          if (userAfterPayment) {
+            if (pollingTimerRef.current) {
+              clearInterval(pollingTimerRef.current);
+              pollingTimerRef.current = null;
+            }
             setVerificationFeedback({
               type: 'success',
-              message: 'Pagamento PIX confirmado com sucesso! Sua assinatura PRO foi ativada.',
+              message: 'Pagamento Pix aprovado pelo Mercado Pago! Redirecionando...',
             });
-            if (onStatusUpdated) onStatusUpdated(freshUser);
+            if (onStatusUpdated) onStatusUpdated(userAfterPayment);
             if (onSuccess) onSuccess();
             return;
           }
         }
       }
 
-      // 2. Consulta o perfil completo no Supabase
-      const freshUser = await fetchUserProfile(currentUser.id);
-      if (freshUser && isSubscriptionActive(freshUser)) {
-        setVerificationFeedback({
-          type: 'success',
-          message: 'Assinatura confirmada com sucesso! Acesso PRO liberado.',
-        });
-        if (onStatusUpdated) onStatusUpdated(freshUser);
-        if (onSuccess) onSuccess();
-      } else if (!silent) {
+      if (!silent) {
         setVerificationFeedback({
           type: 'info',
-          message: 'Ainda aguardando a compensação do pagamento pelo Mercado Pago. Se já efetuou o Pix ou cartão, aguarde alguns segundos.',
+          message: 'Ainda aguardando a confirmação do pagamento pelo banco. Se já pagou, a compensação ocorre em poucos segundos.',
         });
       }
     } catch (err) {
-      console.error('Erro ao verificar:', err);
+      console.error('Erro ao verificar status:', err);
       if (!silent) {
         setVerificationFeedback({
           type: 'error',
@@ -161,9 +172,13 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
       await simulatePixApproval(pixData.paymentId, currentUser.id, currentUser.email);
       const freshUser = await fetchUserProfile(currentUser.id);
       if (freshUser) {
+        if (pollingTimerRef.current) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
+        }
         setVerificationFeedback({
           type: 'success',
-          message: 'Pagamento simulado com sucesso! Assinatura ativada no banco de dados.',
+          message: 'Pagamento simulado com sucesso! Redirecionando para a Dashboard...',
         });
         if (onStatusUpdated) onStatusUpdated(freshUser);
         if (onSuccess) onSuccess();
@@ -175,17 +190,18 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
     }
   };
 
-  // Polling automático a cada 4 segundos quando o QR Code Pix estiver na tela
+  // Polling automático no Supabase a cada 3 segundos enquanto aguarda o pagamento do Pix
   useEffect(() => {
     if (paymentMethod === 'pix' && pixData?.paymentId && pixData.status === 'pending') {
       pollingTimerRef.current = setInterval(() => {
         handleVerifyStatus(true);
-      }, 4000);
+      }, 3000);
     }
 
     return () => {
       if (pollingTimerRef.current) {
         clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
       }
     };
   }, [paymentMethod, pixData?.paymentId, pixData?.status]);
@@ -367,7 +383,7 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
               <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
                 <div className="flex items-center gap-2">
                   <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-                  <span>Aguardando confirmação bancária em tempo real...</span>
+                  <span>Aguardando confirmação do Pix (verificando no Supabase a cada 3s)...</span>
                 </div>
                 <button
                   type="button"
