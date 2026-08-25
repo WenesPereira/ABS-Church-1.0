@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Crown,
   Sparkles,
@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   AlertTriangle,
   User as UserIcon,
+  Check,
 } from 'lucide-react';
 import { User } from '../types';
 import {
@@ -22,6 +23,7 @@ import {
   isSubscriptionActive,
   isSuperAdmin,
 } from '../services/treasuryService';
+import { subscribeToUserSubscriptionStatus } from '../services/paymentService';
 import { MercadoPagoCheckoutSection } from './MercadoPagoCheckoutSection';
 
 interface SubscriptionGateViewProps {
@@ -41,54 +43,110 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
     message: string;
   } | null>(null);
 
-  // Se o usuário for o Super Admin ou possuir assinatura ativa, desbloqueia imediatamente
-  useEffect(() => {
-    if (isSuperAdmin(currentUser) || isSubscriptionActive(currentUser)) {
-      onStatusUpdated({
-        ...currentUser,
-        subscriptionStatus: 'active',
-        subscriptionPlan: isSuperAdmin(currentUser) ? 'pro_isento' : currentUser.subscriptionPlan,
-      });
-    }
-  }, [currentUser, onStatusUpdated]);
+  const pollingRef = useRef<any>(null);
+  const isMountedRef = useRef(true);
 
-  const handleCheckStatus = async () => {
-    setIsVerifying(true);
-    setFeedback(null);
+  // Consulta direta ao Supabase na tabela 'profiles' para verificar se subscription_status == 'active'
+  const verifySupabaseProfile = useCallback(
+    async (silent: boolean = false) => {
+      if (!currentUser?.id) return false;
+      if (!silent) setIsVerifying(true);
 
-    try {
-      const freshUser = await fetchUserProfile(currentUser.id);
-      if (freshUser) {
-        if (isSubscriptionActive(freshUser)) {
+      try {
+        const freshUser = await fetchUserProfile(currentUser.id);
+        if (!isMountedRef.current) return false;
+
+        if (freshUser && isSubscriptionActive(freshUser)) {
+          if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
+          }
+
           setFeedback({
             type: 'success',
-            message: 'Assinatura PRO confirmada! Liberando acesso a todas as ferramentas...',
+            message: 'Assinatura confirmada com sucesso! Liberando acesso completo ao Dashboard...',
           });
+
           setTimeout(() => {
-            onStatusUpdated(freshUser);
-          }, 1000);
-        } else {
+            if (isMountedRef.current) {
+              onStatusUpdated(freshUser);
+            }
+          }, 600);
+          return true;
+        } else if (!silent) {
           setFeedback({
             type: 'info',
             message:
               'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de pagar via Pix ou Cartão pelo Mercado Pago, pode levar alguns instantes para a compensação.',
           });
         }
-      } else {
-        setFeedback({
-          type: 'error',
-          message: 'Não foi possível consultar as informações da sua conta no momento. Tente novamente em instantes.',
-        });
+      } catch (err) {
+        console.error('[SubscriptionGateView] Erro ao consultar Supabase profiles:', err);
+        if (!silent && isMountedRef.current) {
+          setFeedback({
+            type: 'error',
+            message: 'Não foi possível consultar as informações da sua conta no momento. Tente novamente em instantes.',
+          });
+        }
+      } finally {
+        if (!silent && isMountedRef.current) {
+          setIsVerifying(false);
+        }
       }
-    } catch (err) {
-      console.error('Erro ao verificar assinatura:', err);
-      setFeedback({
-        type: 'error',
-        message: 'Não foi possível verificar a assinatura no momento. Tente novamente.',
+      return false;
+    },
+    [currentUser?.id, onStatusUpdated]
+  );
+
+  // 1. Verificação instantânea ao carregar
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    if (isSuperAdmin(currentUser) || isSubscriptionActive(currentUser)) {
+      onStatusUpdated({
+        ...currentUser,
+        subscriptionStatus: 'active',
+        subscriptionPlan: isSuperAdmin(currentUser) ? 'pro_isento' : currentUser.subscriptionPlan,
       });
-    } finally {
-      setIsVerifying(false);
+      return;
     }
+
+    // 2. Escuta alterações em tempo real no Supabase (Postgres Changes)
+    const unsubscribe = subscribeToUserSubscriptionStatus(currentUser.id, (freshUser) => {
+      if (isMountedRef.current && isSubscriptionActive(freshUser)) {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+        }
+        setFeedback({
+          type: 'success',
+          message: 'Assinatura ativada no sistema! Redirecionando para o Dashboard...',
+        });
+        setTimeout(() => {
+          if (isMountedRef.current) {
+            onStatusUpdated(freshUser);
+          }
+        }, 500);
+      }
+    });
+
+    // 3. Polling em tempo real a cada 3 segundos consultando a tabela profiles do Supabase
+    pollingRef.current = setInterval(() => {
+      verifySupabaseProfile(true);
+    }, 3000);
+
+    return () => {
+      isMountedRef.current = false;
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+      unsubscribe();
+    };
+  }, [currentUser, onStatusUpdated, verifySupabaseProfile]);
+
+  const handleManualCheck = () => {
+    verifySupabaseProfile(false);
   };
 
   const proBenefits = [
@@ -197,8 +255,10 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
             </div>
 
             <div className="text-center md:text-right text-xs text-slate-400">
-              <span className="text-emerald-400 font-bold block mb-0.5">Liberação Imediata</span>
-              <span>Reconhecimento instantâneo da assinatura</span>
+              <span className="text-emerald-400 font-bold block mb-0.5">Liberação Automática</span>
+              <span className="flex items-center justify-center md:justify-end gap-1.5 text-slate-400">
+                <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" /> Verificação ativa a cada 3s
+              </span>
             </div>
           </div>
 
@@ -211,7 +271,7 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
           {/* Real-time Verification Feedback */}
           {feedback && (
             <div
-              className={`mt-6 p-4 rounded-2xl text-xs flex items-start gap-3 border transition-all ${
+              className={`mt-6 p-4 rounded-2xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 border transition-all ${
                 feedback.type === 'success'
                   ? 'bg-emerald-950/70 border-emerald-500/50 text-emerald-200'
                   : feedback.type === 'error'
@@ -219,16 +279,31 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
                   : 'bg-blue-950/70 border-blue-500/50 text-blue-200'
               }`}
             >
-              {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-              ) : feedback.type === 'error' ? (
-                <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-              ) : (
-                <ShieldCheck className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1 leading-relaxed font-medium">
-                {feedback.message}
+              <div className="flex items-start gap-3">
+                {feedback.type === 'success' ? (
+                  <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                ) : feedback.type === 'error' ? (
+                  <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+                ) : (
+                  <ShieldCheck className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 leading-relaxed font-medium">
+                  {feedback.message}
+                </div>
               </div>
+
+              {/* Botão de Ação Rápida no Aviso */}
+              {feedback.type !== 'success' && (
+                <button
+                  type="button"
+                  onClick={handleManualCheck}
+                  disabled={isVerifying}
+                  className="shrink-0 flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all shadow cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
+                  <span>{isVerifying ? 'Verificando...' : 'Já paguei, verificar novamente'}</span>
+                </button>
+              )}
             </div>
           )}
 
@@ -241,12 +316,12 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
 
             <button
               type="button"
-              onClick={handleCheckStatus}
+              onClick={handleManualCheck}
               disabled={isVerifying}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50 shadow-sm"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : ''}`} />
-              <span>{isVerifying ? 'Verificando assinatura...' : 'Já assinei / Verificar status'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
+              <span>{isVerifying ? 'Consultando Supabase...' : 'Já paguei, verificar novamente'}</span>
             </button>
           </div>
         </div>

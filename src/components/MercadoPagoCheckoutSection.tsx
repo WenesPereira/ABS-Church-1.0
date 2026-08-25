@@ -190,9 +190,9 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
     }
   };
 
-  // Polling automático no Supabase a cada 3 segundos enquanto aguarda o pagamento do Pix
+  // Polling automático no Supabase a cada 3 segundos enquanto aguarda o pagamento (Pix ou Cartão)
   useEffect(() => {
-    if (paymentMethod === 'pix' && pixData?.paymentId && pixData.status === 'pending') {
+    if (currentUser?.id) {
       pollingTimerRef.current = setInterval(() => {
         handleVerifyStatus(true);
       }, 3000);
@@ -204,7 +204,7 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
         pollingTimerRef.current = null;
       }
     };
-  }, [paymentMethod, pixData?.paymentId, pixData?.status]);
+  }, [currentUser?.id, pixData?.paymentId]);
 
   // Se o método for Pix e ainda não tiver sido gerado, gera automaticamente
   useEffect(() => {
@@ -389,9 +389,10 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
                   type="button"
                   onClick={() => handleVerifyStatus(false)}
                   disabled={isVerifying}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  {isVerifying ? 'Verificando...' : 'Verificar Agora'}
+                  <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
+                  <span>{isVerifying ? 'Verificando...' : 'Já paguei, verificar novamente'}</span>
                 </button>
               </div>
 
@@ -444,16 +445,16 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
             </button>
           </div>
 
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
-            <span className="text-[11px]">Já concluiu o pagamento na janela?</span>
+          <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
+            <span className="text-[11px]">Já concluiu o pagamento na janela do Mercado Pago?</span>
             <button
               type="button"
               onClick={() => handleVerifyStatus(false)}
               disabled={isVerifying}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : ''}`} />
-              <span>{isVerifying ? 'Verificando...' : 'Verificar Status'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
+              <span>{isVerifying ? 'Verificando...' : 'Já paguei, verificar novamente'}</span>
             </button>
           </div>
         </div>

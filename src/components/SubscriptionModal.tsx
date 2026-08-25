@@ -49,6 +49,28 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   const isSubscribed = isSubscriptionActive(currentUser);
   const isSuper = isSuperAdmin(currentUser);
 
+  // Polling automático no Supabase a cada 3 segundos enquanto a modal estiver aberta
+  React.useEffect(() => {
+    if (!isOpen || !currentUser?.id || isSubscribed || isSuper) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const fresh = await fetchUserProfile(currentUser.id);
+        if (fresh && isSubscriptionActive(fresh)) {
+          setVerificationFeedback({
+            type: 'success',
+            message: 'Assinatura confirmada com sucesso! Acesso PRO liberado.',
+          });
+          if (onStatusUpdated) onStatusUpdated(fresh);
+        }
+      } catch (e) {
+        console.error('Erro no polling do SubscriptionModal:', e);
+      }
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [isOpen, currentUser?.id, isSubscribed, isSuper, onStatusUpdated]);
+
   const handleCheckStatus = async () => {
     if (!currentUser?.id) {
       setVerificationFeedback({
@@ -76,13 +98,13 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           setVerificationFeedback({
             type: 'info',
             message:
-              'Ainda não identificamos a confirmação do pagamento no sistema. Se você acabou de pagar pelo Mercado Pago (Pix ou Cartão), pode levar alguns instantes para a compensação bancária.',
+              'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de pagar pelo Mercado Pago (Pix ou Cartão), pode levar alguns instantes para a compensação bancária.',
           });
         }
       } else {
         setVerificationFeedback({
           type: 'error',
-          message: 'Não foi possível consultar os dados do perfil.',
+          message: 'Não foi possível consultar os dados do perfil no Supabase.',
         });
       }
     } catch (err) {
@@ -286,10 +308,10 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               type="button"
               onClick={handleCheckStatus}
               disabled={isVerifying}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : ''}`} />
-              <span>{isVerifying ? 'Verificando...' : 'Já assinei / Atualizar status'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
+              <span>{isVerifying ? 'Consultando...' : 'Já paguei, verificar novamente'}</span>
             </button>
           </div>
         </div>
