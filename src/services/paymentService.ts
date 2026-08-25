@@ -1,4 +1,4 @@
-import { DEFAULT_SUPABASE_URL, DEFAULT_SUPABASE_ANON_KEY, sanitizeSupabaseUrl, sanitizeSupabaseKey } from './supabase';
+import { initMercadoPago } from '@mercadopago/sdk-react';
 
 export interface CreatePixRequest {
   userId: string;
@@ -31,10 +31,47 @@ export interface CheckPaymentResponse {
 }
 
 /**
+ * Obtém a chave pública do Mercado Pago configurada
+ */
+export function getMercadoPagoPublicKey(): string {
+  const env = ((import.meta as any).env || {}) as Record<string, string>;
+  return (
+    env.VITE_MERCADOPAGO_PUBLIC_KEY ||
+    env.VITE_MP_PUBLIC_KEY ||
+    env.MERCADOPAGO_PUBLIC_KEY ||
+    env.MP_PUBLIC_KEY ||
+    ''
+  ).trim();
+}
+
+let isSdkInitialized = false;
+
+/**
+ * Inicializa o SDK Oficial do Mercado Pago no navegador
+ */
+export function initializeMercadoPagoSdk(): boolean {
+  const publicKey = getMercadoPagoPublicKey();
+  if (!publicKey) {
+    return false;
+  }
+
+  if (!isSdkInitialized) {
+    try {
+      initMercadoPago(publicKey, { locale: 'pt-BR' });
+      isSdkInitialized = true;
+      console.log('[Mercado Pago SDK] Inicializado com chave pública.');
+    } catch (err) {
+      console.warn('[Mercado Pago SDK] Falha ao inicializar SDK:', err);
+    }
+  }
+  return isSdkInitialized;
+}
+
+/**
  * Função utilitária para capturar e validar respostas JSON com segurança,
  * evitando a falha "Unexpected token '<', '<!DOCTYPE '... is not valid JSON".
  */
-async function parseSafeJsonResponse<T = any>(
+export async function parseSafeJsonResponse<T = any>(
   response: Response,
   contextLabel: string = 'Mercado Pago'
 ): Promise<T> {
@@ -78,72 +115,12 @@ async function parseSafeJsonResponse<T = any>(
 }
 
 /**
- * Obtém a URL e chaves base do Supabase
- */
-function getSupabaseConfig() {
-  const env = ((import.meta as any).env || {}) as Record<string, string>;
-  const rawUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL || DEFAULT_SUPABASE_URL;
-  const rawKey =
-    env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-    env.VITE_SUPABASE_ANON_KEY ||
-    env.SUPABASE_ANON_KEY ||
-    env.SUPABASE_KEY ||
-    DEFAULT_SUPABASE_ANON_KEY;
-
-  return {
-    url: sanitizeSupabaseUrl(rawUrl),
-    key: sanitizeSupabaseKey(rawKey),
-  };
-}
-
-/**
- * Cria uma cobrança Pix via Supabase Edge Function ou API Express do Mercado Pago
+ * Cria uma cobrança Pix via API do Mercado Pago no backend
+ * (Sem dependência de Edge Functions inexistentes do Supabase)
  */
 export async function createMercadoPagoPix(
   params: CreatePixRequest
 ): Promise<CreatePixResponse> {
-  const { url: supabaseUrl, key: supabaseKey } = getSupabaseConfig();
-  let lastError: Error | null = null;
-
-  // 1. Tenta primeira chamada via Supabase Edge Function se configurada (ex: create-pix-payment)
-  if (supabaseUrl && supabaseKey) {
-    const edgeFunctionEndpoints = [
-      `${supabaseUrl}/functions/v1/create-pix-payment`,
-      `${supabaseUrl}/functions/v1/mercadopago-pix`,
-      `${supabaseUrl}/functions/v1/pix-payment`,
-    ];
-
-    for (const endpoint of edgeFunctionEndpoints) {
-      try {
-        const edgeRes = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-          },
-          body: JSON.stringify(params),
-        });
-
-        // Se a Edge Function existir e responder (não for 404 e não for HTML)
-        if (edgeRes.status !== 404) {
-          const edgeData = await parseSafeJsonResponse<CreatePixResponse>(
-            edgeRes,
-            'Supabase Edge Function Pix'
-          );
-          if (edgeData && (edgeData.qrCode || edgeData.paymentId)) {
-            return edgeData;
-          }
-        }
-      } catch (edgeErr: any) {
-        // Se foi erro de rota HTML na Edge Function, salva e tenta rota local
-        console.warn(`[Edge Function] Tentativa em ${endpoint} não concluída:`, edgeErr.message);
-        lastError = edgeErr;
-      }
-    }
-  }
-
-  // 2. Tenta a rota de API local do Express (/api/mercadopago/create-pix)
   try {
     const res = await fetch('/api/mercadopago/create-pix', {
       method: 'POST',
@@ -158,17 +135,8 @@ export async function createMercadoPagoPix(
     return data;
   } catch (apiErr: any) {
     console.error('Erro ao gerar Pix no backend:', apiErr);
-    lastError = apiErr;
+    throw apiErr;
   }
-
-  // Se ambos falharem com erro de rota, lança o erro tratado especificado
-  if (lastError) {
-    throw lastError;
-  }
-
-  throw new Error(
-    'Erro de rota/servidor no Mercado Pago. Verifique se a função backend foi implantada.'
-  );
 }
 
 /**
@@ -177,36 +145,6 @@ export async function createMercadoPagoPix(
 export async function checkMercadoPagoPayment(
   paymentId: string
 ): Promise<CheckPaymentResponse> {
-  const { url: supabaseUrl, key: supabaseKey } = getSupabaseConfig();
-
-  // 1. Tenta Supabase Edge Function se aplicável
-  if (supabaseUrl && supabaseKey) {
-    try {
-      const edgeRes = await fetch(
-        `${supabaseUrl}/functions/v1/check-pix-payment?paymentId=${encodeURIComponent(paymentId)}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: supabaseKey,
-            Authorization: `Bearer ${supabaseKey}`,
-          },
-        }
-      );
-
-      if (edgeRes.status !== 404) {
-        const edgeData = await parseSafeJsonResponse<CheckPaymentResponse>(
-          edgeRes,
-          'Supabase Edge Function Check Payment'
-        );
-        return edgeData;
-      }
-    } catch (e) {
-      // continua para a rota local
-    }
-  }
-
-  // 2. Rota Express Local
   try {
     const res = await fetch(`/api/mercadopago/check-payment/${encodeURIComponent(paymentId)}`, {
       headers: {

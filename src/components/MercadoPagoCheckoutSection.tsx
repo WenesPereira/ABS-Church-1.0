@@ -19,6 +19,8 @@ import {
   createMercadoPagoPix,
   checkMercadoPagoPayment,
   simulatePixApproval,
+  initializeMercadoPagoSdk,
+  getMercadoPagoPublicKey,
   CreatePixResponse,
 } from '../services/paymentService';
 
@@ -47,6 +49,11 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
 
   const pollingTimerRef = useRef<any>(null);
   const checkoutUrl = getMercadoPagoSubscriptionUrl(currentUser?.id);
+
+  // Inicializa o SDK Oficial do Mercado Pago no front-end
+  useEffect(() => {
+    initializeMercadoPagoSdk();
+  }, []);
 
   // Geração do Pix ao escolher o método Pix ou ao carregar
   const handleGeneratePix = async () => {
