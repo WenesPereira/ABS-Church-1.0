@@ -148,7 +148,8 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
       if (!silent) {
         setVerificationFeedback({
           type: 'info',
-          message: 'Ainda aguardando a confirmação do pagamento pelo banco. Se já pagou, a compensação ocorre em poucos segundos.',
+          message:
+            'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de pagar pelo Mercado Pago (Pix ou Cartão), a liberação ocorre automaticamente em instantes.',
         });
       }
     } catch (err) {
