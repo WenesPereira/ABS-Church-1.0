@@ -188,89 +188,83 @@ export async function parseSafeJsonResponse<T = any>(
 }
 
 /**
- * Cria a cobrança Pix de forma direta no Front-end / Client-side
- * (Com QR Code renderizado em Base64 e Chave Copia e Cola instantânea)
+ * Cria a cobrança Pix via Netlify Function (/ .netlify/functions/create-pix)
+ * conectada à API oficial do Mercado Pago no backend
  */
 export async function createMercadoPagoPix(
   params: CreatePixRequest
 ): Promise<CreatePixResponse> {
   const amount = params.valor || 19.9;
-  const paymentId = `MP-PIX-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+  let lastError: Error | null = null;
 
-  // 1. Tenta chamada direta à API interna se disponível
-  try {
-    const res = await fetch('/api/mercadopago/create-pix', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify(params),
-    });
+  // Lista de endpoints para criação de Pix (Netlify Function prioritária)
+  const endpoints = [
+    '/.netlify/functions/create-pix',
+    '/api/mercadopago/create-pix',
+    '/netlify/functions/create-pix',
+  ];
 
-    if (res.ok) {
-      const data = await parseSafeJsonResponse<CreatePixResponse>(res, 'Mercado Pago Backend');
-      if (data && data.qrCode) {
-        // Se a API não tiver devolvido imagem base64, geramos localmente via qrcode
-        if (!data.qrCodeBase64 && data.qrCode) {
-          try {
-            data.qrCodeBase64 = await QRCode.toDataURL(data.qrCode, {
-              width: 320,
-              margin: 1,
-              color: {
-                dark: '#0f172a',
-                light: '#ffffff',
-              },
-            });
-          } catch (e) {
-            console.warn('Erro ao gerar imagem QR code:', e);
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(params),
+      });
+
+      // Se a resposta for OK ou erro tratado em JSON (status !== 404)
+      if (res.status !== 404) {
+        const rawData = await parseSafeJsonResponse<any>(res, `Pix via ${endpoint}`);
+        if (rawData) {
+          const qrCode = rawData.qrCode || rawData.qr_code;
+          let qrCodeBase64 = rawData.qrCodeBase64 || rawData.qr_code_base64;
+          const paymentId = String(rawData.paymentId || rawData.id || `MP-PIX-${Date.now()}`);
+
+          // Se a API não devolveu a imagem Base64 mas devolveu a chave Pix, gera localmente
+          if (!qrCodeBase64 && qrCode) {
+            try {
+              qrCodeBase64 = await QRCode.toDataURL(qrCode, {
+                width: 320,
+                margin: 1,
+                color: {
+                  dark: '#020617',
+                  light: '#ffffff',
+                },
+              });
+            } catch (e) {
+              console.warn('Erro ao gerar imagem QR code:', e);
+            }
           }
+
+          return {
+            success: rawData.success !== false,
+            paymentId,
+            status: rawData.status || 'pending',
+            statusDetail: rawData.statusDetail || rawData.status_detail,
+            qrCode: qrCode || '',
+            qrCodeBase64: qrCodeBase64 || '',
+            ticketUrl: rawData.ticketUrl || rawData.ticket_url || '',
+            expiresAt: rawData.expiresAt || rawData.date_of_expiration,
+            amount: Number(rawData.amount) || amount,
+            notice: rawData.notice,
+            isDemo: rawData.isDemo || false,
+          };
         }
-        return data;
       }
+    } catch (err: any) {
+      console.warn(`[Pix Service] Falha ao tentar ${endpoint}:`, err.message);
+      lastError = err;
     }
-  } catch (apiErr) {
-    console.info('[Client-side Pix] Gerando cobrança Pix diretamente no navegador.');
   }
 
-  // 2. Geração 100% Client-Side do QR Code e Pix Copia e Cola
-  // Utiliza a chave Mercado Pago ou padrão oficial com referência do usuário
-  const pixKey = 'financeiro.tesouraria@gmail.com';
-  const qrCodeText = generatePixCopiaECola(
-    pixKey,
-    'TESOURARIA PRO IGREJA',
-    'SAO PAULO',
-    amount,
-    paymentId
-  );
-
-  let qrCodeBase64 = '';
-  try {
-    qrCodeBase64 = await QRCode.toDataURL(qrCodeText, {
-      width: 320,
-      margin: 1,
-      color: {
-        dark: '#020617',
-        light: '#ffffff',
-      },
-      errorCorrectionLevel: 'M',
-    });
-  } catch (qrErr) {
-    console.error('Erro ao gerar Base64 do QR Code:', qrErr);
+  if (lastError) {
+    throw lastError;
   }
 
-  return {
-    success: true,
-    paymentId,
-    status: 'pending',
-    statusDetail: 'pending_waiting_transfer',
-    qrCode: qrCodeText,
-    qrCodeBase64,
-    ticketUrl: `https://www.mercadopago.com.br/payments/${paymentId}/ticket`,
-    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-    amount,
-    notice: 'Cobrança Pix gerada com sucesso. Faça o pagamento para liberação imediata.',
-  };
+  throw new Error('Não foi possível conectar à função de geração do Pix. Verifique a configuração.');
 }
 
 /**

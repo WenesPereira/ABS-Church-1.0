@@ -142,10 +142,14 @@ app.get("/api/health", (_req, res) => {
 const handleCreatePix = async (req: express.Request, res: express.Response) => {
   res.setHeader("Content-Type", "application/json");
   try {
-    const { userId, email, nome, valor } = req.body || {};
-    const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
+    const { userId, email, nome, valor, cpf, docNumber, description } = req.body || {};
+    const mpToken =
+      process.env.MERCADOPAGO_ACCESS_TOKEN ||
+      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
+      process.env.MP_ACCESS_TOKEN;
     const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
     const amount = Number(valor) || 19.9;
+    const cleanDoc = (docNumber || cpf || '').replace(/\D/g, '');
 
     const payerEmail = (email && email.includes("@")) ? email.trim() : "pastor@igreja.com";
     const fullName = (nome || "Pastor Responsavel").trim();
@@ -159,12 +163,18 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
       
       const payload: Record<string, any> = {
         transaction_amount: amount,
-        description: "Assinatura Mensal - Tesouraria da Igreja Pro",
+        description: description || "Assinatura Mensal - Tesouraria da Igreja Pro",
         payment_method_id: "pix",
         payer: {
           email: payerEmail,
           first_name: firstName,
           last_name: lastName,
+          identification: cleanDoc
+            ? {
+                type: cleanDoc.length > 11 ? "CNPJ" : "CPF",
+                number: cleanDoc,
+              }
+            : undefined,
         },
         external_reference: userId || payerEmail,
         notification_url: `${appUrl}/api/mercadopago/webhook`,
@@ -219,12 +229,11 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
 
     // Se o token ainda não foi inserido nas variáveis de ambiente,
     // gera uma estrutura com QR Code Pix demonstrativo funcional para visualização e testes
-    console.log("[Mercado Pago] Aviso: MERCADO_PAGO_ACCESS_TOKEN não configurado no .env. Gerando Pix de demonstração.");
+    console.log("[Mercado Pago] Aviso: MERCADOPAGO_ACCESS_TOKEN não configurado no .env. Gerando Pix demonstrativo.");
     
     const mockPaymentId = `DEMO-PIX-${Date.now()}`;
     const mockPixCopiaECola = `00020126580014br.gov.bcb.pix0136tesourariapro-${Date.now()}@mercadopago.com520400005303986540519.905802BR5925Tesouraria da Igreja Pro6009Sao Paulo62070503***6304`;
     
-    // QR Code PNG 1x1 base64 limpo para fallback
     const mockQrCodeBase64 =
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
@@ -249,7 +258,7 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       amount,
       isDemo: true,
-      notice: "Para processar pagamentos reais na sua conta, informe MERCADO_PAGO_ACCESS_TOKEN nas configurações do aplicativo.",
+      notice: "Para processar pagamentos reais na sua conta, informe MERCADOPAGO_ACCESS_TOKEN nas configurações do aplicativo.",
     });
   } catch (err: any) {
     console.error("[Mercado Pago] Erro inesperado ao criar Pix:", err);
@@ -258,11 +267,11 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
 };
 
 /**
- * Criação de Cobrança Pix via API do Mercado Pago (/v1/payments)
+ * Criação de Cobrança Pix via API do Mercado Pago (/v1/payments) e Netlify Functions
  */
+app.post("/.netlify/functions/create-pix", handleCreatePix);
+app.post("/netlify/functions/create-pix", handleCreatePix);
 app.post("/api/mercadopago/create-pix", handleCreatePix);
-app.post("/functions/v1/create-pix-payment", handleCreatePix);
-app.post("/functions/v1/mercadopago-pix", handleCreatePix);
 app.post("/api/create-pix-payment", handleCreatePix);
 
 /**
