@@ -24,9 +24,21 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     nome TEXT NOT NULL DEFAULT 'Tesoureiro',
     cargo TEXT DEFAULT 'Tesoureiro Principal',
     nome_igreja TEXT DEFAULT 'Igreja Evangélica',
+    status_assinatura TEXT DEFAULT 'pendente',
+    subscription_status TEXT DEFAULT 'pendente',
+    subscription_plan TEXT DEFAULT 'mensal',
+    subscription_expires_at TIMESTAMPTZ,
+    mp_preapproval_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Garantir que as colunas existam em bancos já criados anteriormente
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status_assinatura TEXT DEFAULT 'pendente';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'pendente';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_plan TEXT DEFAULT 'mensal';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_expires_at TIMESTAMPTZ;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS mp_preapproval_id TEXT;
 
 -- Habilitar Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;

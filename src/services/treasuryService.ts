@@ -1227,7 +1227,7 @@ export function getMercadoPagoSubscriptionUrl(userId?: string): string {
  * Verifica se o usuário tem assinatura ativa (ou em período de teste válido).
  * REGRA EXCLUSIVA: O Super Admin (wenes13@hotmail.com) possui isenção permanente e status PRO vitalício automático.
  */
-export function isSubscriptionActive(user?: User | { email?: string; subscriptionStatus?: string; isDemo?: boolean } | null): boolean {
+export function isSubscriptionActive(user?: User | { email?: string; subscriptionStatus?: string; statusAssinatura?: string; isDemo?: boolean } | null): boolean {
   if (!user) return false;
 
   // 1. Liberação automática e isenção vitalícia para o Super Admin ou Modo Demo
@@ -1235,16 +1235,27 @@ export function isSubscriptionActive(user?: User | { email?: string; subscriptio
     return true;
   }
 
-  // 2. Verificação padrão para usuários comuns via Supabase / Mercado Pago
-  const status = (user.subscriptionStatus || '').toLowerCase().trim();
-  return status === 'active' || status === 'trialing' || status === 'ativo';
+  // 2. Verificação padrão para status_assinatura ou subscriptionStatus
+  const statusAssinatura = ((user as any).statusAssinatura || (user as any).status_assinatura || '').toLowerCase().trim();
+  const subStatus = (user.subscriptionStatus || (user as any).subscription_status || '').toLowerCase().trim();
+
+  return (
+    statusAssinatura === 'ativo' ||
+    statusAssinatura === 'active' ||
+    statusAssinatura === 'pago' ||
+    statusAssinatura === 'aprovado' ||
+    subStatus === 'active' ||
+    subStatus === 'ativo' ||
+    subStatus === 'trialing' ||
+    subStatus === 'pago'
+  );
 }
 
 export async function syncUserProfile(user: User): Promise<boolean> {
   if (!isSupabaseConfigured || !user.id) return false;
 
-  // AVISO: NUNCA incluir subscription_status nem sobrescrever dados de assinatura aqui.
-  // subscription_status é estritamente de leitura (controlado externamente / webhook / painel do banco).
+  // AVISO: NUNCA incluir status_assinatura nem sobrescrever dados de assinatura aqui.
+  // status_assinatura é estritamente de leitura (controlado externamente / webhook do Mercado Pago / painel do banco).
   const payload: Record<string, any> = {
     id: user.id,
     user_id: user.id,
@@ -1317,10 +1328,26 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
 
     if (data) {
       const isSuper = isSuperAdmin(data.email);
-      // Lê o valor de subscription_status EXCLUSIVAMENTE do banco de dados (com isenção automática para Super Admin)
-      const rawStatus = typeof data.subscription_status === 'string' ? data.subscription_status.trim().toLowerCase() : '';
-      const isStatusActive = isSuper || rawStatus === 'active' || rawStatus === 'ativo' || rawStatus === 'trialing';
+      // Lê o valor de status_assinatura / subscription_status EXCLUSIVAMENTE do banco de dados
+      const rawStatusAssinatura = typeof data.status_assinatura === 'string' ? data.status_assinatura.trim().toLowerCase() : '';
+      const rawSubStatus = typeof data.subscription_status === 'string' ? data.subscription_status.trim().toLowerCase() : '';
+      const rawGenericStatus = typeof data.status === 'string' ? data.status.trim().toLowerCase() : '';
+
+      const isStatusActive =
+        isSuper ||
+        rawStatusAssinatura === 'ativo' ||
+        rawStatusAssinatura === 'active' ||
+        rawStatusAssinatura === 'pago' ||
+        rawStatusAssinatura === 'aprovado' ||
+        rawSubStatus === 'active' ||
+        rawSubStatus === 'ativo' ||
+        rawSubStatus === 'trialing' ||
+        rawSubStatus === 'pago' ||
+        rawGenericStatus === 'ativo' ||
+        rawGenericStatus === 'active';
+
       const subscriptionStatus = isStatusActive ? 'active' : 'inactive';
+      const statusAssinatura = isStatusActive ? 'ativo' : (rawStatusAssinatura || 'pendente');
 
       return {
         id: data.id,
@@ -1328,6 +1355,7 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         nome: data.nome,
         cargo: data.cargo || undefined,
         nomeIgreja: data.nome_igreja || undefined,
+        statusAssinatura,
         subscriptionStatus,
         subscriptionPlan: isSuper ? 'pro_isento' : (data.subscription_plan || 'mensal'),
         subscriptionExpiresAt: isSuper ? 'Vitalício / Isento' : (data.subscription_expires_at || undefined),

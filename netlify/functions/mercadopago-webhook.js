@@ -149,39 +149,75 @@ exports.handler = async function (event, context) {
               const expiresIso = expiresDate.toISOString();
               const nowIso = new Date().toISOString();
 
-              const updatePayload = {
+              const fullUpdatePayload = {
+                status_assinatura: 'ativo',
                 subscription_status: 'active',
                 subscription_plan: 'mensal',
                 subscription_expires_at: expiresIso,
                 updated_at: nowIso,
               };
 
-              // 1. UPDATE por external_reference (ID do usuário) na tabela profiles
-              if (externalRef) {
-                const { data: updatedById, error: errId } = await supabase
+              const minimalUpdatePayload = {
+                status_assinatura: 'ativo',
+                updated_at: nowIso,
+              };
+
+              // Função auxiliar para tentar atualizar com payload completo e fallback resiliente
+              const executeProfileUpdate = async (filterKey, filterValue) => {
+                // Tentativa 1: Payload completo (status_assinatura + subscription_status)
+                let { data, error } = await supabase
                   .from('profiles')
-                  .update(updatePayload)
-                  .or(`id.eq.${externalRef},user_id.eq.${externalRef}`)
+                  .update(fullUpdatePayload)
+                  .ilike(filterKey, filterValue)
                   .select();
 
-                if (!errId && updatedById && updatedById.length > 0) {
-                  console.log(`[Mercado Pago Webhook] Sucesso: Assinatura ativada no Supabase (profiles) para userId: ${externalRef}`);
-                  userUpdated = true;
+                if (!error && data && data.length > 0) return true;
+
+                // Tentativa 2: Payload mínimo apenas com status_assinatura
+                let resMin = await supabase
+                  .from('profiles')
+                  .update(minimalUpdatePayload)
+                  .ilike(filterKey, filterValue)
+                  .select();
+
+                if (!resMin.error && resMin.data && resMin.data.length > 0) return true;
+
+                // Tentativa 3: Se o filtro for por id ou user_id
+                if (filterKey === 'id' || filterKey === 'user_id') {
+                  let resOr = await supabase
+                    .from('profiles')
+                    .update(fullUpdatePayload)
+                    .or(`id.eq.${filterValue},user_id.eq.${filterValue}`)
+                    .select();
+
+                  if (!resOr.error && resOr.data && resOr.data.length > 0) return true;
+
+                  let resOrMin = await supabase
+                    .from('profiles')
+                    .update(minimalUpdatePayload)
+                    .or(`id.eq.${filterValue},user_id.eq.${filterValue}`)
+                    .select();
+
+                  if (!resOrMin.error && resOrMin.data && resOrMin.data.length > 0) return true;
+                }
+
+                return false;
+              };
+
+              // 1. UPDATE por external_reference (ID do usuário) na tabela profiles
+              if (externalRef) {
+                userUpdated = await executeProfileUpdate('id', externalRef);
+                if (userUpdated) {
+                  console.log(`[Mercado Pago Webhook] Sucesso: status_assinatura = 'ativo' definido no Supabase (profiles) para userId: ${externalRef}`);
                 }
               }
 
               // 2. Se não localizou por ID, UPDATE por e-mail do pagador
               if (!userUpdated && payerEmail) {
                 const cleanEmail = payerEmail.trim().toLowerCase();
-                const { data: updatedByEmail, error: errEmail } = await supabase
-                  .from('profiles')
-                  .update(updatePayload)
-                  .ilike('email', cleanEmail)
-                  .select();
-
-                if (!errEmail && updatedByEmail && updatedByEmail.length > 0) {
-                  console.log(`[Mercado Pago Webhook] Sucesso: Assinatura ativada no Supabase (profiles) para o e-mail: ${cleanEmail}`);
-                  userUpdated = true;
+                userUpdated = await executeProfileUpdate('email', cleanEmail);
+                if (userUpdated) {
+                  console.log(`[Mercado Pago Webhook] Sucesso: status_assinatura = 'ativo' definido no Supabase (profiles) para e-mail: ${cleanEmail}`);
                 }
               }
 
@@ -194,6 +230,7 @@ exports.handler = async function (event, context) {
                       .from(tableName)
                       .upsert({
                         user_id: externalRef,
+                        status_assinatura: 'ativo',
                         status: 'ativo',
                         subscription_status: 'active',
                         plan: 'mensal',
@@ -205,6 +242,7 @@ exports.handler = async function (event, context) {
                     await supabase
                       .from(tableName)
                       .update({
+                        status_assinatura: 'ativo',
                         status: 'ativo',
                         subscription_status: 'active',
                         plan: 'mensal',
