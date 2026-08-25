@@ -29,6 +29,11 @@ import {
   CheckCircle,
   AlertCircle,
   Database,
+  UserCheck,
+  Search,
+  Zap,
+  KeyRound,
+  Users,
 } from 'lucide-react';
 import { ConfigIgreja, CategoriaEntrada, ActiveTab, User } from '../types';
 import { ALL_ENTRADA_CATEGORIES, CATEGORIA_ENTRADA_LABELS } from '../utils/calculations';
@@ -44,6 +49,8 @@ import {
   getLocalSupportConfig,
   buildWhatsAppLink,
   formatWhatsAppDisplay,
+  adminSetUserSubscriptionStatus,
+  adminListAllProfiles,
 } from '../services/treasuryService';
 
 interface ConfigViewProps {
@@ -99,6 +106,18 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
   });
   const [isAddingContato, setIsAddingContato] = useState(false);
 
+  // Estados para Liberação Manual de Assinatura (Opção Temporária / Emergencial)
+  const [manualIdentifier, setManualIdentifier] = useState(currentUser?.email || '');
+  const [manualDays, setManualDays] = useState(35);
+  const [isSettingManualStatus, setIsSettingManualStatus] = useState(false);
+  const [manualStatusFeedback, setManualStatusFeedback] = useState<{
+    type: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const [dbProfiles, setDbProfiles] = useState<any[]>([]);
+  const [isLoadingProfiles, setIsLoadingProfiles] = useState(false);
+  const [profileFilter, setProfileFilter] = useState('');
+
   useEffect(() => {
     if (isSuper) {
       fetchGlobalAdminConfig().then((data) => {
@@ -106,8 +125,75 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
           setGlobalConfig(data);
         }
       });
+      handleFetchDbProfiles();
     }
   }, [isSuper]);
+
+  const handleFetchDbProfiles = async () => {
+    setIsLoadingProfiles(true);
+    try {
+      const list = await adminListAllProfiles();
+      setDbProfiles(list);
+    } catch (err) {
+      console.warn('Não foi possível listar os perfis:', err);
+    } finally {
+      setIsLoadingProfiles(false);
+    }
+  };
+
+  const handleSetManualStatus = async (
+    targetIdentifier?: string,
+    targetStatus: 'ativo' | 'pendente' = 'ativo'
+  ) => {
+    const ident = (targetIdentifier || manualIdentifier).trim();
+    if (!ident) {
+      setManualStatusFeedback({
+        type: 'error',
+        message: 'Por favor, informe o e-mail ou ID do usuário para alterar o status.',
+      });
+      return;
+    }
+
+    setIsSettingManualStatus(true);
+    setManualStatusFeedback(null);
+
+    try {
+      const res = await adminSetUserSubscriptionStatus(ident, targetStatus, manualDays);
+      if (res.success) {
+        setManualStatusFeedback({
+          type: 'success',
+          message: res.message || `Status alterado para '${targetStatus}' com sucesso!`,
+        });
+
+        // Se o usuário atualizado for o usuário logado, atualiza o estado local imediatamente
+        if (
+          currentUser &&
+          (ident.toLowerCase() === (currentUser.email || '').toLowerCase() || ident === currentUser.id)
+        ) {
+          const fresh = await fetchUserProfile(currentUser.id);
+          if (fresh && onStatusUpdated) {
+            onStatusUpdated(fresh);
+          }
+        }
+
+        // Recarrega a listagem de perfis do banco
+        handleFetchDbProfiles();
+      } else {
+        setManualStatusFeedback({
+          type: 'error',
+          message: res.message || 'Não foi possível alterar o status do usuário.',
+        });
+      }
+    } catch (err: any) {
+      setManualStatusFeedback({
+        type: 'error',
+        message: err?.message || 'Erro inesperado ao comunicar com o servidor.',
+      });
+    } finally {
+      setIsSettingManualStatus(false);
+      setTimeout(() => setManualStatusFeedback(null), 7000);
+    }
+  };
 
   const isSubscribed = isSubscriptionActive(currentUser);
 
@@ -807,6 +893,200 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                   placeholder="Espaço livre para anotações gerais do Super Administrador sobre demandas, feedback de usuários e atualizações pendentes..."
                   className="w-full bg-slate-950 border border-purple-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
+              </div>
+            </div>
+
+            {/* Bloco 3: Liberação Manual de Assinatura (Opção Temporária / Emergencial) */}
+            <div className="pt-4 border-t border-purple-500/30 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-amber-400" />
+                      3. Liberação Manual de Assinatura (Opção Temporária / Emergencial)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40">
+                      status_assinatura = 'ativo'
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Permite alterar o status de qualquer usuário para <strong className="text-emerald-400 font-mono">'ativo'</strong> imediatamente no Supabase, liberando o acesso sem aguardar o webhook.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleFetchDbProfiles}
+                  disabled={isLoadingProfiles}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-900/40 hover:bg-purple-800/60 text-purple-200 text-xs font-semibold border border-purple-500/30 transition-colors w-fit disabled:opacity-50"
+                  title="Atualizar lista de perfis do banco de dados"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingProfiles ? 'animate-spin text-amber-400' : ''}`} />
+                  <span>Recarregar Usuários do Banco</span>
+                </button>
+              </div>
+
+              {manualStatusFeedback && (
+                <div
+                  className={`p-3.5 rounded-2xl text-xs flex items-center gap-2.5 border animate-in fade-in ${
+                    manualStatusFeedback.type === 'success'
+                      ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-200'
+                      : 'bg-rose-950/80 border-rose-500/60 text-rose-200'
+                  }`}
+                >
+                  {manualStatusFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  )}
+                  <span className="font-medium">{manualStatusFeedback.message}</span>
+                </div>
+              )}
+
+              {/* Caixa de Ação Rápida de Alteração */}
+              <div className="p-4 rounded-2xl bg-slate-950/80 border border-purple-500/40 space-y-3">
+                <span className="text-xs font-bold text-slate-200 block">
+                  Alterar Status de um Usuário por E-mail ou ID:
+                </span>
+                
+                <div className="flex flex-col sm:flex-row gap-2.5">
+                  <div className="flex-1 relative">
+                    <input
+                      type="text"
+                      value={manualIdentifier}
+                      onChange={(e) => setManualIdentifier(e.target.value)}
+                      placeholder="Digite o e-mail ou UUID do usuário (ex: pastor@igreja.com)"
+                      className="w-full bg-slate-900 border border-purple-500/30 rounded-xl px-3 py-2.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-purple-500 font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleSetManualStatus(manualIdentifier, 'ativo')}
+                      disabled={isSettingManualStatus || !manualIdentifier.trim()}
+                      className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-md shadow-emerald-900/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSettingManualStatus ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Zap className="w-3.5 h-3.5 text-amber-300" />
+                      )}
+                      <span>Liberar Acesso Pro ('ativo')</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleSetManualStatus(manualIdentifier, 'pendente')}
+                      disabled={isSettingManualStatus || !manualIdentifier.trim()}
+                      className="px-3 py-2.5 rounded-xl bg-slate-850 hover:bg-slate-800 text-slate-300 text-xs font-semibold border border-slate-700 transition-colors disabled:opacity-50"
+                      title="Definir status como 'pendente'"
+                    >
+                      <span>Pendente</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tabela de Usuários Cadastrados no Banco com Ações de 1 Clique */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-purple-300 uppercase tracking-wide flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-purple-400" />
+                    Usuários Registrados na Tabela profiles ({dbProfiles.length})
+                  </span>
+
+                  <input
+                    type="text"
+                    value={profileFilter}
+                    onChange={(e) => setProfileFilter(e.target.value)}
+                    placeholder="Filtrar por e-mail ou nome..."
+                    className="bg-slate-950 border border-purple-500/30 rounded-lg px-2.5 py-1 text-[11px] text-slate-200 placeholder:text-slate-500 focus:outline-none w-48"
+                  />
+                </div>
+
+                <div className="max-h-60 overflow-y-auto rounded-2xl border border-purple-500/20 bg-slate-950/60 divide-y divide-purple-500/10">
+                  {isLoadingProfiles ? (
+                    <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-purple-400" />
+                      <span>Consultando perfis no Supabase...</span>
+                    </div>
+                  ) : dbProfiles.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      Nenhum perfil listado ou banco em modo offline. Você pode digitar o e-mail diretamente no campo acima.
+                    </div>
+                  ) : (
+                    dbProfiles
+                      .filter((p) => {
+                        if (!profileFilter.trim()) return true;
+                        const term = profileFilter.toLowerCase();
+                        return (
+                          (p.email || '').toLowerCase().includes(term) ||
+                          (p.nome || '').toLowerCase().includes(term) ||
+                          (p.nome_igreja || '').toLowerCase().includes(term)
+                        );
+                      })
+                      .map((p) => {
+                        const statusAssin = (p.status_assinatura || '').toLowerCase();
+                        const isAtivo = statusAssin === 'ativo' || (p.subscription_status || '').toLowerCase() === 'active';
+                        return (
+                          <div
+                            key={p.id || p.user_id || p.email}
+                            className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs hover:bg-purple-950/20 transition-colors"
+                          >
+                            <div className="space-y-0.5 flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-slate-100 truncate">{p.nome || 'Sem Nome'}</span>
+                                <span className="font-mono text-[11px] text-purple-300 truncate">{p.email}</span>
+                                {p.nome_igreja && (
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 truncate">
+                                    {p.nome_igreja}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                <span>status_assinatura: <strong className={isAtivo ? 'text-emerald-400' : 'text-amber-400'}>{p.status_assinatura || 'pendente'}</strong></span>
+                                <span>•</span>
+                                <span>subscription_status: <strong className={isAtivo ? 'text-emerald-400' : 'text-amber-400'}>{p.subscription_status || 'pendente'}</strong></span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {isAtivo ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetManualStatus(p.email || p.id, 'pendente')}
+                                  disabled={isSettingManualStatus}
+                                  className="px-2.5 py-1 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 text-[11px] font-semibold transition-colors disabled:opacity-50"
+                                >
+                                  Tornar Pendente
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetManualStatus(p.email || p.id, 'ativo')}
+                                  disabled={isSettingManualStatus}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-600/25 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold transition-colors flex items-center gap-1 disabled:opacity-50"
+                                >
+                                  <Zap className="w-3 h-3 text-amber-300" />
+                                  <span>Ativar Pro</span>
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => setManualIdentifier(p.email || p.id)}
+                                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors"
+                                title="Preencher no campo"
+                              >
+                                Selecionar
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
               </div>
             </div>
 

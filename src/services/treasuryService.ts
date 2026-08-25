@@ -17,8 +17,9 @@ export const LOCAL_SUPPORT_KEY = 'tesouraria_app_support_config';
 
 /**
  * Super Admin Global do Sistema
- * Apenas este e-mail tem acesso às configurações globais (Painel do Administrador)
+ * Emails autorizados a acessar o Painel do Administrador
  */
+export const SUPER_ADMIN_EMAILS = ['wenes13@hotmail.com', 'keylla.wenes@gmail.com'];
 export const SUPER_ADMIN_EMAIL = 'wenes13@hotmail.com';
 
 /**
@@ -28,7 +29,8 @@ export function isSuperAdmin(target?: User | { email?: string } | string | null)
   if (!target) return false;
   const email = typeof target === 'string' ? target : target.email;
   if (!email || typeof email !== 'string') return false;
-  return email.trim().toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+  const clean = email.trim().toLowerCase();
+  return SUPER_ADMIN_EMAILS.some((adm) => adm.toLowerCase() === clean);
 }
 
 export interface ContatoRegistro {
@@ -1378,10 +1380,70 @@ export async function updateUserSubscriptionStatus(
   _status: 'active' | 'inactive' | 'trialing' | 'cancelled' | string,
   _mpPreapprovalId?: string
 ): Promise<boolean> {
-  // Conforme diretriz de segurança, o front-end NÃO altera subscription_status no banco de dados.
+  // Conforme diretriz de segurança, o front-end normal NÃO altera subscription_status no banco de dados.
   // Apenas consulta o status atualizado.
   if (!isSupabaseConfigured || !userId) return false;
   const user = await fetchUserProfile(userId);
   return isSubscriptionActive(user);
 }
+
+/**
+ * Função Administrativa (Super Admin / Painel de Controle):
+ * Permite alterar manualmente o status de assinatura de um usuário (ex: liberar acesso imediatamente definindo status_assinatura = 'ativo').
+ */
+export async function adminSetUserSubscriptionStatus(
+  identifier: string,
+  status: 'ativo' | 'pendente' = 'ativo',
+  days: number = 35
+): Promise<{ success: boolean; message: string; user?: any }> {
+  try {
+    const res = await fetch('/api/admin/set-user-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        identifier,
+        status,
+        days,
+      }),
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        message: data.error || data.message || 'Falha ao atualizar status do usuário.',
+      };
+    }
+
+    return {
+      success: true,
+      message: data.message || `Status atualizado com sucesso para '${status}'!`,
+      user: data.user,
+    };
+  } catch (err: any) {
+    console.error('Erro ao chamar adminSetUserSubscriptionStatus:', err);
+    return {
+      success: false,
+      message: err.message || 'Erro de conexão com o servidor ao atualizar status.',
+    };
+  }
+}
+
+/**
+ * Função Administrativa: Lista os perfis cadastrados para visualização e liberação rápida.
+ */
+export async function adminListAllProfiles(): Promise<Array<any>> {
+  try {
+    const res = await fetch('/api/admin/list-profiles');
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.profiles || [];
+  } catch (err) {
+    console.error('Erro ao listar perfis administrativos:', err);
+    return [];
+  }
+}
+
 

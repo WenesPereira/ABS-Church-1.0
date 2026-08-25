@@ -116,6 +116,153 @@ async function activateUserSubscription(
   }
 }
 
+// Endpoint Administrativo para Alteração Manual de Status de Assinatura
+app.post("/api/admin/set-user-status", async (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  try {
+    const { identifier, status = "ativo", days = 35 } = req.body || {};
+
+    if (!identifier || typeof identifier !== "string" || !identifier.trim()) {
+      return res.status(400).json({ error: "Identificador (e-mail ou ID do usuário) é obrigatório." });
+    }
+
+    const cleanIdentifier = identifier.trim();
+    const isAtivo = status.toLowerCase() === "ativo" || status.toLowerCase() === "active";
+    const statusAssinatura = isAtivo ? "ativo" : "pendente";
+    const subStatus = isAtivo ? "active" : "inactive";
+
+    const expiresDate = new Date();
+    expiresDate.setDate(expiresDate.getDate() + (isAtivo ? Number(days) || 35 : 0));
+    const expiresIso = isAtivo ? expiresDate.toISOString() : null;
+    const nowIso = new Date().toISOString();
+
+    const updatePayload: Record<string, any> = {
+      status_assinatura: statusAssinatura,
+      subscription_status: subStatus,
+      subscription_plan: isAtivo ? "mensal" : "gratuito",
+      subscription_expires_at: expiresIso,
+      updated_at: nowIso,
+    };
+
+    if (!supabaseAdmin) {
+      return res.json({
+        success: true,
+        mock: true,
+        message: `Status atualizado localmente para '${statusAssinatura}' (Chave Supabase Admin não configurada).`,
+        status: statusAssinatura,
+      });
+    }
+
+    let updatedRows: any[] = [];
+    let updateError: any = null;
+
+    // 1. Tenta atualizar por email
+    if (cleanIdentifier.includes("@")) {
+      const result = await supabaseAdmin
+        .from("profiles")
+        .update(updatePayload)
+        .ilike("email", cleanIdentifier.toLowerCase())
+        .select();
+
+      if (!result.error && result.data && result.data.length > 0) {
+        updatedRows = result.data;
+      } else {
+        updateError = result.error;
+      }
+    }
+
+    // 2. Se não encontrou ou não é email, tenta por id / user_id
+    if (updatedRows.length === 0) {
+      const result = await supabaseAdmin
+        .from("profiles")
+        .update(updatePayload)
+        .or(`id.eq.${cleanIdentifier},user_id.eq.${cleanIdentifier}`)
+        .select();
+
+      if (!result.error && result.data && result.data.length > 0) {
+        updatedRows = result.data;
+      } else if (!updateError) {
+        updateError = result.error;
+      }
+    }
+
+    // 3. Se deu erro de coluna adicional inexistente, tenta update mínimo apenas com status_assinatura
+    if (updatedRows.length === 0) {
+      const minPayload = {
+        status_assinatura: statusAssinatura,
+        updated_at: nowIso,
+      };
+
+      if (cleanIdentifier.includes("@")) {
+        const resultMin = await supabaseAdmin
+          .from("profiles")
+          .update(minPayload)
+          .ilike("email", cleanIdentifier.toLowerCase())
+          .select();
+
+        if (!resultMin.error && resultMin.data && resultMin.data.length > 0) {
+          updatedRows = resultMin.data;
+        }
+      } else {
+        const resultMin = await supabaseAdmin
+          .from("profiles")
+          .update(minPayload)
+          .or(`id.eq.${cleanIdentifier},user_id.eq.${cleanIdentifier}`)
+          .select();
+
+        if (!resultMin.error && resultMin.data && resultMin.data.length > 0) {
+          updatedRows = resultMin.data;
+        }
+      }
+    }
+
+    if (updatedRows.length > 0) {
+      console.log(`[Admin] Status de assinatura do usuário ${cleanIdentifier} alterado manualmente para '${statusAssinatura}'.`);
+      return res.json({
+        success: true,
+        message: `Status do usuário atualizado para '${statusAssinatura}' com sucesso no Supabase!`,
+        user: updatedRows[0],
+      });
+    }
+
+    return res.status(404).json({
+      success: false,
+      error: `Usuário '${cleanIdentifier}' não encontrado na tabela profiles do Supabase.`,
+      details: updateError,
+    });
+  } catch (err: any) {
+    console.error("[Admin] Erro ao alterar status manualmente:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Erro interno ao atualizar status do usuário.",
+    });
+  }
+});
+
+// Endpoint Administrativo para listar perfis cadastrados no Supabase
+app.get("/api/admin/list-profiles", async (_req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  try {
+    if (!supabaseAdmin) {
+      return res.json({ profiles: [] });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("profiles")
+      .select("id, user_id, email, nome, nome_igreja, cargo, status_assinatura, subscription_status, subscription_expires_at, created_at, updated_at")
+      .order("created_at", { ascending: false })
+      .limit(50);
+
+    if (error) {
+      return res.status(500).json({ error: error.message, profiles: [] });
+    }
+
+    return res.json({ profiles: data || [] });
+  } catch (err: any) {
+    return res.status(500).json({ error: err.message, profiles: [] });
+  }
+});
+
 const getAIClient = () => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
