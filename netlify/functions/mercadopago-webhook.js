@@ -89,12 +89,20 @@ exports.handler = async function (event, context) {
     }
 
     // 2. Chaves de Configuração (Mercado Pago e Supabase)
-    const mpToken = (
-      process.env.MERCADOPAGO_ACCESS_TOKEN ||
-      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
-      process.env.MP_ACCESS_TOKEN ||
-      ''
-    ).trim();
+    const candidateTokens = [
+      process.env.MERCADOPAGO_ACCESS_TOKEN,
+      process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      process.env.MP_ACCESS_TOKEN,
+    ].filter(Boolean).map(t => t.trim());
+
+    const mpToken =
+      candidateTokens.find(t => t.startsWith('APP_USR-')) ||
+      candidateTokens[0] ||
+      '';
+
+    if (mpToken.startsWith('TEST-')) {
+      console.warn('[Mercado Pago Webhook] AVISO: Token configurado é do tipo TEST. Para notificações reais em produção use credenciais de Produção APP_USR-...');
+    }
 
     const supabaseUrl = (
       process.env.SUPABASE_URL ||

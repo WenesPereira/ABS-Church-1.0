@@ -35,17 +35,23 @@ export interface CheckPaymentResponse {
 }
 
 /**
- * Obtém a chave pública do Mercado Pago configurada no ambiente
+ * Obtém a chave pública do Mercado Pago configurada no ambiente (priorizando chaves de Produção APP_USR-...)
  */
 export function getMercadoPagoPublicKey(): string {
   const env = ((import.meta as any).env || {}) as Record<string, string>;
+  const candidateKeys = [
+    env.VITE_MERCADOPAGO_PUBLIC_KEY,
+    env.VITE_MP_PUBLIC_KEY,
+    env.MERCADOPAGO_PUBLIC_KEY,
+    env.MP_PUBLIC_KEY,
+  ].filter(Boolean).map(k => (k as string).trim());
+
+  // Prioriza chaves de produção iniciadas em APP_USR-
   return (
-    env.VITE_MERCADOPAGO_PUBLIC_KEY ||
-    env.VITE_MP_PUBLIC_KEY ||
-    env.MERCADOPAGO_PUBLIC_KEY ||
-    env.MP_PUBLIC_KEY ||
+    candidateKeys.find(k => k.startsWith('APP_USR-')) ||
+    candidateKeys[0] ||
     ''
-  ).trim();
+  );
 }
 
 let isSdkInitialized = false;
@@ -269,6 +275,7 @@ export async function createMercadoPagoPix(
 
 /**
  * Consulta o status atual de um pagamento e do perfil do usuário no Supabase
+ * Realiza consulta direta à API do Mercado Pago e força atualização do perfil se aprovado
  */
 export async function checkMercadoPagoPayment(
   paymentId: string,
@@ -291,23 +298,34 @@ export async function checkMercadoPagoPayment(
     }
   }
 
-  // 2. Tenta checagem na API se disponível
-  try {
-    const res = await fetch(`/api/mercadopago/check-payment/${encodeURIComponent(paymentId)}`, {
-      headers: {
-        Accept: 'application/json',
-      },
-    });
+  // 2. Tenta checagem direta nos endpoints de verificação (Netlify Function ou Express API)
+  const checkEndpoints = [
+    `/.netlify/functions/check-payment?paymentId=${encodeURIComponent(paymentId || '')}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
+    `/api/mercadopago/check-payment/${encodeURIComponent(paymentId || '')}${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`,
+    `/netlify/functions/check-payment?paymentId=${encodeURIComponent(paymentId || '')}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
+  ];
 
-    if (res.ok) {
-      const data = await parseSafeJsonResponse<CheckPaymentResponse>(
-        res,
-        'API Check Payment'
-      );
-      return data;
+  for (const endpoint of checkEndpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      });
+
+      if (res.ok) {
+        const data = await parseSafeJsonResponse<CheckPaymentResponse>(
+          res,
+          `Check Payment (${endpoint})`
+        );
+        if (data && (data.status || data.approved !== undefined)) {
+          return data;
+        }
+      }
+    } catch (err: any) {
+      // continua para o próximo endpoint
     }
-  } catch (err: any) {
-    // continua silenciosamente
   }
 
   return {

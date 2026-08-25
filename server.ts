@@ -291,11 +291,23 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
   res.setHeader("Content-Type", "application/json");
   try {
     const { userId, email, nome, valor, cpf, docNumber, description } = req.body || {};
+    
+    // Prioriza tokens de produção (APP_USR-...) se houver múltiplas variáveis
+    const candidateTokens = [
+      process.env.MERCADOPAGO_ACCESS_TOKEN,
+      process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      process.env.MP_ACCESS_TOKEN,
+    ].filter(Boolean).map(t => (t as string).trim());
+
     const mpToken =
-      process.env.MERCADOPAGO_ACCESS_TOKEN ||
-      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
-      process.env.MP_ACCESS_TOKEN;
-    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      candidateTokens.find(t => t.startsWith("APP_USR-")) ||
+      candidateTokens[0] ||
+      "";
+
+    if (mpToken.startsWith("TEST-")) {
+      console.warn("[Mercado Pago Server] AVISO: Usando credencial TEST do Mercado Pago. Para pagamentos reais em produção configure APP_USR-...");
+    }
+
     const amount = Number(valor) || 19.9;
     const cleanDoc = (docNumber || cpf || '').replace(/\D/g, '');
 
@@ -327,7 +339,7 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
             : undefined,
         },
         external_reference: finalUserId || `user-${Date.now()}`,
-        notification_url: `${appUrl}/api/mercadopago/webhook`,
+        notification_url: "https://abschurch.com.br/.netlify/functions/mercadopago-webhook",
       };
 
       const idempotencyKey = `pix-${userId || Date.now()}-${Date.now()}`;
@@ -430,22 +442,31 @@ app.post("/api/create-pix-payment", handleCreatePix);
 const handleCheckPayment = async (req: express.Request, res: express.Response) => {
   res.setHeader("Content-Type", "application/json");
   try {
-    const paymentId = req.params.paymentId || (req.query.paymentId as string);
-    const mpToken =
-      process.env.MERCADOPAGO_ACCESS_TOKEN ||
-      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
-      process.env.MP_ACCESS_TOKEN;
+    const paymentId = req.params.paymentId || (req.query.paymentId as string) || (req.query.id as string) || (req.body?.paymentId as string);
+    const targetUserId = (req.query.userId as string) || (req.query.user_id as string) || (req.body?.userId as string);
+    const targetEmail = (req.query.email as string) || (req.body?.email as string);
 
-    if (!paymentId) {
-      return res.status(400).json({ error: "ID do pagamento obrigatório." });
+    const candidateTokens = [
+      process.env.MERCADOPAGO_ACCESS_TOKEN,
+      process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      process.env.MP_ACCESS_TOKEN,
+    ].filter(Boolean).map(t => (t as string).trim());
+
+    const mpToken =
+      candidateTokens.find(t => t.startsWith("APP_USR-")) ||
+      candidateTokens[0] ||
+      "";
+
+    if (!paymentId && !targetUserId && !targetEmail) {
+      return res.status(400).json({ error: "ID do pagamento ou identificador de usuário obrigatório." });
     }
 
     let status = "pending";
-    let externalRef = "";
-    let payerEmail = "";
+    let externalRef = targetUserId || "";
+    let payerEmail = targetEmail || "";
 
     // 1. Se houver token do Mercado Pago, consulta a API oficial
-    if (mpToken && mpToken.trim().length > 10 && !paymentId.startsWith("DEMO-PIX-")) {
+    if (mpToken && mpToken.trim().length > 10 && paymentId && !paymentId.startsWith("DEMO-PIX-")) {
       try {
         const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
           headers: {
@@ -456,19 +477,19 @@ const handleCheckPayment = async (req: express.Request, res: express.Response) =
         if (mpRes.ok) {
           const mpData = await mpRes.json();
           status = mpData.status; // 'approved', 'pending', 'rejected', 'cancelled'
-          externalRef = mpData.external_reference || "";
-          payerEmail = mpData.payer?.email || "";
+          externalRef = mpData.external_reference || externalRef;
+          payerEmail = mpData.payer?.email || payerEmail;
         }
       } catch (e) {
         console.warn("[Mercado Pago] Erro ao consultar pagamento na API:", e);
       }
-    } else {
+    } else if (paymentId) {
       // Verifica store em memória local
       const local = localPaymentStore.get(paymentId);
       if (local) {
         status = local.status;
-        externalRef = local.userId;
-        payerEmail = local.email;
+        externalRef = local.userId || externalRef;
+        payerEmail = local.email || payerEmail;
       }
     }
 
@@ -480,10 +501,13 @@ const handleCheckPayment = async (req: express.Request, res: express.Response) =
     }
 
     return res.json({
+      success: true,
       paymentId,
       status,
       approved: isApproved,
       userUpdated,
+      userId: externalRef,
+      email: payerEmail,
     });
   } catch (err: any) {
     console.error("[Mercado Pago] Erro ao checar status do pagamento:", err);
@@ -492,6 +516,12 @@ const handleCheckPayment = async (req: express.Request, res: express.Response) =
 };
 
 app.get("/api/mercadopago/check-payment/:paymentId", handleCheckPayment);
+app.get("/api/mercadopago/check-payment", handleCheckPayment);
+app.post("/api/mercadopago/check-payment", handleCheckPayment);
+app.get("/.netlify/functions/check-payment", handleCheckPayment);
+app.post("/.netlify/functions/check-payment", handleCheckPayment);
+app.get("/netlify/functions/check-payment", handleCheckPayment);
+app.post("/netlify/functions/check-payment", handleCheckPayment);
 app.get("/functions/v1/check-pix-payment", handleCheckPayment);
 
 /**
@@ -499,10 +529,16 @@ app.get("/functions/v1/check-pix-payment", handleCheckPayment);
  */
 const handleMercadoPagoWebhook = async (req: express.Request, res: express.Response) => {
   try {
+    const candidateTokens = [
+      process.env.MERCADOPAGO_ACCESS_TOKEN,
+      process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      process.env.MP_ACCESS_TOKEN,
+    ].filter(Boolean).map(t => (t as string).trim());
+
     const mpToken =
-      process.env.MERCADOPAGO_ACCESS_TOKEN ||
-      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
-      process.env.MP_ACCESS_TOKEN;
+      candidateTokens.find(t => t.startsWith("APP_USR-")) ||
+      candidateTokens[0] ||
+      "";
     
     // Captura o ID do pagamento de diferentes formatos enviados pelo Mercado Pago
     const body = req.body || {};

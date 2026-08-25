@@ -42,13 +42,29 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
   const [pixError, setPixError] = useState<string | null>(null);
   
   const [isVerifying, setIsVerifying] = useState(false);
+  const [waitingSeconds, setWaitingSeconds] = useState(0);
   const [verificationFeedback, setVerificationFeedback] = useState<{
     type: 'success' | 'info' | 'error';
     message: string;
   } | null>(null);
 
   const pollingTimerRef = useRef<any>(null);
+  const secondsTimerRef = useRef<any>(null);
   const checkoutUrl = getMercadoPagoSubscriptionUrl(currentUser?.id);
+
+  // Contador de tempo aguardando confirmação (segundos)
+  useEffect(() => {
+    secondsTimerRef.current = setInterval(() => {
+      setWaitingSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => {
+      if (secondsTimerRef.current) {
+        clearInterval(secondsTimerRef.current);
+        secondsTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Inicializa o SDK Oficial do Mercado Pago no front-end e escuta alterações em tempo real no perfil Supabase
   useEffect(() => {
@@ -76,6 +92,7 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
     setIsLoadingPix(true);
     setPixError(null);
     setVerificationFeedback(null);
+    setWaitingSeconds(0);
 
     try {
       const res = await createMercadoPagoPix({
@@ -115,6 +132,10 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
           clearInterval(pollingTimerRef.current);
           pollingTimerRef.current = null;
         }
+        if (secondsTimerRef.current) {
+          clearInterval(secondsTimerRef.current);
+          secondsTimerRef.current = null;
+        }
         setVerificationFeedback({
           type: 'success',
           message: 'Pagamento confirmado com sucesso! Acesso PRO liberado. Redirecionando...',
@@ -124,23 +145,34 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
         return;
       }
 
-      // 2. Se o status ainda não estiver ativo no Supabase mas temos o ID do Pix, consulta a API do Mercado Pago
+      // 2. Se o status continuar 'inactive' e tivermos o paymentId do Pix:
+      // Se passou mais de 10s ou for consulta manual pelo botão "Já paguei",
+      // consulta diretamente a API do Mercado Pago e força a atualização no Supabase
       if (pixData?.paymentId) {
-        const checkRes = await checkMercadoPagoPayment(pixData.paymentId);
-        if (checkRes.approved) {
-          const userAfterPayment = await fetchUserProfile(currentUser.id);
-          if (userAfterPayment) {
-            if (pollingTimerRef.current) {
-              clearInterval(pollingTimerRef.current);
-              pollingTimerRef.current = null;
+        const shouldDirectCheck = !silent || waitingSeconds >= 10;
+        if (shouldDirectCheck) {
+          console.log(`[Mercado Pago] Consultando API diretamente para paymentId=${pixData.paymentId} (tempo: ${waitingSeconds}s)...`);
+          const checkRes = await checkMercadoPagoPayment(pixData.paymentId, currentUser.id);
+          
+          if (checkRes.approved) {
+            const userAfterPayment = await fetchUserProfile(currentUser.id);
+            if (userAfterPayment && isSubscriptionActive(userAfterPayment)) {
+              if (pollingTimerRef.current) {
+                clearInterval(pollingTimerRef.current);
+                pollingTimerRef.current = null;
+              }
+              if (secondsTimerRef.current) {
+                clearInterval(secondsTimerRef.current);
+                secondsTimerRef.current = null;
+              }
+              setVerificationFeedback({
+                type: 'success',
+                message: 'Pagamento aprovado pelo Mercado Pago! Assinatura ativada no sistema.',
+              });
+              if (onStatusUpdated) onStatusUpdated(userAfterPayment);
+              if (onSuccess) onSuccess();
+              return;
             }
-            setVerificationFeedback({
-              type: 'success',
-              message: 'Pagamento Pix aprovado pelo Mercado Pago! Redirecionando...',
-            });
-            if (onStatusUpdated) onStatusUpdated(userAfterPayment);
-            if (onSuccess) onSuccess();
-            return;
           }
         }
       }

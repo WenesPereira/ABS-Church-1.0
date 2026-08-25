@@ -45,10 +45,21 @@ exports.handler = async function (event, context) {
     const amount = Number(valor) > 0 ? Number(valor) : 19.90;
     const cleanDoc = (docNumber || cpf || '').replace(/\D/g, '');
 
+    // Prioriza credenciais de Produção do Mercado Pago (iniciadas em APP_USR-...)
+    const candidateTokens = [
+      process.env.MERCADOPAGO_ACCESS_TOKEN,
+      process.env.MERCADO_PAGO_ACCESS_TOKEN,
+      process.env.MP_ACCESS_TOKEN,
+    ].filter(Boolean).map(t => t.trim());
+
     const mpToken =
-      process.env.MERCADOPAGO_ACCESS_TOKEN ||
-      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
-      process.env.MP_ACCESS_TOKEN;
+      candidateTokens.find(t => t.startsWith('APP_USR-')) ||
+      candidateTokens[0] ||
+      '';
+
+    if (mpToken.startsWith('TEST-')) {
+      console.warn('[Netlify Function Pix] AVISO: Usando credencial TEST do Mercado Pago. Para pagamentos reais em produção configure APP_USR-...');
+    }
 
     // Gerar idempotency key único por requisição
     const idempotencyKey = crypto.randomUUID
@@ -61,11 +72,8 @@ exports.handler = async function (event, context) {
       const firstName = parts[0] || 'Cliente';
       const lastName = parts.slice(1).join(' ') || 'Tesouraria';
 
-      // Detectar URL base para notification_url
-      const host = event.headers?.host || event.headers?.['x-forwarded-host'] || '';
-      const protocol = event.headers?.['x-forwarded-proto'] || 'https';
-      const baseUrl = process.env.APP_URL || (host ? `${protocol}://${host}` : '');
-      const notificationUrl = baseUrl ? `${baseUrl}/.netlify/functions/mercadopago-webhook` : undefined;
+      // URL oficial fixa e explícita do Webhook de notificação conforme requerido
+      const notificationUrl = 'https://abschurch.com.br/.netlify/functions/mercadopago-webhook';
 
       const mpRequestBody = {
         transaction_amount: amount,
@@ -83,8 +91,10 @@ exports.handler = async function (event, context) {
             : undefined,
         },
         external_reference: finalUserId || `user-${Date.now()}`,
-        ...(notificationUrl ? { notification_url: notificationUrl } : {}),
+        notification_url: notificationUrl,
       };
+
+      console.log(`[Netlify Function Pix] Criando Pix oficial com notification_url="${notificationUrl}" para user_id="${finalUserId}"...`);
 
       const mpResponse = await fetch('https://api.mercadopago.com/v1/payments', {
         method: 'POST',

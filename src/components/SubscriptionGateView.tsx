@@ -23,7 +23,10 @@ import {
   isSubscriptionActive,
   isSuperAdmin,
 } from '../services/treasuryService';
-import { subscribeToUserSubscriptionStatus } from '../services/paymentService';
+import {
+  subscribeToUserSubscriptionStatus,
+  checkMercadoPagoPayment,
+} from '../services/paymentService';
 import { MercadoPagoCheckoutSection } from './MercadoPagoCheckoutSection';
 
 interface SubscriptionGateViewProps {
@@ -53,6 +56,15 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
       if (!silent) setIsVerifying(true);
 
       try {
+        // Se for acionamento manual ("Já paguei, verificar novamente"), executa verificação direta no Mercado Pago para forçar atualização
+        if (!silent) {
+          try {
+            await checkMercadoPagoPayment('', currentUser.id);
+          } catch (mpErr) {
+            console.warn('[SubscriptionGateView] Aviso na verificação MP:', mpErr);
+          }
+        }
+
         const freshUser = await fetchUserProfile(currentUser.id);
         if (!isMountedRef.current) return false;
 
@@ -77,7 +89,7 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
           setFeedback({
             type: 'info',
             message:
-              'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de pagar via Pix ou Cartão pelo Mercado Pago, pode levar alguns instantes para a compensação.',
+              'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de pagar via Pix ou Cartão pelo Mercado Pago, pode levar alguns instantes para a compensação bancária.',
           });
         }
       } catch (err) {
