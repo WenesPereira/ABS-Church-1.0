@@ -139,12 +139,10 @@ app.get("/api/health", (_req, res) => {
    ROTAS DE PAGAMENTO & ASSINATURA MERCADO PAGO (PIX & CARTÃO)
    ========================================================= */
 
-/**
- * Criação de Cobrança Pix via API do Mercado Pago (/v1/payments)
- */
-app.post("/api/mercadopago/create-pix", async (req, res) => {
+const handleCreatePix = async (req: express.Request, res: express.Response) => {
+  res.setHeader("Content-Type", "application/json");
   try {
-    const { userId, email, nome, valor } = req.body;
+    const { userId, email, nome, valor } = req.body || {};
     const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
     const appUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
     const amount = Number(valor) || 19.9;
@@ -257,14 +255,23 @@ app.post("/api/mercadopago/create-pix", async (req, res) => {
     console.error("[Mercado Pago] Erro inesperado ao criar Pix:", err);
     return res.status(500).json({ error: err.message || "Erro interno ao processar Pix." });
   }
-});
+};
+
+/**
+ * Criação de Cobrança Pix via API do Mercado Pago (/v1/payments)
+ */
+app.post("/api/mercadopago/create-pix", handleCreatePix);
+app.post("/functions/v1/create-pix-payment", handleCreatePix);
+app.post("/functions/v1/mercadopago-pix", handleCreatePix);
+app.post("/api/create-pix-payment", handleCreatePix);
 
 /**
  * Consulta de Status do Pagamento (Polling pelo Frontend)
  */
-app.get("/api/mercadopago/check-payment/:paymentId", async (req, res) => {
+const handleCheckPayment = async (req: express.Request, res: express.Response) => {
+  res.setHeader("Content-Type", "application/json");
   try {
-    const { paymentId } = req.params;
+    const paymentId = req.params.paymentId || (req.query.paymentId as string);
     const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
 
     if (!paymentId) {
@@ -320,7 +327,10 @@ app.get("/api/mercadopago/check-payment/:paymentId", async (req, res) => {
     console.error("[Mercado Pago] Erro ao checar status do pagamento:", err);
     return res.status(500).json({ error: err.message || "Erro ao checar pagamento." });
   }
-});
+};
+
+app.get("/api/mercadopago/check-payment/:paymentId", handleCheckPayment);
+app.get("/functions/v1/check-pix-payment", handleCheckPayment);
 
 /**
  * Webhook Oficial do Mercado Pago (Notificações de Pagamentos e Assinaturas)
