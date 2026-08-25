@@ -20,7 +20,7 @@ import {
   checkMercadoPagoPayment,
   simulatePixApproval,
   initializeMercadoPagoSdk,
-  getMercadoPagoPublicKey,
+  subscribeToUserSubscriptionStatus,
   CreatePixResponse,
 } from '../services/paymentService';
 
@@ -50,10 +50,25 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
   const pollingTimerRef = useRef<any>(null);
   const checkoutUrl = getMercadoPagoSubscriptionUrl(currentUser?.id);
 
-  // Inicializa o SDK Oficial do Mercado Pago no front-end
+  // Inicializa o SDK Oficial do Mercado Pago no front-end e escuta alterações em tempo real no perfil Supabase
   useEffect(() => {
     initializeMercadoPagoSdk();
-  }, []);
+
+    if (currentUser?.id) {
+      const unsubscribe = subscribeToUserSubscriptionStatus(currentUser.id, (freshUser) => {
+        setVerificationFeedback({
+          type: 'success',
+          message: 'Assinatura ativada em tempo real no sistema! Acesso PRO liberado.',
+        });
+        if (onStatusUpdated) onStatusUpdated(freshUser);
+        if (onSuccess) onSuccess();
+      });
+
+      return () => {
+        unsubscribe();
+      };
+    }
+  }, [currentUser?.id, onStatusUpdated, onSuccess]);
 
   // Geração do Pix ao escolher o método Pix ou ao carregar
   const handleGeneratePix = async () => {
