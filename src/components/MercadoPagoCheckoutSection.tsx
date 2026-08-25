@@ -422,10 +422,10 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
                   type="button"
                   onClick={() => handleVerifyStatus(false)}
                   disabled={isVerifying}
-                  className="px-3.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
-                  <span>{isVerifying ? 'Verificando...' : 'Já paguei, verificar novamente'}</span>
+                  <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
+                  <span>{isVerifying ? 'Atualizando sessão...' : 'Já realizei o pagamento / Atualizar status'}</span>
                 </button>
               </div>
 
@@ -487,7 +487,7 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-xs transition-colors cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
-              <span>{isVerifying ? 'Verificando...' : 'Já paguei, verificar novamente'}</span>
+              <span>{isVerifying ? 'Atualizando sessão...' : 'Já realizei o pagamento / Atualizar status'}</span>
             </button>
           </div>
         </div>

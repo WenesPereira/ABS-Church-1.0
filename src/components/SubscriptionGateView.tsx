@@ -56,7 +56,7 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
       if (!silent) setIsVerifying(true);
 
       try {
-        // Se for acionamento manual ("Já paguei, verificar novamente"), executa verificação direta no Mercado Pago para forçar atualização
+        // Se for acionamento manual ("Já realizei o pagamento / Atualizar status"), executa verificação direta no Mercado Pago para forçar atualização e recarregar a sessão
         if (!silent) {
           try {
             await checkMercadoPagoPayment('', currentUser.id);
@@ -79,11 +79,8 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
             message: 'Assinatura confirmada com sucesso! Liberando acesso completo ao Dashboard...',
           });
 
-          setTimeout(() => {
-            if (isMountedRef.current) {
-              onStatusUpdated(freshUser);
-            }
-          }, 600);
+          // Atualiza o estado da sessão e redireciona automaticamente para a tela principal (Dashboard)
+          onStatusUpdated(freshUser);
           return true;
         } else if (!silent) {
           setFeedback({
@@ -310,10 +307,10 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
                   type="button"
                   onClick={handleManualCheck}
                   disabled={isVerifying}
-                  className="shrink-0 flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all shadow cursor-pointer disabled:opacity-50"
+                  className="shrink-0 flex items-center justify-center gap-2 px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all shadow cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
-                  <span>{isVerifying ? 'Verificando...' : 'Já paguei, verificar novamente'}</span>
+                  <span>{isVerifying ? 'Atualizando sessão...' : 'Já realizei o pagamento / Atualizar status'}</span>
                 </button>
               )}
             </div>
@@ -330,10 +327,10 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
               type="button"
               onClick={handleManualCheck}
               disabled={isVerifying}
-              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 border border-amber-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50 shadow-sm"
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs transition-all cursor-pointer disabled:opacity-50 shadow-md shadow-amber-500/20"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
-              <span>{isVerifying ? 'Consultando Supabase...' : 'Já paguei, verificar novamente'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-slate-950' : 'text-slate-950'}`} />
+              <span>{isVerifying ? 'Consultando Supabase...' : 'Já realizei o pagamento / Atualizar status'}</span>
             </button>
           </div>
         </div>

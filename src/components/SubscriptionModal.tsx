@@ -308,10 +308,10 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               type="button"
               onClick={handleCheckStatus}
               disabled={isVerifying}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold text-xs transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-all cursor-pointer disabled:opacity-50 shadow"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-amber-400' : 'text-amber-400'}`} />
-              <span>{isVerifying ? 'Consultando...' : 'Já paguei, verificar novamente'}</span>
+              <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin text-slate-950' : 'text-slate-950'}`} />
+              <span>{isVerifying ? 'Consultando...' : 'Já realizei o pagamento / Atualizar status'}</span>
             </button>
           </div>
         </div>
