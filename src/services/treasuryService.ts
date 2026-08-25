@@ -1317,34 +1317,49 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
   if (!isSupabaseConfigured || !userId) return null;
 
   try {
-    const { data, error } = await supabase
+    // 1. Consulta primeiro por user_id = userId
+    let { data, error } = await supabase
       .from('profiles')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
 
-    if (error) {
+    // 2. Se não encontrar por user_id, consulta por id = userId
+    if (!data) {
+      const resById = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle();
+      
+      if (resById.data) {
+        data = resById.data;
+      }
+    }
+
+    if (error && !data) {
       console.error('Erro Supabase ao buscar perfil em profiles:', error);
       return null;
     }
 
     if (data) {
       const isSuper = isSuperAdmin(data.email);
-      // Lê o valor de status_assinatura / subscription_status EXCLUSIVAMENTE do banco de dados
-      const rawStatusAssinatura = typeof data.status_assinatura === 'string' ? data.status_assinatura.trim().toLowerCase() : '';
+      // Lê o valor da coluna subscription_status diretamente da tabela profiles do Supabase
       const rawSubStatus = typeof data.subscription_status === 'string' ? data.subscription_status.trim().toLowerCase() : '';
+      const rawStatusAssinatura = typeof data.status_assinatura === 'string' ? data.status_assinatura.trim().toLowerCase() : '';
       const rawGenericStatus = typeof data.status === 'string' ? data.status.trim().toLowerCase() : '';
 
+      // Liberação se subscription_status for 'active' (ou 'ativo' / 'trialing' / 'pago')
       const isStatusActive =
         isSuper ||
-        rawStatusAssinatura === 'ativo' ||
-        rawStatusAssinatura === 'active' ||
-        rawStatusAssinatura === 'pago' ||
-        rawStatusAssinatura === 'aprovado' ||
         rawSubStatus === 'active' ||
         rawSubStatus === 'ativo' ||
         rawSubStatus === 'trialing' ||
         rawSubStatus === 'pago' ||
+        rawStatusAssinatura === 'ativo' ||
+        rawStatusAssinatura === 'active' ||
+        rawStatusAssinatura === 'pago' ||
+        rawStatusAssinatura === 'aprovado' ||
         rawGenericStatus === 'ativo' ||
         rawGenericStatus === 'active';
 
@@ -1352,7 +1367,7 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
       const statusAssinatura = isStatusActive ? 'ativo' : (rawStatusAssinatura || 'pendente');
 
       return {
-        id: data.id,
+        id: data.id || data.user_id || userId,
         email: data.email,
         nome: data.nome,
         cargo: data.cargo || undefined,

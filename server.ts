@@ -305,9 +305,11 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
     const firstName = nameParts[0] || "Pastor";
     const lastName = nameParts.slice(1).join(" ") || "Tesoureiro";
 
+    const finalUserId = String(userId || req.body?.user_id || req.body?.id || '').trim();
+
     // Se o token do Mercado Pago estiver configurado, chama a API oficial
     if (mpToken && mpToken.trim().length > 10) {
-      console.log(`[Mercado Pago] Gerando cobrança Pix real de R$ ${amount} para ${payerEmail}...`);
+      console.log(`[Mercado Pago] Gerando cobrança Pix real de R$ ${amount} para user_id=${finalUserId || 'anon'}...`);
       
       const payload: Record<string, any> = {
         transaction_amount: amount,
@@ -324,7 +326,7 @@ const handleCreatePix = async (req: express.Request, res: express.Response) => {
               }
             : undefined,
         },
-        external_reference: userId || payerEmail,
+        external_reference: finalUserId || `user-${Date.now()}`,
         notification_url: `${appUrl}/api/mercadopago/webhook`,
       };
 

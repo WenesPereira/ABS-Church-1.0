@@ -337,12 +337,18 @@ export function subscribeToUserSubscriptionStatus(
           event: 'UPDATE',
           schema: 'public',
           table: 'profiles',
-          filter: `user_id=eq.${userId}`,
         },
-        async () => {
-          const freshUser = await fetchUserProfile(userId);
-          if (freshUser && isSubscriptionActive(freshUser)) {
-            onActivated(freshUser);
+        async (payload) => {
+          const row = (payload.new || {}) as any;
+          if (
+            row.user_id === userId ||
+            row.id === userId ||
+            !row.user_id
+          ) {
+            const freshUser = await fetchUserProfile(userId);
+            if (freshUser && isSubscriptionActive(freshUser)) {
+              onActivated(freshUser);
+            }
           }
         }
       )

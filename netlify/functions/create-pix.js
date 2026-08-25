@@ -38,7 +38,8 @@ exports.handler = async function (event, context) {
       };
     }
 
-    const { userId, email, nome, valor, cpf, docNumber, description } = payload;
+    const { userId, user_id, id, email, nome, valor, cpf, docNumber, description } = payload;
+    const finalUserId = String(userId || user_id || id || '').trim();
     const payerEmail = (email || 'cliente@tesourariapro.com.br').trim();
     const payerName = (nome || 'Membro da Igreja').trim();
     const amount = Number(valor) > 0 ? Number(valor) : 19.90;
@@ -81,7 +82,7 @@ exports.handler = async function (event, context) {
               }
             : undefined,
         },
-        external_reference: userId || `user-${Date.now()}`,
+        external_reference: finalUserId || `user-${Date.now()}`,
         ...(notificationUrl ? { notification_url: notificationUrl } : {}),
       };
 

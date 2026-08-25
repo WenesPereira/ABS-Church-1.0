@@ -112,14 +112,37 @@ exports.handler = async function (event, context) {
             const lastPayment = orderData.payments[orderData.payments.length - 1];
             paymentId = String(lastPayment.id);
           }
+          if (orderData.external_reference) {
+            externalRef = orderData.external_reference;
+          }
         }
       } catch (orderErr) {
         console.warn('[Mercado Pago Webhook] Aviso ao consultar merchant_order:', orderErr);
       }
     }
 
-    // Consulta os dados oficiais do pagamento no Mercado Pago
-    if (paymentId && mpToken) {
+    // Se for notificação de preapproval (Assinatura Recorrente por Cartão)
+    if ((type === 'preapproval' || type === 'subscription_preapproval' || query.topic === 'preapproval') && paymentId && mpToken) {
+      try {
+        const preappRes = await fetch(`https://api.mercadopago.com/preapproval/${paymentId}`, {
+          headers: {
+            'Authorization': `Bearer ${mpToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+        if (preappRes.ok) {
+          const preappData = await preappRes.json();
+          paymentStatus = (preappData.status === 'authorized' || preappData.status === 'active') ? 'approved' : preappData.status;
+          externalRef = preappData.external_reference || null;
+          payerEmail = preappData.payer_email || null;
+        }
+      } catch (preappErr) {
+        console.warn('[Mercado Pago Webhook] Aviso ao consultar preapproval:', preappErr);
+      }
+    }
+
+    // Consulta os dados oficiais do pagamento no Mercado Pago (/v1/payments)
+    if (paymentId && mpToken && paymentStatus !== 'approved') {
       try {
         const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
           headers: {
@@ -131,141 +154,151 @@ exports.handler = async function (event, context) {
         if (mpRes.ok) {
           const mpData = await mpRes.json();
           paymentStatus = mpData.status;
-          externalRef = mpData.external_reference || null;
-          payerEmail = mpData.payer?.email || null;
+          externalRef = mpData.external_reference || externalRef || null;
+          payerEmail = mpData.payer?.email || payerEmail || null;
 
           console.log(`[Mercado Pago Webhook] Pagamento ${paymentId}: status=${paymentStatus}, external_reference=${externalRef}, email=${payerEmail}`);
-
-          // Quando o pagamento estiver aprovado (approved), atualiza a assinatura no Supabase
-          if (paymentStatus === 'approved') {
-            if (supabaseUrl && supabaseServiceKey) {
-              const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-                auth: { persistSession: false },
-              });
-
-              // Define expiração padrão de 35 dias para o plano mensal (30 dias + margem de tolerância)
-              const expiresDate = new Date();
-              expiresDate.setDate(expiresDate.getDate() + 35);
-              const expiresIso = expiresDate.toISOString();
-              const nowIso = new Date().toISOString();
-
-              const fullUpdatePayload = {
-                status_assinatura: 'ativo',
-                subscription_status: 'active',
-                subscription_plan: 'mensal',
-                subscription_expires_at: expiresIso,
-                updated_at: nowIso,
-              };
-
-              const minimalUpdatePayload = {
-                status_assinatura: 'ativo',
-                updated_at: nowIso,
-              };
-
-              // Função auxiliar para tentar atualizar com payload completo e fallback resiliente
-              const executeProfileUpdate = async (filterKey, filterValue) => {
-                // Tentativa 1: Payload completo (status_assinatura + subscription_status)
-                let { data, error } = await supabase
-                  .from('profiles')
-                  .update(fullUpdatePayload)
-                  .ilike(filterKey, filterValue)
-                  .select();
-
-                if (!error && data && data.length > 0) return true;
-
-                // Tentativa 2: Payload mínimo apenas com status_assinatura
-                let resMin = await supabase
-                  .from('profiles')
-                  .update(minimalUpdatePayload)
-                  .ilike(filterKey, filterValue)
-                  .select();
-
-                if (!resMin.error && resMin.data && resMin.data.length > 0) return true;
-
-                // Tentativa 3: Se o filtro for por id ou user_id
-                if (filterKey === 'id' || filterKey === 'user_id') {
-                  let resOr = await supabase
-                    .from('profiles')
-                    .update(fullUpdatePayload)
-                    .or(`id.eq.${filterValue},user_id.eq.${filterValue}`)
-                    .select();
-
-                  if (!resOr.error && resOr.data && resOr.data.length > 0) return true;
-
-                  let resOrMin = await supabase
-                    .from('profiles')
-                    .update(minimalUpdatePayload)
-                    .or(`id.eq.${filterValue},user_id.eq.${filterValue}`)
-                    .select();
-
-                  if (!resOrMin.error && resOrMin.data && resOrMin.data.length > 0) return true;
-                }
-
-                return false;
-              };
-
-              // 1. UPDATE por external_reference (ID do usuário) na tabela profiles
-              if (externalRef) {
-                userUpdated = await executeProfileUpdate('id', externalRef);
-                if (userUpdated) {
-                  console.log(`[Mercado Pago Webhook] Sucesso: status_assinatura = 'ativo' definido no Supabase (profiles) para userId: ${externalRef}`);
-                }
-              }
-
-              // 2. Se não localizou por ID, UPDATE por e-mail do pagador
-              if (!userUpdated && payerEmail) {
-                const cleanEmail = payerEmail.trim().toLowerCase();
-                userUpdated = await executeProfileUpdate('email', cleanEmail);
-                if (userUpdated) {
-                  console.log(`[Mercado Pago Webhook] Sucesso: status_assinatura = 'ativo' definido no Supabase (profiles) para e-mail: ${cleanEmail}`);
-                }
-              }
-
-              // 3. Fallback / Sincronização em tabelas dedicadas de assinaturas (ex: 'assinaturas', 'user_subscriptions', 'subscriptions')
-              const subscriptionTables = ['assinaturas', 'user_subscriptions', 'subscriptions'];
-              for (const tableName of subscriptionTables) {
-                try {
-                  if (externalRef) {
-                    await supabase
-                      .from(tableName)
-                      .upsert({
-                        user_id: externalRef,
-                        status_assinatura: 'ativo',
-                        status: 'ativo',
-                        subscription_status: 'active',
-                        plan: 'mensal',
-                        payment_id: String(paymentId),
-                        expires_at: expiresIso,
-                        updated_at: nowIso,
-                      }, { onConflict: 'user_id' });
-                  } else if (payerEmail) {
-                    await supabase
-                      .from(tableName)
-                      .update({
-                        status_assinatura: 'ativo',
-                        status: 'ativo',
-                        subscription_status: 'active',
-                        plan: 'mensal',
-                        payment_id: String(paymentId),
-                        expires_at: expiresIso,
-                        updated_at: nowIso,
-                      })
-                      .ilike('email', payerEmail.trim().toLowerCase());
-                  }
-                } catch (subErr) {
-                  // Tabelas opcionais caso existam no schema
-                }
-              }
-            } else {
-              console.warn('[Mercado Pago Webhook] Aviso: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.');
-            }
-          }
-        } else {
-          const errText = await mpRes.text();
-          console.error(`[Mercado Pago Webhook] Erro ao consultar pagamento na API Mercado Pago (${mpRes.status}):`, errText);
         }
       } catch (fetchErr) {
         console.error('[Mercado Pago Webhook] Falha de comunicação com a API do Mercado Pago:', fetchErr);
+      }
+    }
+
+    // Quando o pagamento ou assinatura estiver aprovado (approved), atualiza a assinatura no Supabase
+    if (paymentStatus === 'approved') {
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+          auth: { persistSession: false },
+        });
+
+        // Define expiração padrão de 35 dias para o plano mensal (30 dias + margem de tolerância)
+        const expiresDate = new Date();
+        expiresDate.setDate(expiresDate.getDate() + 35);
+        const expiresIso = expiresDate.toISOString();
+        const nowIso = new Date().toISOString();
+
+        const fullUpdatePayload = {
+          subscription_status: 'active',
+          status_assinatura: 'ativo',
+          subscription_plan: 'mensal',
+          subscription_expires_at: expiresIso,
+          updated_at: nowIso,
+        };
+
+        // 1. UPDATE por external_reference (user_id do usuário) na tabela profiles
+        if (externalRef) {
+          const cleanRef = String(externalRef).trim();
+
+          // Tentativa 1: UPDATE por user_id = external_reference
+          const { data: updatedByUser, error: errUser } = await supabase
+            .from('profiles')
+            .update(fullUpdatePayload)
+            .eq('user_id', cleanRef)
+            .select();
+
+          if (!errUser && updatedByUser && updatedByUser.length > 0) {
+            console.log(`[Mercado Pago Webhook] Sucesso: subscription_status='active' atualizado no Supabase (profiles) para user_id: ${cleanRef}`);
+            userUpdated = true;
+          }
+
+          // Tentativa 2: Fallback por id = external_reference
+          if (!userUpdated) {
+            const { data: updatedById, error: errId } = await supabase
+              .from('profiles')
+              .update(fullUpdatePayload)
+              .eq('id', cleanRef)
+              .select();
+
+            if (!errId && updatedById && updatedById.length > 0) {
+              console.log(`[Mercado Pago Webhook] Sucesso: subscription_status='active' atualizado no Supabase (profiles) para id: ${cleanRef}`);
+              userUpdated = true;
+            }
+          }
+
+          // Tentativa 3: Fallback com payload apenas contendo subscription_status e status_assinatura
+          if (!userUpdated) {
+            const minPayload = {
+              subscription_status: 'active',
+              status_assinatura: 'ativo',
+              updated_at: nowIso,
+            };
+
+            const { data: minUser, error: errMinUser } = await supabase
+              .from('profiles')
+              .update(minPayload)
+              .eq('user_id', cleanRef)
+              .select();
+
+            if (!errMinUser && minUser && minUser.length > 0) {
+              console.log(`[Mercado Pago Webhook] Sucesso: subscription_status='active' (min) atualizado no Supabase para user_id: ${cleanRef}`);
+              userUpdated = true;
+            } else {
+              const { data: minId } = await supabase
+                .from('profiles')
+                .update(minPayload)
+                .eq('id', cleanRef)
+                .select();
+
+              if (minId && minId.length > 0) {
+                console.log(`[Mercado Pago Webhook] Sucesso: subscription_status='active' (min) atualizado no Supabase para id: ${cleanRef}`);
+                userUpdated = true;
+              }
+            }
+          }
+        }
+
+        // 2. Fallback secundário por e-mail caso external_reference não tenha sido recebido
+        if (!userUpdated && payerEmail) {
+          const cleanEmail = payerEmail.trim().toLowerCase();
+          const { data: updatedByEmail, error: errEmail } = await supabase
+            .from('profiles')
+            .update(fullUpdatePayload)
+            .ilike('email', cleanEmail)
+            .select();
+
+          if (!errEmail && updatedByEmail && updatedByEmail.length > 0) {
+            console.log(`[Mercado Pago Webhook] Sucesso: subscription_status='active' atualizado por e-mail: ${cleanEmail}`);
+            userUpdated = true;
+          }
+        }
+
+        // 3. Fallback / Sincronização em tabelas dedicadas de assinaturas
+        const subscriptionTables = ['assinaturas', 'user_subscriptions', 'subscriptions'];
+        for (const tableName of subscriptionTables) {
+          try {
+            if (externalRef) {
+              await supabase
+                .from(tableName)
+                .upsert({
+                  user_id: externalRef,
+                  subscription_status: 'active',
+                  status_assinatura: 'ativo',
+                  status: 'ativo',
+                  plan: 'mensal',
+                  payment_id: String(paymentId),
+                  expires_at: expiresIso,
+                  updated_at: nowIso,
+                }, { onConflict: 'user_id' });
+            } else if (payerEmail) {
+              await supabase
+                .from(tableName)
+                .update({
+                  subscription_status: 'active',
+                  status_assinatura: 'ativo',
+                  status: 'ativo',
+                  plan: 'mensal',
+                  payment_id: String(paymentId),
+                  expires_at: expiresIso,
+                  updated_at: nowIso,
+                })
+                .ilike('email', payerEmail.trim().toLowerCase());
+            }
+          } catch (subErr) {
+            // Tabelas opcionais caso existam no schema
+          }
+        }
+      } else {
+        console.warn('[Mercado Pago Webhook] Aviso: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.');
       }
     }
 
