@@ -1,22 +1,24 @@
 const { createClient } = require('@supabase/supabase-js');
 
 /**
- * Netlify Function: Webhook do Mercado Pago
+ * Netlify Serverless Function: Webhook do Mercado Pago
  * Caminho: netlify/functions/mercadopago-webhook.js
  *
- * Recebe notificações via HTTP POST do webhook do Mercado Pago,
- * verifica o status do pagamento usando o MERCADOPAGO_ACCESS_TOKEN e,
- * quando aprovado ('approved'), ativa a assinatura do usuário no Supabase usando SUPABASE_SERVICE_ROLE_KEY.
+ * Responsabilidade:
+ * 1. Receber notificações HTTP POST de eventos do Mercado Pago.
+ * 2. Consultar a API oficial do Mercado Pago utilizando MERCADOPAGO_ACCESS_TOKEN para verificar se o pagamento foi 'approved'.
+ * 3. Obter o external_reference (ID do usuário) ou e-mail do pagador.
+ * 4. Fazer UPDATE na tabela do Supabase utilizando SUPABASE_SERVICE_ROLE_KEY, alterando o status da assinatura para 'active' / 'ativo'.
  */
 exports.handler = async function (event, context) {
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   };
 
-  // Tratar preflight CORS
+  // Tratar requisições OPTIONS (preflight CORS)
   if (event.httpMethod === 'OPTIONS') {
     return {
       statusCode: 200,
@@ -25,14 +27,14 @@ exports.handler = async function (event, context) {
     };
   }
 
-  // Healthcheck / status do webhook via GET
+  // Healthcheck do endpoint via GET
   if (event.httpMethod === 'GET') {
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         status: 'online',
-        service: 'Mercado Pago Webhook - Netlify Function',
+        message: 'Webhook Mercado Pago ativo e pronto para receber notificações.',
         timestamp: new Date().toISOString(),
       }),
     };
@@ -58,8 +60,8 @@ exports.handler = async function (event, context) {
 
     const action = body.action || query.action || '';
     const type = body.type || query.type || query.topic || '';
-    
-    // Obter o ID do pagamento de qualquer variação enviada pelo Mercado Pago
+
+    // Extrai o ID do pagamento de qualquer variação do payload Mercado Pago
     let paymentId =
       body.data?.id ||
       body.id ||
@@ -67,7 +69,7 @@ exports.handler = async function (event, context) {
       query['data.id'] ||
       (body.resource ? body.resource.split('/').pop() : null);
 
-    console.log(`[Webhook Mercado Pago] Notificação recebida: type=${type}, action=${action}, paymentId=${paymentId}`);
+    console.log(`[Mercado Pago Webhook] Notificação recebida: type=${type}, action=${action}, paymentId=${paymentId}`);
 
     const mpToken = (
       process.env.MERCADOPAGO_ACCESS_TOKEN ||
@@ -95,7 +97,7 @@ exports.handler = async function (event, context) {
     let externalRef = null;
     let payerEmail = null;
 
-    // Se for uma notificação de merchant_order, podemos extrair os pagamentos vinculados
+    // Se for notificação de merchant_order, extrai o pagamento vinculado
     if ((type === 'merchant_order' || query.topic === 'merchant_order') && paymentId && mpToken) {
       try {
         const orderRes = await fetch(`https://api.mercadopago.com/merchant_orders/${paymentId}`, {
@@ -112,11 +114,11 @@ exports.handler = async function (event, context) {
           }
         }
       } catch (orderErr) {
-        console.warn('[Webhook Mercado Pago] Falha ao consultar merchant_order:', orderErr);
+        console.warn('[Mercado Pago Webhook] Aviso ao consultar merchant_order:', orderErr);
       }
     }
 
-    // Consulta os detalhes oficiais do pagamento no Mercado Pago
+    // Consulta os dados oficiais do pagamento no Mercado Pago
     if (paymentId && mpToken) {
       try {
         const mpRes = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
@@ -129,19 +131,19 @@ exports.handler = async function (event, context) {
         if (mpRes.ok) {
           const mpData = await mpRes.json();
           paymentStatus = mpData.status;
-          externalRef = mpData.external_reference;
-          payerEmail = mpData.payer?.email;
+          externalRef = mpData.external_reference || null;
+          payerEmail = mpData.payer?.email || null;
 
-          console.log(`[Webhook Mercado Pago] Detalhes do pagamento ${paymentId}: status=${paymentStatus}, external_reference=${externalRef}, payerEmail=${payerEmail}`);
+          console.log(`[Mercado Pago Webhook] Pagamento ${paymentId}: status=${paymentStatus}, external_reference=${externalRef}, email=${payerEmail}`);
 
-          // Quando o pagamento estiver aprovado (approved), atualiza no Supabase
+          // Quando o pagamento estiver aprovado (approved), atualiza a assinatura no Supabase
           if (paymentStatus === 'approved') {
             if (supabaseUrl && supabaseServiceKey) {
               const supabase = createClient(supabaseUrl, supabaseServiceKey, {
                 auth: { persistSession: false },
               });
 
-              // Define expiração para 35 dias (1 mês + tolerância)
+              // Define expiração padrão de 35 dias para o plano mensal (30 dias + margem de tolerância)
               const expiresDate = new Date();
               expiresDate.setDate(expiresDate.getDate() + 35);
               const expiresIso = expiresDate.toISOString();
@@ -154,7 +156,7 @@ exports.handler = async function (event, context) {
                 updated_at: nowIso,
               };
 
-              // 1. Atualizar registro pelo external_reference (ID do usuário)
+              // 1. UPDATE por external_reference (ID do usuário) na tabela profiles
               if (externalRef) {
                 const { data: updatedById, error: errId } = await supabase
                   .from('profiles')
@@ -163,56 +165,73 @@ exports.handler = async function (event, context) {
                   .select();
 
                 if (!errId && updatedById && updatedById.length > 0) {
-                  console.log(`[Webhook Mercado Pago] Assinatura ativada no Supabase por userId: ${externalRef}`);
+                  console.log(`[Mercado Pago Webhook] Sucesso: Assinatura ativada no Supabase (profiles) para userId: ${externalRef}`);
                   userUpdated = true;
                 }
               }
 
-              // 2. Atualizar pelo e-mail do pagador caso não localizado por ID
+              // 2. Se não localizou por ID, UPDATE por e-mail do pagador
               if (!userUpdated && payerEmail) {
+                const cleanEmail = payerEmail.trim().toLowerCase();
                 const { data: updatedByEmail, error: errEmail } = await supabase
                   .from('profiles')
                   .update(updatePayload)
-                  .ilike('email', payerEmail.trim())
+                  .ilike('email', cleanEmail)
                   .select();
 
                 if (!errEmail && updatedByEmail && updatedByEmail.length > 0) {
-                  console.log(`[Webhook Mercado Pago] Assinatura ativada no Supabase por e-mail: ${payerEmail}`);
+                  console.log(`[Mercado Pago Webhook] Sucesso: Assinatura ativada no Supabase (profiles) para o e-mail: ${cleanEmail}`);
                   userUpdated = true;
                 }
               }
 
-              // 3. Registrar na tabela complementar user_subscriptions (se existir)
-              if (externalRef) {
+              // 3. Fallback / Sincronização em tabelas dedicadas de assinaturas (ex: 'assinaturas', 'user_subscriptions', 'subscriptions')
+              const subscriptionTables = ['assinaturas', 'user_subscriptions', 'subscriptions'];
+              for (const tableName of subscriptionTables) {
                 try {
-                  await supabase
-                    .from('user_subscriptions')
-                    .upsert({
-                      user_id: externalRef,
-                      status: 'active',
-                      plan: 'mensal',
-                      payment_id: String(paymentId),
-                      expires_at: expiresIso,
-                      updated_at: nowIso,
-                    }, { onConflict: 'user_id' });
+                  if (externalRef) {
+                    await supabase
+                      .from(tableName)
+                      .upsert({
+                        user_id: externalRef,
+                        status: 'ativo',
+                        subscription_status: 'active',
+                        plan: 'mensal',
+                        payment_id: String(paymentId),
+                        expires_at: expiresIso,
+                        updated_at: nowIso,
+                      }, { onConflict: 'user_id' });
+                  } else if (payerEmail) {
+                    await supabase
+                      .from(tableName)
+                      .update({
+                        status: 'ativo',
+                        subscription_status: 'active',
+                        plan: 'mensal',
+                        payment_id: String(paymentId),
+                        expires_at: expiresIso,
+                        updated_at: nowIso,
+                      })
+                      .ilike('email', payerEmail.trim().toLowerCase());
+                  }
                 } catch (subErr) {
-                  // Tabela opcional
+                  // Tabelas opcionais caso existam no schema
                 }
               }
             } else {
-              console.warn('[Webhook Mercado Pago] SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.');
+              console.warn('[Mercado Pago Webhook] Aviso: SUPABASE_URL ou SUPABASE_SERVICE_ROLE_KEY não configurados.');
             }
           }
         } else {
           const errText = await mpRes.text();
-          console.error(`[Webhook Mercado Pago] Erro na API do Mercado Pago (HTTP ${mpRes.status}):`, errText);
+          console.error(`[Mercado Pago Webhook] Erro ao consultar pagamento na API Mercado Pago (${mpRes.status}):`, errText);
         }
-      } catch (mpFetchErr) {
-        console.error('[Webhook Mercado Pago] Erro ao consultar pagamento:', mpFetchErr);
+      } catch (fetchErr) {
+        console.error('[Mercado Pago Webhook] Falha de comunicação com a API do Mercado Pago:', fetchErr);
       }
     }
 
-    // Mercado Pago exige resposta HTTP 200 OK para confirmar o recebimento do webhook
+    // Mercado Pago exige retorno HTTP 200 OK
     return {
       statusCode: 200,
       headers,
@@ -225,13 +244,13 @@ exports.handler = async function (event, context) {
       }),
     };
   } catch (err) {
-    console.error('[Webhook Mercado Pago] Erro fatal no processamento:', err);
+    console.error('[Mercado Pago Webhook] Erro inesperado no handler:', err);
     return {
       statusCode: 200,
       headers,
       body: JSON.stringify({
         received: true,
-        error: err.message,
+        error: err.message || 'Erro ao processar webhook.',
       }),
     };
   }
