@@ -431,7 +431,10 @@ const handleCheckPayment = async (req: express.Request, res: express.Response) =
   res.setHeader("Content-Type", "application/json");
   try {
     const paymentId = req.params.paymentId || (req.query.paymentId as string);
-    const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
+    const mpToken =
+      process.env.MERCADOPAGO_ACCESS_TOKEN ||
+      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
+      process.env.MP_ACCESS_TOKEN;
 
     if (!paymentId) {
       return res.status(400).json({ error: "ID do pagamento obrigatório." });
@@ -496,7 +499,10 @@ app.get("/functions/v1/check-pix-payment", handleCheckPayment);
  */
 const handleMercadoPagoWebhook = async (req: express.Request, res: express.Response) => {
   try {
-    const mpToken = process.env.MERCADO_PAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN;
+    const mpToken =
+      process.env.MERCADOPAGO_ACCESS_TOKEN ||
+      process.env.MERCADO_PAGO_ACCESS_TOKEN ||
+      process.env.MP_ACCESS_TOKEN;
     
     // Captura o ID do pagamento de diferentes formatos enviados pelo Mercado Pago
     const body = req.body || {};
