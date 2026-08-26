@@ -7,6 +7,7 @@ import {
   DollarSign,
   CheckCircle,
   AlertTriangle,
+  AlertCircle,
   Plus,
   Trash2,
   Printer,
@@ -33,7 +34,7 @@ import {
   ALL_ENTRADA_CATEGORIES,
   CATEGORIA_ENTRADA_LABELS,
 } from '../utils/calculations';
-import { deleteLancamento } from '../services/treasuryService';
+import { deleteLancamento, isSuperAdmin } from '../services/treasuryService';
 
 interface FechamentoAtualViewProps {
   fechamento: FechamentoCulto;
@@ -43,6 +44,7 @@ interface FechamentoAtualViewProps {
   onGoToRelatorioIA: () => void;
   onOpenPrintModal: () => void;
   currentUser?: UserType | null;
+  onOpenSubscriptionModal?: () => void;
 }
 
 export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
@@ -53,6 +55,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   onGoToRelatorioIA,
   onOpenPrintModal,
   currentUser,
+  onOpenSubscriptionModal,
 }) => {
   /*
    * Proteções para dados antigos/incompletos.
@@ -272,6 +275,106 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   const dataFim =
     fechamento.dataFim || fechamento.data || '';
 
+  /*
+   * Lógica de cálculo e badge da Assinatura no Header
+   */
+  const expiresAt = currentUser?.subscriptionExpiresAt;
+  const isSuper = isSuperAdmin(currentUser);
+  const isDemo = currentUser?.isDemo === true;
+
+  const renderSubscriptionBadge = () => {
+    if (isSuper || isDemo || expiresAt === 'Vitalício / Isento') {
+      return (
+        <div
+          id="subscription-status-badge"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/25 shadow-sm select-none"
+          title="Conta com acesso vitalício ilimitado liberado"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>Plano Ativo • Vitalício</span>
+        </div>
+      );
+    }
+
+    if (!expiresAt) {
+      return (
+        <div
+          id="subscription-status-badge"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800/90 text-emerald-300 border border-emerald-500/30 shadow-sm select-none"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>Plano Ativo</span>
+        </div>
+      );
+    }
+
+    const expDate = new Date(expiresAt);
+    const isDateValid = !Number.isNaN(expDate.getTime());
+
+    if (!isDateValid) {
+      return (
+        <div
+          id="subscription-status-badge"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800/90 text-emerald-300 border border-emerald-500/30 shadow-sm select-none"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>Plano Ativo • {expiresAt}</span>
+        </div>
+      );
+    }
+
+    const formattedDate = expDate.toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+
+    const now = new Date();
+    const diffMs = expDate.getTime() - now.getTime();
+    const diasRestantes = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diasRestantes > 7) {
+      return (
+        <div
+          id="subscription-status-badge"
+          title={`Sua assinatura está ativa e vence em ${formattedDate}`}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800/90 text-emerald-300 border border-emerald-500/30 shadow-sm select-none"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span>Plano Ativo • Vence em {formattedDate}</span>
+        </div>
+      );
+    }
+
+    if (diasRestantes <= 7 && diasRestantes > 0) {
+      return (
+        <button
+          id="subscription-status-badge"
+          type="button"
+          onClick={onOpenSubscriptionModal}
+          title={`Sua assinatura vence em ${diasRestantes} dia(s) (${formattedDate}). Clique para renovar.`}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40 shadow-sm hover:bg-amber-500/25 transition-all cursor-pointer"
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span>Sua assinatura vence em {diasRestantes} {diasRestantes === 1 ? 'dia' : 'dias'}</span>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        id="subscription-status-badge"
+        type="button"
+        onClick={onOpenSubscriptionModal}
+        title="Sua assinatura expirou. Clique para renovar seu acesso."
+        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm hover:bg-rose-500/30 transition-all cursor-pointer animate-pulse"
+      >
+        <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+        <span>Assinatura Expirada • Renovar</span>
+      </button>
+    );
+  };
+
   return (
     <div
       id="fechamento-atual-container"
@@ -305,7 +408,11 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Badge de Status da Assinatura */}
+            {renderSubscriptionBadge()}
+
+            {/* Botão de Encerramento/Abertura de Caixa */}
             <button
               type="button"
               onClick={handleToggleStatus}
@@ -331,250 +438,272 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
         </div>
 
         {/* =========================================================
-            METADADOS
+            METADADOS / FORMULÁRIO DA ATA (REORGANIZADO EM 2 LINHAS)
         ========================================================== */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
-          {/* Data inicial */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>Data de Início</span>
-              <span className="text-[9px] text-amber-400 font-bold">
-                PERÍODO
-              </span>
-            </label>
-
-            <input
-              type="date"
-              value={fechamento.dataInicio || fechamento.data || ''}
-              onChange={(e) => {
-                const value = e.target.value;
-
-                setFechamento((prev) => ({
-                  ...prev,
-                  dataInicio: value,
-                }));
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold"
-            />
-          </div>
-
-          {/* Data final */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>Data Final</span>
-              <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold border border-emerald-500/30">
-                FINAL
-              </span>
-            </label>
-
-            <input
-              type="date"
-              value={fechamento.dataFim || fechamento.data || ''}
-              onChange={(e) => {
-                const value = e.target.value;
-
-                setFechamento((prev) => ({
-                  ...prev,
-                  dataFim: value,
-                  data: value,
-                }));
-              }}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold"
-            />
-          </div>
-
-          {/* Pastor presidente */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-              Pastor Presidente
-            </label>
-
-            <input
-              type="text"
-              value={fechamento.pastorPresidente || ''}
-              onChange={(e) =>
-                handleUpdateMeta(
-                  'pastorPresidente',
-                  e.target.value
-                )
-              }
-              placeholder="Ex: Pr. Carlos Silva"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-          </div>
-
-          {/* Tesoureiro */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-              Tesoureiro Responsável
-            </label>
-
-            <input
-              type="text"
-              value={fechamento.tesoureiro || ''}
-              onChange={(e) =>
-                handleUpdateMeta(
-                  'tesoureiro',
-                  e.target.value
-                )
-              }
-              placeholder="Nome do tesoureiro"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-          </div>
-
-          {/* Pastor local */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-              Pastor Local
-            </label>
-
-            <input
-              type="text"
-              value={fechamento.pastorLocal || ''}
-              onChange={(e) =>
-                handleUpdateMeta(
-                  'pastorLocal',
-                  e.target.value
-                )
-              }
-              placeholder="Ex: Pr. Roberto Santos"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-          </div>
-
-          {/* Membros */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
-              Qtd. Membros
-            </label>
-
-            <input
-              type="number"
-              min="0"
-              value={fechamento.qtdMembros ?? ''}
-              onChange={(e) =>
-                handleUpdateMeta(
-                  'qtdMembros',
-                  Number(e.target.value) || 0
-                )
-              }
-              placeholder="Ex: 150"
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
-            />
-          </div>
-
-          {/* Repasse Matriz */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>Repasse Matriz</span>
-
-              <span className="text-[9px] text-purple-300 font-bold font-mono">
-                {resumo.aplicarRepasseMatriz
-                  ? formatCurrency(resumo.valorMatriz)
-                  : 'ISENTO'}
-              </span>
-            </label>
-
-            <div className="flex items-center gap-2">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={aplicarRepasseMatriz}
-                  onChange={(e) =>
-                    handleUpdateMeta(
-                      'aplicarRepasseMatriz',
-                      e.target.checked
-                    )
-                  }
-                  className="sr-only peer"
-                />
-
-                <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600" />
-              </label>
-
-              <div className="relative flex-1">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
-                  disabled={!aplicarRepasseMatriz}
-                  value={porcentagemMatriz}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-
-                    handleUpdateMeta(
-                      'porcentagemMatriz',
-                      Number.isFinite(value)
-                        ? Math.min(100, Math.max(0, value))
-                        : 0
-                    );
-                  }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 pr-7 text-xs text-purple-300 font-bold font-mono focus:outline-none focus:ring-1 focus:ring-purple-500 disabled:opacity-40"
-                />
-
-                <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">
-                  %
+        <div className="pt-4 space-y-4">
+          {/* LINHA 1: Filtros Temporais e Configurações Financeiras */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 items-end">
+            {/* Data inicial */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap mr-1">
+                  Data de Início
                 </span>
+                <span className="text-[9px] bg-amber-500/15 text-amber-400 px-1.5 py-0.5 rounded font-bold font-mono border border-amber-500/30 shrink-0">
+                  PERÍODO
+                </span>
+              </div>
+
+              <input
+                type="date"
+                value={fechamento.dataInicio || fechamento.data || ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+
+                  setFechamento((prev) => ({
+                    ...prev,
+                    dataInicio: value,
+                  }));
+                }}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold"
+              />
+            </div>
+
+            {/* Data final */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Data Final
+                </span>
+                <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold border border-emerald-500/30 shrink-0">
+                  FINAL
+                </span>
+              </div>
+
+              <input
+                type="date"
+                value={fechamento.dataFim || fechamento.data || ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+
+                  setFechamento((prev) => ({
+                    ...prev,
+                    dataFim: value,
+                    data: value,
+                  }));
+                }}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold"
+              />
+            </div>
+
+            {/* Qtd. Membros */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Qtd. Membros
+                </span>
+              </div>
+
+              <input
+                type="number"
+                min="0"
+                value={fechamento.qtdMembros ?? ''}
+                onChange={(e) =>
+                  handleUpdateMeta(
+                    'qtdMembros',
+                    Number(e.target.value) || 0
+                  )
+                }
+                placeholder="Ex: 150"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-mono"
+              />
+            </div>
+
+            {/* Repasse Matriz */}
+            <div className="flex flex-col justify-end bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+              <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Repasse Matriz
+                </span>
+
+                <span className="text-[9px] text-purple-300 font-bold font-mono">
+                  {resumo.aplicarRepasseMatriz
+                    ? formatCurrency(resumo.valorMatriz)
+                    : 'ISENTO'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={aplicarRepasseMatriz}
+                    onChange={(e) =>
+                      handleUpdateMeta(
+                        'aplicarRepasseMatriz',
+                        e.target.checked
+                      )
+                    }
+                    className="sr-only peer"
+                  />
+
+                  <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600 shrink-0" />
+                </label>
+
+                <div className="inline-flex items-center bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-purple-500">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    disabled={!aplicarRepasseMatriz}
+                    value={porcentagemMatriz}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+
+                      handleUpdateMeta(
+                        'porcentagemMatriz',
+                        Number.isFinite(value)
+                          ? Math.min(100, Math.max(0, value))
+                          : 0
+                      );
+                    }}
+                    className="w-12 sm:w-14 bg-transparent text-xs text-purple-300 font-bold font-mono focus:outline-none disabled:opacity-40"
+                  />
+
+                  <span className="text-xs font-bold text-slate-400 select-none ml-1">
+                    %
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Prebenda Pastoral */}
+            <div className="flex flex-col justify-end bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/60">
+              <div className="flex items-center justify-between gap-2 mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Prebenda Pastoral
+                </span>
+
+                <span className="text-[9px] text-amber-300 font-bold font-mono">
+                  {resumo.aplicarPrebenda
+                    ? formatCurrency(resumo.valorPrebenda)
+                    : 'NÃO DEDUZIR'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={aplicarPrebenda}
+                    onChange={(e) =>
+                      handleUpdateMeta(
+                        'aplicarPrebenda',
+                        e.target.checked
+                      )
+                    }
+                    className="sr-only peer"
+                  />
+
+                  <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600 shrink-0" />
+                </label>
+
+                <div className="inline-flex items-center bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-amber-500">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.1"
+                    disabled={!aplicarPrebenda}
+                    value={porcentagemPrebenda}
+                    onChange={(e) => {
+                      const value = Number(e.target.value);
+
+                      handleUpdateMeta(
+                        'porcentagemPrebenda',
+                        Number.isFinite(value)
+                          ? Math.min(100, Math.max(0, value))
+                          : 0
+                      );
+                    }}
+                    className="w-12 sm:w-14 bg-transparent text-xs text-amber-300 font-bold font-mono focus:outline-none disabled:opacity-40"
+                  />
+
+                  <span className="text-xs font-bold text-slate-400 select-none ml-1">
+                    %
+                  </span>
+                </div>
               </div>
             </div>
           </div>
 
-          {/* Prebenda Pastoral */}
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
-              <span>Prebenda Pastoral</span>
-
-              <span className="text-[9px] text-amber-300 font-bold font-mono">
-                {resumo.aplicarPrebenda
-                  ? formatCurrency(resumo.valorPrebenda)
-                  : 'NÃO DEDUZIR'}
-              </span>
-            </label>
-
-            <div className="flex items-center gap-2">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={aplicarPrebenda}
-                  onChange={(e) =>
-                    handleUpdateMeta(
-                      'aplicarPrebenda',
-                      e.target.checked
-                    )
-                  }
-                  className="sr-only peer"
-                />
-
-                <div className="w-9 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600" />
-              </label>
-
-              <div className="relative flex-1">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
-                  disabled={!aplicarPrebenda}
-                  value={porcentagemPrebenda}
-                  onChange={(e) => {
-                    const value = Number(e.target.value);
-
-                    handleUpdateMeta(
-                      'porcentagemPrebenda',
-                      Number.isFinite(value)
-                        ? Math.min(100, Math.max(0, value))
-                        : 0
-                    );
-                  }}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 pr-7 text-xs text-amber-300 font-bold font-mono focus:outline-none focus:ring-1 focus:ring-amber-500 disabled:opacity-40"
-                />
-
-                <span className="absolute right-2.5 top-2 text-xs font-bold text-slate-400">
-                  %
+          {/* LINHA 2: Responsáveis e Nomes Longos */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 lg:gap-4 items-end pt-1">
+            {/* Pastor Presidente */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Pastor Presidente
                 </span>
               </div>
+
+              <input
+                type="text"
+                value={fechamento.pastorPresidente || ''}
+                onChange={(e) =>
+                  handleUpdateMeta(
+                    'pastorPresidente',
+                    e.target.value
+                  )
+                }
+                placeholder="Ex: Pr. Carlos"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+
+            {/* Tesoureiro Responsável */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Tesoureiro Responsável
+                </span>
+              </div>
+
+              <input
+                type="text"
+                value={fechamento.tesoureiro || ''}
+                onChange={(e) =>
+                  handleUpdateMeta(
+                    'tesoureiro',
+                    e.target.value
+                  )
+                }
+                placeholder="Nome do tesoureiro"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+
+            {/* Pastor Local */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Pastor Local
+                </span>
+              </div>
+
+              <input
+                type="text"
+                value={fechamento.pastorLocal || ''}
+                onChange={(e) =>
+                  handleUpdateMeta(
+                    'pastorLocal',
+                    e.target.value
+                  )
+                }
+                placeholder="Ex: Pr. Roberto"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
             </div>
           </div>
         </div>
@@ -751,9 +880,9 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               <div>
                 <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2 flex-wrap">
                   <span>Repasse Matriz / Sede</span>
-                  {resumo.aplicarRepasseMatriz ? (
-                    <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold border border-purple-500/30">
-                      {resumo.porcentagemMatriz}%
+                  {aplicarRepasseMatriz ? (
+                    <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold border border-purple-500/30 font-mono">
+                      {porcentagemMatriz}%
                     </span>
                   ) : (
                     <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-bold border border-slate-700">

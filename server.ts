@@ -44,8 +44,10 @@ async function activateUserSubscription(
     const nowIso = now.toISOString();
 
     const baseUpdate: Record<string, any> = {
+      has_paid: true,
       subscription_status: "active",
       status: "active",
+      status_assinatura: "ativo",
       subscription_plan: "mensal",
       subscription_expires_at: expiresAt,
       updated_at: nowIso,

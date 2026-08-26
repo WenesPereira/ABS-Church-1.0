@@ -140,12 +140,14 @@ exports.handler = async function (event, context) {
 
       const nowIso = new Date().toISOString();
       const expiresDate = new Date();
-      expiresDate.setDate(expiresDate.getDate() + 35);
+      expiresDate.setDate(expiresDate.getDate() + 30);
       const expiresIso = expiresDate.toISOString();
 
       const updatePayload = {
+        has_paid: true,
         subscription_status: 'active',
         status: 'active',
+        status_assinatura: 'ativo',
         subscription_plan: 'mensal',
         subscription_expires_at: expiresIso,
         updated_at: nowIso,

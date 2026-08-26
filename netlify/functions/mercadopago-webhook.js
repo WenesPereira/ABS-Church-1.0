@@ -200,15 +200,17 @@ exports.handler = async function (event, context) {
           auth: { persistSession: false },
         });
 
-        // Configura expiração de 35 dias (30 dias do mês + 5 dias de tolerância)
+        // Configura expiração de 30 dias a partir da data atual
         const expiresDate = new Date();
-        expiresDate.setDate(expiresDate.getDate() + 35);
+        expiresDate.setDate(expiresDate.getDate() + 30);
         const expiresIso = expiresDate.toISOString();
         const nowIso = new Date().toISOString();
 
         const updatePayload = {
+          has_paid: true,
           subscription_status: 'active',
           status: 'active',
+          status_assinatura: 'ativo',
           subscription_plan: 'mensal',
           subscription_expires_at: expiresIso,
           updated_at: nowIso,

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     nome TEXT NOT NULL DEFAULT 'Tesoureiro',
     cargo TEXT DEFAULT 'Tesoureiro Principal',
     nome_igreja TEXT DEFAULT 'Igreja Evangélica',
+    has_paid BOOLEAN DEFAULT false,
     status_assinatura TEXT DEFAULT 'pendente',
     subscription_status TEXT DEFAULT 'pendente',
     subscription_plan TEXT DEFAULT 'mensal',
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 -- Garantir que as colunas existam em bancos já criados anteriormente
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS has_paid BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status_assinatura TEXT DEFAULT 'pendente';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'pendente';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS subscription_plan TEXT DEFAULT 'mensal';

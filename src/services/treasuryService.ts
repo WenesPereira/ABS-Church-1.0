@@ -1372,6 +1372,7 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         nome: data.nome,
         cargo: data.cargo || undefined,
         nomeIgreja: data.nome_igreja || undefined,
+        hasPaid: Boolean(data.has_paid || isStatusActive || isSuper),
         statusAssinatura,
         subscriptionStatus,
         subscriptionPlan: isSuper ? 'pro_isento' : (data.subscription_plan || 'mensal'),

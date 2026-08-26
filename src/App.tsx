@@ -692,6 +692,7 @@ export default function App() {
                 onGoToRelatorioIA={() => setActiveTab('relatorio_ia')}
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
                 currentUser={currentUser}
+                onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
               />
             )}
 
