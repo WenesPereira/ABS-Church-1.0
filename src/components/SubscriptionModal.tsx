@@ -182,9 +182,11 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 <span className={`text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full ${
                   isSuper
                     ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                    : allowRenew
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                 }`}>
-                  {isSuper ? 'Super Admin Vitalício' : 'Plano Mensal Pro'}
+                  {isSuper ? 'Super Admin Vitalício' : allowRenew ? 'Renovação / Antecipação' : 'Plano Mensal Pro'}
                 </span>
                 {isSubscribed && (
                   <span className="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
@@ -193,14 +195,15 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 )}
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-slate-100 mt-1">
-                Tesouraria da Igreja Pro
+                {allowRenew ? 'Renovação da Assinatura Pro' : 'Tesouraria da Igreja Pro'}
               </h2>
             </div>
           </div>
 
           <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-            Tenha em mãos a plataforma completa de tesouraria eclesiástica com Inteligência Artificial,
-            relatórios fiscais, impressão térmica e sincronização em nuvem.
+            {allowRenew
+              ? 'Gere um novo PIX instantâneo de R$ 19,90 ou utilize Cartão de Crédito para estender e renovar seu período de assinatura.'
+              : 'Tenha em mãos a plataforma completa de tesouraria eclesiástica com Inteligência Artificial, relatórios fiscais, impressão térmica e sincronização em nuvem.'}
           </p>
         </div>
 
@@ -209,7 +212,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-1">
-                <Sparkles className="w-4 h-4" /> {isSuper ? 'Acesso Global Super Admin' : 'Assinatura Mensal com Mercado Pago (PIX e Cartão)'}
+                <Sparkles className="w-4 h-4" /> {isSuper ? 'Acesso Global Super Admin' : allowRenew ? 'Renovação Mensal com Mercado Pago (PIX e Cartão)' : 'Assinatura Mensal com Mercado Pago (PIX e Cartão)'}
               </div>
               <div className="flex items-baseline gap-2">
                 <span className="text-3xl font-extrabold text-slate-100">
@@ -222,7 +225,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               <p className="text-xs text-slate-400 mt-1">
                 {isSuper
                   ? 'Isenção automática permanente aplicada ao Super Admin'
-                  : 'Cancele quando quiser • Ativação imediata via Pix ou Cartão'}
+                  : 'Ativação imediata via Pix ou Cartão de Crédito Mercado Pago'}
               </p>
             </div>
 
@@ -231,7 +234,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
                 <Crown className="w-4 h-4 text-purple-400 fill-purple-400" />
                 <span>Acesso Super Admin Liberado</span>
               </div>
-            ) : isSubscribed ? (
+            ) : !allowRenew && isSubscribed ? (
               <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-xs font-bold">
                 <CheckCircle2 className="w-4 h-4" />
                 <span>Sua conta já possui acesso Pro ativo</span>
