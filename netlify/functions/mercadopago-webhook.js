@@ -10,7 +10,7 @@ const { createClient } = require('@supabase/supabase-js');
  * 3. Confirma se o status retornado é 'approved'.
  * 4. Extrai o external_reference (que contém o user_id do Supabase).
  * 5. Atualiza a tabela 'profiles' no Supabase via SUPABASE_SERVICE_ROLE_KEY:
- *    UPDATE profiles SET subscription_status = 'active', status_assinatura = 'ativo' WHERE user_id = external_reference
+ *    UPDATE profiles SET subscription_status = 'active', status = 'active' WHERE user_id = external_reference
  * 6. Registra logs detalhados (console.log) para rastreamento no Netlify e retorna HTTP 200.
  */
 exports.handler = async function (event, context) {
@@ -208,7 +208,7 @@ exports.handler = async function (event, context) {
 
         const updatePayload = {
           subscription_status: 'active',
-          status_assinatura: 'ativo',
+          status: 'active',
           subscription_plan: 'mensal',
           subscription_expires_at: expiresIso,
           updated_at: nowIso,
@@ -248,23 +248,34 @@ exports.handler = async function (event, context) {
               console.warn(`[Mercado Pago Webhook] Aviso ao atualizar por id: ${errId.message}`);
             }
 
-            // 4.3: Fallback resiliente com payload mínimo apenas com subscription_status e status_assinatura
+            // 4.3: Fallback resiliente com payload mínimo contendo apenas subscription_status
             if (!userUpdated) {
               const minPayload = {
                 subscription_status: 'active',
-                status_assinatura: 'ativo',
                 updated_at: nowIso,
               };
 
-              const { data: minUser } = await supabase
+              const { data: minUser, error: errMin } = await supabase
                 .from('profiles')
                 .update(minPayload)
                 .or(`user_id.eq.${targetUserId},id.eq.${targetUserId}`)
                 .select();
 
-              if (minUser && minUser.length > 0) {
+              if (!errMin && minUser && minUser.length > 0) {
                 console.log(`[Mercado Pago Webhook] [Passo 5/5] SUCESSO: subscription_status='active' (payload mínimo) atualizado para ${targetUserId}`);
                 userUpdated = true;
+              } else {
+                // Fallback secundário com a coluna 'status'
+                const { data: minStatusUser } = await supabase
+                  .from('profiles')
+                  .update({ status: 'active', updated_at: nowIso })
+                  .or(`user_id.eq.${targetUserId},id.eq.${targetUserId}`)
+                  .select();
+
+                if (minStatusUser && minStatusUser.length > 0) {
+                  console.log(`[Mercado Pago Webhook] [Passo 5/5] SUCESSO: status='active' atualizado para ${targetUserId}`);
+                  userUpdated = true;
+                }
               }
             }
           }
@@ -284,6 +295,18 @@ exports.handler = async function (event, context) {
           if (!errEmail && updatedByEmail && updatedByEmail.length > 0) {
             console.log(`[Mercado Pago Webhook] [Passo 5/5] SUCESSO: subscription_status='active' atualizado via e-mail=${cleanEmail}`);
             userUpdated = true;
+          } else {
+            // Tentativa apenas com subscription_status por e-mail
+            const { data: emailMinUser } = await supabase
+              .from('profiles')
+              .update({ subscription_status: 'active', updated_at: nowIso })
+              .ilike('email', cleanEmail)
+              .select();
+
+            if (emailMinUser && emailMinUser.length > 0) {
+              console.log(`[Mercado Pago Webhook] [Passo 5/5] SUCESSO: subscription_status='active' (mínimo por email) atualizado via e-mail=${cleanEmail}`);
+              userUpdated = true;
+            }
           }
         }
 
@@ -297,8 +320,7 @@ exports.handler = async function (event, context) {
                 .upsert({
                   user_id: targetUserId,
                   subscription_status: 'active',
-                  status_assinatura: 'ativo',
-                  status: 'ativo',
+                  status: 'active',
                   plan: 'mensal',
                   payment_id: String(paymentId),
                   expires_at: expiresIso,

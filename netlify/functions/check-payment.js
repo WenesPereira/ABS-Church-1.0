@@ -145,7 +145,7 @@ exports.handler = async function (event, context) {
 
       const updatePayload = {
         subscription_status: 'active',
-        status_assinatura: 'ativo',
+        status: 'active',
         subscription_plan: 'mensal',
         subscription_expires_at: expiresIso,
         updated_at: nowIso,
