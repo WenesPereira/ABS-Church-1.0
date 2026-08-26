@@ -244,6 +244,30 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
     });
   };
 
+  const handleToggleCategoriaPrebendaDefault = (cat: CategoriaEntrada) => {
+    const current = form.categoriasPrebenda || ALL_ENTRADA_CATEGORIES;
+    let updated: CategoriaEntrada[];
+    if (current.includes(cat)) {
+      updated = current.filter((c) => c !== cat);
+    } else {
+      updated = [...current, cat];
+    }
+    const isAll = updated.length === ALL_ENTRADA_CATEGORIES.length;
+    setForm({
+      ...form,
+      categoriasPrebenda: updated,
+      tipoBasePrebenda: isAll ? 'todas' : 'selecionadas',
+    });
+  };
+
+  const handleSelectTodaEntradaPrebendaDefault = () => {
+    setForm({
+      ...form,
+      tipoBasePrebenda: 'todas',
+      categoriasPrebenda: ALL_ENTRADA_CATEGORIES,
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setConfig(form);
@@ -1270,6 +1294,68 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                   </span>
                 </div>
               </label>
+
+              {(form.aplicarPrebenda ?? false) && (
+                <div className="bg-slate-950 p-3 rounded-xl border border-amber-500/20 space-y-3">
+                  {/* Opção de Deduzir Matriz */}
+                  <label className="flex items-center justify-between gap-3 text-xs text-slate-200 cursor-pointer bg-slate-900/60 p-2.5 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors">
+                    <div>
+                      <span className="font-semibold text-amber-200 block text-xs">
+                        Deduzir valor da Matriz da base de cálculo (Padrão)
+                      </span>
+                      <span className="text-[10px] text-slate-400 block">
+                        Subtrai o repasse da matriz antes de calcular a porcentagem da prebenda.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={form.deduzirMatrizBasePrebenda ?? false}
+                      onChange={(e) => setForm({ ...form, deduzirMatrizBasePrebenda: e.target.checked })}
+                      className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500"
+                    />
+                  </label>
+
+                  {/* Categorias da Prebenda */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-200">
+                        Categorias de Entrada Padrão para Prebenda:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleSelectTodaEntradaPrebendaDefault}
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                          (form.tipoBasePrebenda || 'todas') === 'todas'
+                            ? 'bg-amber-600 text-white border-amber-400'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        ★ Selecionar Toda a Entrada
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {ALL_ENTRADA_CATEGORIES.map((cat) => {
+                        const isSel = (form.tipoBasePrebenda || 'todas') === 'todas' || (form.categoriasPrebenda || ALL_ENTRADA_CATEGORIES).includes(cat);
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            onClick={() => handleToggleCategoriaPrebendaDefault(cat)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all cursor-pointer ${
+                              isSel
+                                ? 'bg-amber-950 text-amber-200 border-amber-500'
+                                : 'bg-slate-900 text-slate-500 border-slate-800 hover:text-slate-300'
+                            }`}
+                          >
+                            {isSel ? '✓' : '○'} {CATEGORIA_ENTRADA_LABELS[cat]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Toggle Repasse Matriz Padrão */}
               <label className="flex items-center gap-3 text-xs text-slate-200 cursor-pointer bg-slate-950 p-3 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors">

@@ -496,6 +496,9 @@ export const DEFAULT_CONFIG: ConfigIgreja = {
   categoriasRepasseMatriz: ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
   porcentagemPrebenda: 0,
   aplicarPrebenda: false,
+  tipoBasePrebenda: 'todas',
+  categoriasPrebenda: ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
+  deduzirMatrizBasePrebenda: false,
   whatsappSuporte: '5511999999999',
   emailSuporte: 'suporte@tesouraria.com',
   apkDownloadUrl: 'https://drive.google.com',
@@ -591,6 +594,9 @@ function mapRowToConfig(row: SupabaseConfiguracaoIgrejaRow): ConfigIgreja {
     categoriasRepasseMatriz: (row.categorias_repasse_matriz as CategoriaEntrada[]) || undefined,
     porcentagemPrebenda: row.porcentagem_prebenda != null ? Number(row.porcentagem_prebenda) : 0,
     aplicarPrebenda: row.aplicar_prebenda ?? false,
+    tipoBasePrebenda: (row.tipo_base_prebenda as 'todas' | 'selecionadas') || 'todas',
+    categoriasPrebenda: (row.categorias_prebenda as CategoriaEntrada[]) || undefined,
+    deduzirMatrizBasePrebenda: row.deduzir_matriz_base_prebenda ?? false,
     logoUrl: row.logo_url || undefined,
     whatsappSuporte,
     emailSuporte,
@@ -618,6 +624,9 @@ function mapConfigToRow(config: ConfigIgreja, userId: string): Partial<SupabaseC
     categorias_repasse_matriz: (config.categoriasRepasseMatriz as string[]) || null,
     porcentagem_prebenda: config.porcentagemPrebenda != null ? Number(config.porcentagemPrebenda) : 0,
     aplicar_prebenda: config.aplicarPrebenda ?? false,
+    tipo_base_prebenda: config.tipoBasePrebenda || 'todas',
+    categorias_prebenda: (config.categoriasPrebenda as string[]) || null,
+    deduzir_matriz_base_prebenda: config.deduzirMatrizBasePrebenda ?? false,
     logo_url: config.logoUrl || null,
   };
 }
@@ -682,6 +691,9 @@ function mapRowToFechamento(
     categoriasRepasseMatriz: (row.categorias_repasse_matriz as CategoriaEntrada[]) || undefined,
     porcentagemPrebenda: row.porcentagem_prebenda != null ? Number(row.porcentagem_prebenda) : 0,
     aplicarPrebenda: row.aplicar_prebenda ?? false,
+    tipoBasePrebenda: (row.tipo_base_prebenda as 'todas' | 'selecionadas') || 'todas',
+    categoriasPrebenda: (row.categorias_prebenda as CategoriaEntrada[]) || undefined,
+    deduzirMatrizBasePrebenda: row.deduzir_matriz_base_prebenda ?? false,
     observacoes: row.observacoes || undefined,
     contagemDinheiro: row.contagem_dinheiro || {
       c200: 0, c100: 0, c50: 0, c20: 0, c10: 0, c5: 0, c2: 0,
@@ -906,6 +918,11 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
         : ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
       porcentagem_prebenda: fechamento.porcentagemPrebenda != null ? Number(fechamento.porcentagemPrebenda) : 0,
       aplicar_prebenda: fechamento.aplicarPrebenda ?? false,
+      tipo_base_prebenda: fechamento.tipoBasePrebenda || 'todas',
+      categorias_prebenda: Array.isArray(fechamento.categoriasPrebenda)
+        ? (fechamento.categoriasPrebenda as string[])
+        : ['dizimo', 'oferta_culto', 'oferta_missoes', 'oferta_especial', 'doacao', 'outros'],
+      deduzir_matriz_base_prebenda: fechamento.deduzirMatrizBasePrebenda ?? false,
       observacoes: fechamento.observacoes || null,
       contagem_dinheiro: cleanContagem,
       status: fechamento.status === 'fechado' ? 'fechado' : 'aberto',

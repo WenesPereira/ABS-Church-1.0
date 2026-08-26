@@ -30,6 +30,7 @@ interface SubscriptionModalProps {
   onClose: () => void;
   currentUser: User | null;
   onStatusUpdated?: (updatedUser: User) => void;
+  allowRenew?: boolean;
 }
 
 export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
@@ -37,6 +38,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   onClose,
   currentUser,
   onStatusUpdated,
+  allowRenew = false,
 }) => {
   const [isVerifying, setIsVerifying] = useState(false);
   const [verificationFeedback, setVerificationFeedback] = useState<{
@@ -238,7 +240,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
           </div>
 
           {/* Seletor e Checkout Mercado Pago (PIX / Cartão) */}
-          {!isSuper && !isSubscribed && (
+          {!isSuper && (!isSubscribed || allowRenew) && (
             <MercadoPagoCheckoutSection
               currentUser={currentUser}
               onStatusUpdated={onStatusUpdated}

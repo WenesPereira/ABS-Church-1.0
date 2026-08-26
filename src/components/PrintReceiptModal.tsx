@@ -30,6 +30,10 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
   const porcentagemPrebenda = fechamento.porcentagemPrebenda ?? config.porcentagemPrebenda ?? 0;
   const porcentagemMatriz = fechamento.porcentagemMatriz ?? config.porcentagemMatriz ?? 20;
 
+  const tipoBasePrebenda = fechamento.tipoBasePrebenda || 'todas';
+  const catsPrebenda = fechamento.categoriasPrebenda || ALL_ENTRADA_CATEGORIES;
+  const deduzirMatrizBasePrebenda = fechamento.deduzirMatrizBasePrebenda ?? false;
+
   const resumo = calcularResumoLancamentos(
     fechamento.lancamentos, 
     porcentagemMatriz,
@@ -37,7 +41,10 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     tipoBase,
     catsRepasse,
     porcentagemPrebenda,
-    aplicarPrebenda
+    aplicarPrebenda,
+    tipoBasePrebenda,
+    catsPrebenda,
+    deduzirMatrizBasePrebenda
   );
   const totalContagem = calcularTotalContagem(fechamento.contagemDinheiro);
   const diferenca = totalContagem - resumo.totalDinheiro;
@@ -455,7 +462,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                       <div>
                         (-) Prebenda Pastoral ({resumo.porcentagemPrebenda}%):
                         <span className="block text-[9px] text-amber-800 font-normal">
-                          Beneficiário: {fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'} (Base: {formatCurrency(resumo.totalEntradas)})
+                          Beneficiário: {fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'} (Base: {formatCurrency(resumo.baseCalculoPrebenda)}{deduzirMatrizBasePrebenda ? ' • Deduzida a Matriz' : ' • Cálculo Bruto'})
                         </span>
                       </div>
                     </td>

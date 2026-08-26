@@ -50,7 +50,12 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
       f.porcentagemMatriz ?? 20,
       f.aplicarRepasseMatriz ?? true,
       f.tipoBaseRepasseMatriz || 'todas',
-      f.categoriasRepasseMatriz
+      f.categoriasRepasseMatriz,
+      f.porcentagemPrebenda ?? 0,
+      f.aplicarPrebenda ?? false,
+      f.tipoBasePrebenda || 'todas',
+      f.categoriasPrebenda,
+      f.deduzirMatrizBasePrebenda ?? false
     );
     const dataFormatted = f.data ? new Date(f.data + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '';
     return {
@@ -151,7 +156,12 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
                 culto.porcentagemMatriz ?? 20,
                 culto.aplicarRepasseMatriz ?? true,
                 culto.tipoBaseRepasseMatriz || 'todas',
-                culto.categoriasRepasseMatriz
+                culto.categoriasRepasseMatriz,
+                culto.porcentagemPrebenda ?? 0,
+                culto.aplicarPrebenda ?? false,
+                culto.tipoBasePrebenda || 'todas',
+                culto.categoriasPrebenda,
+                culto.deduzirMatrizBasePrebenda ?? false
               );
               return (
                 <div

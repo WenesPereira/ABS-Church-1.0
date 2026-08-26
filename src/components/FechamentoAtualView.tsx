@@ -96,6 +96,16 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   const aplicarPrebenda =
     fechamento.aplicarPrebenda ?? false;
 
+  const tipoBasePrebenda = fechamento.tipoBasePrebenda || 'todas';
+
+  const catsPrebenda: CategoriaEntrada[] =
+    Array.isArray(fechamento.categoriasPrebenda)
+      ? fechamento.categoriasPrebenda
+      : [...ALL_ENTRADA_CATEGORIES];
+
+  const deduzirMatrizBasePrebenda =
+    fechamento.deduzirMatrizBasePrebenda ?? false;
+
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const resumo = calcularResumoLancamentos(
@@ -105,7 +115,10 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
     tipoBase,
     catsRepasse,
     porcentagemPrebenda,
-    aplicarPrebenda
+    aplicarPrebenda,
+    tipoBasePrebenda,
+    catsPrebenda,
+    deduzirMatrizBasePrebenda
   );
 
   const totalContagemFisica = calcularTotalContagem(contagemDinheiro);
@@ -161,13 +174,51 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   };
 
   /*
-   * Seleciona todas as categorias.
+   * Seleciona todas as categorias para o Repasse da Matriz.
    */
   const handleSelectTodaEntrada = () => {
     setFechamento((prev) => ({
       ...prev,
       tipoBaseRepasseMatriz: 'todas',
       categoriasRepasseMatriz: [...ALL_ENTRADA_CATEGORIES],
+    }));
+  };
+
+  /*
+   * Alterna uma categoria da Prebenda Pastoral.
+   */
+  const handleToggleCategoriaPrebenda = (
+    cat: CategoriaEntrada
+  ) => {
+    const current: CategoriaEntrada[] =
+      tipoBasePrebenda === 'todas'
+        ? [...ALL_ENTRADA_CATEGORIES]
+        : [...catsPrebenda];
+
+    const exists = current.includes(cat);
+
+    const updated = exists
+      ? current.filter((item) => item !== cat)
+      : [...current, cat];
+
+    setFechamento((prev) => ({
+      ...prev,
+      categoriasPrebenda: updated,
+      tipoBasePrebenda:
+        updated.length === ALL_ENTRADA_CATEGORIES.length
+          ? 'todas'
+          : 'selecionadas',
+    }));
+  };
+
+  /*
+   * Seleciona todas as categorias para a Prebenda Pastoral.
+   */
+  const handleSelectTodaEntradaPrebenda = () => {
+    setFechamento((prev) => ({
+      ...prev,
+      tipoBasePrebenda: 'todas',
+      categoriasPrebenda: [...ALL_ENTRADA_CATEGORIES],
     }));
   };
 
@@ -1014,9 +1065,18 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                 <h4 className="text-sm font-bold text-slate-100 flex items-center gap-2 flex-wrap">
                   <span>Prebenda Pastoral</span>
                   {resumo.aplicarPrebenda ? (
-                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30">
-                      {resumo.porcentagemPrebenda}% das Entradas
-                    </span>
+                    <>
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30 font-mono">
+                        {resumo.porcentagemPrebenda}% da Base
+                      </span>
+                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold border ${
+                        deduzirMatrizBasePrebenda
+                          ? 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}>
+                        {deduzirMatrizBasePrebenda ? 'Líquido da Matriz' : 'Cálculo Bruto'}
+                      </span>
+                    </>
                   ) : (
                     <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-bold border border-slate-700">
                       NÃO DEDUZIR
@@ -1047,14 +1107,22 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
             </button>
           </div>
 
-          <div className="bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80 flex items-center justify-between">
+          {/* Box de Base de Cálculo e Valor */}
+          <div className="bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80 flex items-center justify-between gap-3">
             <div className="space-y-0.5 text-xs text-slate-300">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block">Total de Entradas Base:</span>
-              <span className="font-mono font-bold text-slate-200">
-                {formatCurrency(resumo.totalEntradas)}
+              <span className="text-[10px] uppercase font-bold text-slate-500 block">
+                Base de Cálculo:
+              </span>
+              <span className="font-mono font-bold text-slate-200 text-sm">
+                {formatCurrency(resumo.baseCalculoPrebenda)}
+              </span>
+              <span className="text-[10px] text-slate-400 block font-mono">
+                {deduzirMatrizBasePrebenda
+                  ? `(Entradas: ${formatCurrency(resumo.baseEntradasPrebenda)} - Matriz: ${formatCurrency(resumo.valorMatriz)})`
+                  : `(Entradas Selecionadas: ${formatCurrency(resumo.baseEntradasPrebenda)})`}
               </span>
             </div>
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <span className="text-[10px] uppercase font-bold text-slate-400 block">
                 Valor da Prebenda:
               </span>
@@ -1069,6 +1137,90 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               </span>
             </div>
           </div>
+
+          {/* Opções e Configuração Dinâmica de Cálculo da Prebenda */}
+          {resumo.aplicarPrebenda && (
+            <div className="pt-2 border-t border-amber-500/20 space-y-3">
+              {/* Toggle de Dedução do Repasse da Matriz */}
+              <div className="bg-slate-950/70 p-3 rounded-2xl border border-amber-500/20 flex items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-semibold text-slate-200 block">
+                    Deduzir valor da Matriz da base de cálculo
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">
+                    {deduzirMatrizBasePrebenda
+                      ? 'Base Líquida: subtrai o repasse da matriz antes de aplicar a %'
+                      : 'Base Bruta: calcula a % diretamente sobre as entradas selecionadas'}
+                  </span>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={deduzirMatrizBasePrebenda}
+                    onChange={(e) =>
+                      handleUpdateMeta(
+                        'deduzirMatrizBasePrebenda',
+                        e.target.checked
+                      )
+                    }
+                    className="sr-only peer"
+                  />
+                  <div className="w-10 h-5 bg-slate-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500 shrink-0" />
+                </label>
+              </div>
+
+              {/* Categorias da Prebenda */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-bold text-amber-200 uppercase tracking-wider">
+                    Categorias da Prebenda:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleSelectTodaEntradaPrebenda}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all border cursor-pointer ${
+                      tipoBasePrebenda === 'todas'
+                        ? 'bg-amber-600 text-white border-amber-400'
+                        : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    ★ Toda Entrada
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {ALL_ENTRADA_CATEGORIES.map((cat) => {
+                    const isSelected =
+                      tipoBasePrebenda === 'todas' ||
+                      catsPrebenda.includes(cat);
+
+                    const label =
+                      CATEGORIA_ENTRADA_LABELS[cat] ||
+                      getCategoryLabel(cat);
+
+                    return (
+                      <button
+                        type="button"
+                        key={cat}
+                        onClick={() =>
+                          handleToggleCategoriaPrebenda(cat)
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-900/60 border-amber-500/70 text-amber-200'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-500 hover:text-slate-300'
+                        }`}
+                      >
+                        <span className="text-[9px]">{isSelected ? '✓' : '○'}</span>
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="pt-2 border-t border-amber-500/20 text-xs text-slate-400 flex items-center justify-between">
             <span>Pastor Beneficiário:</span>

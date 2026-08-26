@@ -52,7 +52,10 @@ export function calcularResumoLancamentos(
   tipoBaseRepasse: 'todas' | 'selecionadas' = 'todas',
   categoriasRepasse: CategoriaEntrada[] = ALL_ENTRADA_CATEGORIES,
   porcentagemPrebenda: number = 0,
-  aplicarPrebenda: boolean = false
+  aplicarPrebenda: boolean = false,
+  tipoBasePrebenda: 'todas' | 'selecionadas' = 'todas',
+  categoriasPrebenda: CategoriaEntrada[] = ALL_ENTRADA_CATEGORIES,
+  deduzirMatrizBasePrebenda: boolean = false
 ) {
   let totalEntradas = 0;
   let totalSaidas = 0;
@@ -65,6 +68,7 @@ export function calcularResumoLancamentos(
   let totalOutrasEntradas = 0;
 
   let baseCalculoMatriz = 0;
+  let baseEntradasPrebenda = 0;
 
   let totalDinheiro = 0;
   let totalPix = 0;
@@ -72,9 +76,13 @@ export function calcularResumoLancamentos(
   let totalCartaoCredito = 0;
   let totalTransferencia = 0;
 
-  const catsAtivas = (tipoBaseRepasse === 'todas' || !categoriasRepasse || categoriasRepasse.length === 0)
+  const catsAtivasRepasse = (tipoBaseRepasse === 'todas' || !categoriasRepasse || categoriasRepasse.length === 0)
     ? ALL_ENTRADA_CATEGORIES
     : categoriasRepasse;
+
+  const catsAtivasPrebenda = (tipoBasePrebenda === 'todas' || !categoriasPrebenda || categoriasPrebenda.length === 0)
+    ? ALL_ENTRADA_CATEGORIES
+    : categoriasPrebenda;
 
   lancamentos.forEach((l) => {
     const val = l.valor || 0;
@@ -89,8 +97,14 @@ export function calcularResumoLancamentos(
       else if (cat === 'doacao') totalDoacoes += val;
       else totalOutrasEntradas += val;
 
-      if (tipoBaseRepasse === 'todas' || catsAtivas.includes(cat)) {
+      // Base do Repasse Matriz
+      if (tipoBaseRepasse === 'todas' || catsAtivasRepasse.includes(cat)) {
         baseCalculoMatriz += val;
+      }
+
+      // Base de Entradas Selecionadas para a Prebenda Pastoral
+      if (tipoBasePrebenda === 'todas' || catsAtivasPrebenda.includes(cat)) {
+        baseEntradasPrebenda += val;
       }
 
       if (l.formaPagamento === 'dinheiro') totalDinheiro += val;
@@ -109,15 +123,21 @@ export function calcularResumoLancamentos(
 
   const saldoLiquido = totalEntradas - totalSaidas;
   
-  // Cálculo do Repasse da Matriz / Sede
+  // 1. Cálculo do Repasse da Matriz / Sede
   const repasseAtivo = aplicarRepasse !== false;
   const pctMatriz = repasseAtivo ? Math.max(0, porcentagemMatriz ?? 20) : 0;
   const valorMatriz = repasseAtivo ? (baseCalculoMatriz * pctMatriz) / 100 : 0;
 
-  // Cálculo da Prebenda Pastoral
+  // 2. Cálculo da Base e Valor da Prebenda Pastoral
   const prebendaAtiva = aplicarPrebenda === true || (aplicarPrebenda !== false && (porcentagemPrebenda ?? 0) > 0);
   const pctPrebenda = prebendaAtiva ? Math.max(0, porcentagemPrebenda ?? 0) : 0;
-  const valorPrebenda = prebendaAtiva ? (totalEntradas * pctPrebenda) / 100 : 0;
+
+  // Se deduzirMatrizBasePrebenda estiver ativo: Base = (Entradas Selecionadas - Valor da Matriz)
+  const baseCalculoPrebenda = deduzirMatrizBasePrebenda
+    ? Math.max(0, baseEntradasPrebenda - valorMatriz)
+    : baseEntradasPrebenda;
+
+  const valorPrebenda = prebendaAtiva ? (baseCalculoPrebenda * pctPrebenda) / 100 : 0;
 
   // Fórmula do Saldo Disponível em Caixa Local: [Saldo Disponível = Entradas - Saídas - Repasse Matriz - Prebenda Pastoral]
   const saldoDisponivel = totalEntradas - totalSaidas - valorMatriz - valorPrebenda;
@@ -129,11 +149,16 @@ export function calcularResumoLancamentos(
     saldoLiquido,
     aplicarRepasseMatriz: repasseAtivo,
     tipoBaseRepasse,
-    categoriasRepasse: catsAtivas,
+    categoriasRepasse: catsAtivasRepasse,
     baseCalculoMatriz,
     porcentagemMatriz: pctMatriz,
     valorMatriz,
     aplicarPrebenda: prebendaAtiva,
+    tipoBasePrebenda,
+    categoriasPrebenda: catsAtivasPrebenda,
+    baseEntradasPrebenda,
+    deduzirMatrizBasePrebenda,
+    baseCalculoPrebenda,
     porcentagemPrebenda: pctPrebenda,
     valorPrebenda,
     saldoDisponivel,

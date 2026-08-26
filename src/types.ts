@@ -76,6 +76,9 @@ export interface FechamentoCulto {
   categoriasRepasseMatriz?: CategoriaEntrada[]; // Lista de categorias que entram na base do repasse (ex: ['dizimo', 'oferta_culto', 'doacao'])
   porcentagemPrebenda?: number; // Porcentagem da Prebenda Pastoral (ex: 10%)
   aplicarPrebenda?: boolean; // Se deve ou não deduzir a Prebenda Pastoral
+  tipoBasePrebenda?: 'todas' | 'selecionadas'; // Se a prebenda é sobre todas as entradas ou apenas categorias selecionadas
+  categoriasPrebenda?: CategoriaEntrada[]; // Lista de categorias que entram na base da prebenda
+  deduzirMatrizBasePrebenda?: boolean; // Se deve deduzir o valor da matriz da base de cálculo da prebenda (Cálculo Líquido vs Bruto)
   observacoes?: string;
   lancamentos: Lancamento[];
   contagemDinheiro: ContagemDinheiro;
@@ -99,6 +102,9 @@ export interface ConfigIgreja {
   categoriasRepasseMatriz?: CategoriaEntrada[];
   porcentagemPrebenda?: number; // Porcentagem padrão de Prebenda Pastoral (ex: 10%)
   aplicarPrebenda?: boolean; // Padrão se deduz ou não a Prebenda Pastoral
+  tipoBasePrebenda?: 'todas' | 'selecionadas';
+  categoriasPrebenda?: CategoriaEntrada[];
+  deduzirMatrizBasePrebenda?: boolean;
   logoUrl?: string;
   whatsappSuporte?: string; // Número de WhatsApp para atendimento e suporte
   emailSuporte?: string; // E-mail para atendimento e suporte
@@ -158,6 +164,9 @@ export interface SupabaseConfiguracaoIgrejaRow {
   categorias_repasse_matriz: string[] | null;
   porcentagem_prebenda?: number | null;
   aplicar_prebenda?: boolean | null;
+  tipo_base_prebenda?: string | null;
+  categorias_prebenda?: string[] | null;
+  deduzir_matriz_base_prebenda?: boolean | null;
   logo_url: string | null;
   created_at?: string;
   updated_at?: string;
@@ -186,6 +195,9 @@ export interface SupabaseFechamentoCultoRow {
   categorias_repasse_matriz: string[] | null;
   porcentagem_prebenda?: number | null;
   aplicar_prebenda?: boolean | null;
+  tipo_base_prebenda?: string | null;
+  categorias_prebenda?: string[] | null;
+  deduzir_matriz_base_prebenda?: boolean | null;
   observacoes: string | null;
   contagem_dinheiro: ContagemDinheiro;
   status: 'aberto' | 'fechado';

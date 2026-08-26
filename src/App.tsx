@@ -37,6 +37,7 @@ import { HistoricoView } from './components/HistoricoView';
 import { ConfigView } from './components/ConfigView';
 import { PrintReceiptModal } from './components/PrintReceiptModal';
 import { SubscriptionModal } from './components/SubscriptionModal';
+import { SubscriptionDetailsModal } from './components/SubscriptionDetailsModal';
 import { SubscriptionGateView } from './components/SubscriptionGateView';
 import { Crown, Sparkles, CheckCircle2, X, AlertTriangle } from 'lucide-react';
 import { DEMO_USER, DEMO_CONFIG, DEMO_FECHAMENTOS } from './data/mockData';
@@ -94,7 +95,24 @@ export default function App() {
 
   // Modal Subscription State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [isSubscriptionDetailsModalOpen, setIsSubscriptionDetailsModalOpen] = useState(false);
+  const [isRenewMode, setIsRenewMode] = useState(false);
   const [isPaymentSuccessModalOpen, setIsPaymentSuccessModalOpen] = useState(false);
+
+  const handleOpenSubscription = useCallback(() => {
+    if (isSubscriptionActive(currentUser)) {
+      setIsSubscriptionDetailsModalOpen(true);
+    } else {
+      setIsRenewMode(false);
+      setIsSubscriptionModalOpen(true);
+    }
+  }, [currentUser]);
+
+  const handleOpenRenew = useCallback(() => {
+    setIsSubscriptionDetailsModalOpen(false);
+    setIsRenewMode(true);
+    setIsSubscriptionModalOpen(true);
+  }, []);
 
   // Supabase Cloud Sync State
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -666,7 +684,7 @@ export default function App() {
         onLogout={handleLogout}
         syncStatus={syncStatus}
         onManualSave={handleManualSave}
-        onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+        onOpenSubscriptionModal={handleOpenSubscription}
       />
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
@@ -677,7 +695,7 @@ export default function App() {
           qtdLancamentos={fechamentoAtual.lancamentos.length}
           fechamentoAtual={fechamentoAtual}
           currentUser={currentUser}
-          onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+          onOpenSubscriptionModal={handleOpenSubscription}
         />
 
         {/* Conteúdo Principal com espaço extra para Bottom Nav e Safe Area */}
@@ -692,7 +710,7 @@ export default function App() {
                 onGoToRelatorioIA={() => setActiveTab('relatorio_ia')}
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
                 currentUser={currentUser}
-                onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+                onOpenSubscriptionModal={handleOpenSubscription}
               />
             )}
 
@@ -720,7 +738,7 @@ export default function App() {
                 onNavigate={setActiveTab}
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
                 currentUser={currentUser}
-                onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+                onOpenSubscriptionModal={handleOpenSubscription}
                 config={configIgreja}
               />
             )}
@@ -743,7 +761,7 @@ export default function App() {
                 setConfig={handleSetConfigIgreja}
                 onNavigate={setActiveTab}
                 currentUser={currentUser}
-                onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+                onOpenSubscriptionModal={handleOpenSubscription}
                 onStatusUpdated={(updated) => setCurrentUser(updated)}
                 onResetAllData={handleResetAllData}
                 onGlobalConfigUpdated={(updatedGlobal) => setGlobalConfig(updatedGlobal)}
@@ -769,15 +787,31 @@ export default function App() {
         />
       )}
 
-      {/* Modal de Assinatura Mercado Pago */}
+      {/* Modal de Detalhes da Assinatura Pro */}
+      <SubscriptionDetailsModal
+        isOpen={isSubscriptionDetailsModalOpen}
+        onClose={() => setIsSubscriptionDetailsModalOpen(false)}
+        currentUser={currentUser}
+        onRenew={handleOpenRenew}
+        onStatusUpdated={(updated) => {
+          setCurrentUser(updated);
+        }}
+      />
+
+      {/* Modal de Assinatura / Pagamento Mercado Pago */}
       <SubscriptionModal
         isOpen={isSubscriptionModalOpen}
-        onClose={() => setIsSubscriptionModalOpen(false)}
+        onClose={() => {
+          setIsSubscriptionModalOpen(false);
+          setIsRenewMode(false);
+        }}
         currentUser={currentUser}
+        allowRenew={isRenewMode}
         onStatusUpdated={(updated) => {
           setCurrentUser(updated);
           if (isSubscriptionActive(updated)) {
             setIsSubscriptionModalOpen(false);
+            setIsRenewMode(false);
             setIsPaymentSuccessModalOpen(true);
             setActiveTab('fechamento');
           }
