@@ -46,8 +46,6 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     message: string;
   } | null>(null);
 
-  if (!isOpen) return null;
-
   const isSubscribed = isSubscriptionActive(currentUser);
   const isSuper = isSuperAdmin(currentUser);
 
@@ -72,6 +70,8 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
 
     return () => clearInterval(timer);
   }, [isOpen, currentUser?.id, isSubscribed, isSuper, onStatusUpdated]);
+
+  if (!isOpen) return null;
 
   const handleCheckStatus = async () => {
     if (!currentUser?.id) {

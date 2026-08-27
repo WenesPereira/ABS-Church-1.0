@@ -309,9 +309,10 @@ export const SubscriptionDetailsModal: React.FC<SubscriptionDetailsModalProps> =
               id="btn-renew-subscription-pix"
               type="button"
               onClick={() => {
-                onClose();
                 if (onRenew) {
                   onRenew();
+                } else {
+                  onClose();
                 }
               }}
               className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs shadow-lg shadow-amber-500/20 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer flex items-center justify-center gap-2"

@@ -28,12 +28,14 @@ interface MercadoPagoCheckoutSectionProps {
   currentUser: User | null;
   onStatusUpdated?: (updatedUser: User) => void;
   onSuccess?: () => void;
+  autoGeneratePix?: boolean;
 }
 
 export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProps> = ({
   currentUser,
   onStatusUpdated,
   onSuccess,
+  autoGeneratePix = true,
 }) => {
   const [paymentMethod, setPaymentMethod] = useState<'pix' | 'card'>('pix');
   const [isLoadingPix, setIsLoadingPix] = useState(false);
@@ -50,6 +52,7 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
 
   const pollingTimerRef = useRef<any>(null);
   const secondsTimerRef = useRef<any>(null);
+  const hasTriggeredPixRef = useRef(false);
   const checkoutUrl = getMercadoPagoSubscriptionUrl(currentUser?.id);
 
   // Contador de tempo aguardando confirmação (segundos)
@@ -95,10 +98,17 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
     setWaitingSeconds(0);
 
     try {
+      const userEmail =
+        currentUser.email && currentUser.email.trim().includes('@')
+          ? currentUser.email.trim()
+          : 'assembleiadedeussaldaterrajd@gmail.com';
+      const userName = currentUser.nome || 'Pastor Responsável';
+      const userId = currentUser.id || `user-${Date.now()}`;
+
       const res = await createMercadoPagoPix({
-        userId: currentUser.id,
-        email: currentUser.email,
-        nome: currentUser.nome,
+        userId: userId,
+        email: userEmail,
+        nome: userName,
         valor: 19.90,
       });
 
@@ -110,6 +120,14 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
       setIsLoadingPix(false);
     }
   };
+
+  // Se o método for Pix e ainda não tiver sido gerado, gera automaticamente
+  useEffect(() => {
+    if (autoGeneratePix && paymentMethod === 'pix' && !pixData && !isLoadingPix && !hasTriggeredPixRef.current && currentUser) {
+      hasTriggeredPixRef.current = true;
+      handleGeneratePix();
+    }
+  }, [autoGeneratePix, paymentMethod, currentUser, pixData, isLoadingPix]);
 
   // Copia o código Pix Copia e Cola
   const handleCopyPix = () => {
