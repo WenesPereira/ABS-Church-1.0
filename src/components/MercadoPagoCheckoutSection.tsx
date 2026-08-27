@@ -143,55 +143,72 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
     if (!silent) setIsVerifying(true);
 
     try {
-      // 1. Consulta prioritária no Supabase para verificar se o Webhook já ativou o perfil
-      const freshUser = await fetchUserProfile(currentUser.id);
-      if (freshUser && isSubscriptionActive(freshUser)) {
-        if (pollingTimerRef.current) {
-          clearInterval(pollingTimerRef.current);
-          pollingTimerRef.current = null;
+      // 1. Quando há um PIX gerado (pixData.paymentId), verifica ESPECIFICAMENTE o status daquele pagamento
+      if (pixData?.paymentId) {
+        const checkRes = await checkMercadoPagoPayment(pixData.paymentId, currentUser.id);
+
+        if (checkRes.approved || checkRes.status === 'approved') {
+          if (pollingTimerRef.current) {
+            clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
+          }
+          if (secondsTimerRef.current) {
+            clearInterval(secondsTimerRef.current);
+            secondsTimerRef.current = null;
+          }
+
+          setVerificationFeedback({
+            type: 'success',
+            message: 'Pagamento aprovado pelo Mercado Pago! Assinatura confirmada com sucesso.',
+          });
+
+          const freshUser = await fetchUserProfile(currentUser.id);
+          if (freshUser) {
+            if (onStatusUpdated) onStatusUpdated(freshUser);
+            if (onSuccess) onSuccess();
+          }
+          return;
         }
-        if (secondsTimerRef.current) {
-          clearInterval(secondsTimerRef.current);
-          secondsTimerRef.current = null;
+
+        if (!silent) {
+          setVerificationFeedback({
+            type: 'info',
+            message:
+              'Aguardando confirmação do pagamento no Mercado Pago. Assim que o Pix for compensado, a tela atualizará automaticamente.',
+          });
         }
-        setVerificationFeedback({
-          type: 'success',
-          message: 'Pagamento confirmado com sucesso! Acesso PRO liberado. Redirecionando...',
-        });
-        if (onStatusUpdated) onStatusUpdated(freshUser);
-        if (onSuccess) onSuccess();
         return;
       }
 
-      // 2. Se o status continuar 'inactive' e tivermos o paymentId do Pix:
-      // Se passou mais de 10s ou for consulta manual pelo botão "Já paguei",
-      // consulta diretamente a API do Mercado Pago e força a atualização no Supabase
-      if (pixData?.paymentId) {
-        const shouldDirectCheck = !silent || waitingSeconds >= 10;
-        if (shouldDirectCheck) {
-          console.log(`[Mercado Pago] Consultando API diretamente para paymentId=${pixData.paymentId} (tempo: ${waitingSeconds}s)...`);
-          const checkRes = await checkMercadoPagoPayment(pixData.paymentId, currentUser.id);
-          
-          if (checkRes.approved) {
-            const userAfterPayment = await fetchUserProfile(currentUser.id);
-            if (userAfterPayment && isSubscriptionActive(userAfterPayment)) {
-              if (pollingTimerRef.current) {
-                clearInterval(pollingTimerRef.current);
-                pollingTimerRef.current = null;
-              }
-              if (secondsTimerRef.current) {
-                clearInterval(secondsTimerRef.current);
-                secondsTimerRef.current = null;
-              }
-              setVerificationFeedback({
-                type: 'success',
-                message: 'Pagamento aprovado pelo Mercado Pago! Assinatura ativada no sistema.',
-              });
-              if (onStatusUpdated) onStatusUpdated(userAfterPayment);
-              if (onSuccess) onSuccess();
-              return;
-            }
+      // 2. Se for Cartão de Crédito (sem paymentId do Pix), verifica se o status do perfil mudou
+      if (paymentMethod === 'card') {
+        const freshUser = await fetchUserProfile(currentUser.id);
+        const wasActiveBefore = isSubscriptionActive(currentUser);
+        const isNowActive = isSubscriptionActive(freshUser);
+
+        // Se o usuário era inativo e agora ficou ativo, ou a data de expiração foi estendida
+        const expiryChanged =
+          freshUser?.subscriptionExpiresAt &&
+          currentUser?.subscriptionExpiresAt &&
+          new Date(freshUser.subscriptionExpiresAt).getTime() >
+            new Date(currentUser.subscriptionExpiresAt).getTime();
+
+        if (freshUser && (isNowActive && (!wasActiveBefore || expiryChanged))) {
+          if (pollingTimerRef.current) {
+            clearInterval(pollingTimerRef.current);
+            pollingTimerRef.current = null;
           }
+          if (secondsTimerRef.current) {
+            clearInterval(secondsTimerRef.current);
+            secondsTimerRef.current = null;
+          }
+          setVerificationFeedback({
+            type: 'success',
+            message: 'Pagamento no cartão confirmado! Acesso PRO liberado.',
+          });
+          if (onStatusUpdated) onStatusUpdated(freshUser);
+          if (onSuccess) onSuccess();
+          return;
         }
       }
 

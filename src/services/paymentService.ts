@@ -281,24 +281,15 @@ export async function checkMercadoPagoPayment(
   paymentId: string,
   userId?: string
 ): Promise<CheckPaymentResponse> {
-  // 1. Se userId foi fornecido, consulta diretamente o status no Supabase
-  if (userId) {
-    try {
-      const profile = await fetchUserProfile(userId);
-      if (profile && isSubscriptionActive(profile)) {
-        return {
-          paymentId,
-          status: 'approved',
-          approved: true,
-          userUpdated: true,
-        };
-      }
-    } catch (e) {
-      console.warn('Erro ao checar perfil no Supabase:', e);
-    }
+  if (!paymentId && !userId) {
+    return {
+      paymentId: '',
+      status: 'pending',
+      approved: false,
+    };
   }
 
-  // 2. Tenta checagem direta nos endpoints de verificação (Netlify Function ou Express API)
+  // 1. Consulta diretamente os endpoints backend que verificam o status na API do Mercado Pago
   const checkEndpoints = [
     `/.netlify/functions/check-payment?paymentId=${encodeURIComponent(paymentId || '')}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
     `/api/mercadopago/check-payment/${encodeURIComponent(paymentId || '')}${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`,
@@ -320,11 +311,34 @@ export async function checkMercadoPagoPayment(
           `Check Payment (${endpoint})`
         );
         if (data && (data.status || data.approved !== undefined)) {
-          return data;
+          return {
+            paymentId: data.paymentId || paymentId,
+            status: data.status || (data.approved ? 'approved' : 'pending'),
+            approved: data.approved === true || data.status === 'approved',
+            userUpdated: data.userUpdated,
+          };
         }
       }
     } catch (err: any) {
       // continua para o próximo endpoint
+    }
+  }
+
+  // 2. Se as rotas de backend falharem e houver userId e paymentId,
+  // verifica se o Webhook gravou ESPECIFICAMENTE este mp_payment_id no perfil
+  if (userId && paymentId) {
+    try {
+      const profile = await fetchUserProfile(userId);
+      if (profile && (profile as any).mp_payment_id === String(paymentId)) {
+        return {
+          paymentId,
+          status: 'approved',
+          approved: true,
+          userUpdated: true,
+        };
+      }
+    } catch (e) {
+      console.warn('Erro ao checar mp_payment_id no Supabase:', e);
     }
   }
 

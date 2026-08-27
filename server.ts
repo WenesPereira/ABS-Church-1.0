@@ -40,7 +40,30 @@ async function activateUserSubscription(
 ): Promise<boolean> {
   try {
     const now = new Date();
-    const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    let baseDate = now;
+
+    // Se tiver supabaseAdmin configurado, busca se a conta já possui uma data de expiração futura
+    if (supabaseAdmin) {
+      try {
+        let query = supabaseAdmin.from("profiles").select("subscription_expires_at");
+        if (userIdOrRef) {
+          query = query.or(`id.eq.${userIdOrRef},user_id.eq.${userIdOrRef}`);
+        } else if (email) {
+          query = query.eq("email", email.trim().toLowerCase());
+        }
+        const { data: rows } = await query.limit(1);
+        if (rows && rows[0]?.subscription_expires_at) {
+          const currentExp = new Date(rows[0].subscription_expires_at);
+          if (currentExp.getTime() > now.getTime()) {
+            baseDate = currentExp;
+          }
+        }
+      } catch (checkErr) {
+        console.warn("[Mercado Pago] Aviso ao consultar expiração existente:", checkErr);
+      }
+    }
+
+    const expiresAt = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
     const nowIso = now.toISOString();
 
     const baseUpdate: Record<string, any> = {
