@@ -172,7 +172,8 @@ select {
   }
 
   #printable-receipt,
-  #ai-report-printable-card {
+  #ai-report-printable-card,
+  #print-single-receipt-area {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;

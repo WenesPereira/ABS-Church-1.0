@@ -8,23 +8,18 @@ import {
   formatDateBR,
   buildOfficialWhatsAppReceiptMessage,
 } from '../utils/receiptHelper';
-import { downloadElementAsPng } from '../services/receiptImageService';
 import {
-  generateReceiptPdfDocument,
   downloadOrShareReceiptPdf,
 } from '../services/receiptPdfService';
 import {
   Printer,
-  Share2,
   Copy,
   Check,
   X,
   MessageCircle,
   ExternalLink,
   ScrollText,
-  FileText,
   Download,
-  Image as ImageIcon,
   Loader2,
 } from 'lucide-react';
 
@@ -47,7 +42,6 @@ export function SingleReceiptModal({
 }: SingleReceiptModalProps) {
   const [printMode, setPrintMode] = useState<'a4' | 'thermal'>('thermal');
   const [copied, setCopied] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
@@ -79,31 +73,20 @@ export function SingleReceiptModal({
       await navigator.clipboard.writeText(message);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
-    } catch {}
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = message;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    }
   };
 
   const handlePrint = () => {
     window.print();
-  };
-
-  const handleDownloadImage = async () => {
-    if (!printRef.current || isGeneratingImage) return;
-    try {
-      setIsGeneratingImage(true);
-      await downloadElementAsPng(
-        printRef.current,
-        `recibo_#${receiptDigits}.png`,
-        {
-          scale: 3,
-          backgroundColor: '#ffffff',
-          title: `Recibo #${receiptDigits}`,
-        }
-      );
-    } catch (err) {
-      console.error('Erro ao gerar imagem PNG do recibo:', err);
-    } finally {
-      setIsGeneratingImage(false);
-    }
   };
 
   const handleDownloadPdf = async () => {
@@ -273,8 +256,8 @@ export function SingleReceiptModal({
           </div>
         </div>
 
-        {/* Botões de Ação */}
-        <div className="space-y-2.5 pt-2">
+        {/* Botões de Ação: WhatsApp, Gerar Recibo (PDF) e Imprimir */}
+        <div className="space-y-3 pt-2">
           {/* Enviar WhatsApp */}
           <a
             href={whatsappUrl}
@@ -287,43 +270,23 @@ export function SingleReceiptModal({
             <ExternalLink className="w-3.5 h-3.5 opacity-70" />
           </a>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {/* Baixar Imagem (PNG) */}
-            <button
-              type="button"
-              onClick={handleDownloadImage}
-              disabled={isGeneratingImage}
-              className="py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-70"
-            >
-              {isGeneratingImage ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Gerando...</span>
-                </>
-              ) : (
-                <>
-                  <ImageIcon className="w-3.5 h-3.5" />
-                  <span>Baixar PNG</span>
-                </>
-              )}
-            </button>
-
-            {/* Baixar PDF */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {/* Gerar Recibo (PDF) */}
             <button
               type="button"
               onClick={handleDownloadPdf}
               disabled={isGeneratingPdf}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-70"
+              className="py-3 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isGeneratingPdf ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
-                  <span>Gerando...</span>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Gerando PDF...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Baixar PDF</span>
+                  <Download className="w-4 h-4" />
+                  <span>Gerar Recibo (PDF)</span>
                 </>
               )}
             </button>
@@ -332,27 +295,29 @@ export function SingleReceiptModal({
             <button
               type="button"
               onClick={handlePrint}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              className="py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs sm:text-sm rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
             >
-              <Printer className="w-3.5 h-3.5 text-slate-400" />
+              <Printer className="w-4 h-4 text-slate-300" />
               <span>Imprimir</span>
             </button>
+          </div>
 
-            {/* Copiar Texto */}
+          {/* Opção secundária: Copiar Texto da Mensagem */}
+          <div className="flex items-center justify-center pt-1 text-xs text-slate-400">
             <button
               type="button"
               onClick={handleCopy}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              className="hover:text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
             >
               {copied ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400">Copiado</span>
+                  <span className="text-emerald-400 font-medium">Texto Copiado com Sucesso!</span>
                 </>
               ) : (
                 <>
-                  <Copy className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Copiar</span>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Copiar Texto da Mensagem</span>
                 </>
               )}
             </button>

@@ -8,7 +8,7 @@ import {
   formatDateBR,
   buildOfficialWhatsAppReceiptMessage,
 } from '../utils/receiptHelper';
-import { downloadElementAsPng } from '../services/receiptImageService';
+import { downloadOrShareReceiptPdf } from '../services/receiptPdfService';
 import {
   CheckCircle2,
   Download,
@@ -18,7 +18,6 @@ import {
   MessageCircle,
   ExternalLink,
   Loader2,
-  Image as ImageIcon,
   ShieldCheck,
   Printer,
   Church,
@@ -47,7 +46,7 @@ export function ReceiptSuccessModal({
   onNewLancamento,
 }: ReceiptSuccessModalProps) {
   const [copied, setCopied] = useState(false);
-  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const receiptCardRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !lancamento) return null;
@@ -91,23 +90,24 @@ export function ReceiptSuccessModal({
     }
   };
 
-  const handleDownloadImage = async () => {
-    if (!receiptCardRef.current || isGeneratingImage) return;
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf) return;
     try {
-      setIsGeneratingImage(true);
-      await downloadElementAsPng(
-        receiptCardRef.current,
-        `recibo_#${receiptDigits}.png`,
-        {
-          scale: 3,
-          backgroundColor: '#090d16',
-          title: `Recibo #${receiptDigits}`,
-        }
-      );
+      setIsGeneratingPdf(true);
+      await downloadOrShareReceiptPdf({
+        lancamento,
+        config,
+        pastorName,
+        tesoureiroName,
+      });
     } catch (err) {
-      console.error('Erro ao gerar imagem PNG do recibo:', err);
+      console.error('Erro ao gerar PDF do recibo:', err);
+      // Fallback seguro: abre a tela de impressão / salvar em PDF do sistema
+      if (typeof window !== 'undefined' && typeof window.print === 'function') {
+        window.print();
+      }
     } finally {
-      setIsGeneratingImage(false);
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -150,7 +150,7 @@ export function ReceiptSuccessModal({
           </p>
         </div>
 
-        {/* CARTÃO VISUAL DO RECIBO (Elemento capturado para gerar a Imagem PNG) */}
+        {/* CARTÃO VISUAL DO RECIBO */}
         <div className="p-1 bg-gradient-to-b from-amber-500/20 via-emerald-500/15 to-slate-950 rounded-2xl">
           <div
             ref={receiptCardRef}
@@ -258,9 +258,9 @@ export function ReceiptSuccessModal({
           </div>
         </div>
 
-        {/* BOTÕES DE AÇÃO: 'Enviar via WhatsApp', 'Baixar Imagem do Recibo (PNG)' e 'Concluir' */}
+        {/* BOTÕES DE AÇÃO: 'Enviar via WhatsApp', 'Gerar Recibo (PDF)' e 'Concluir' */}
         <div className="space-y-2.5 pt-1">
-          {/* 1. Botão Enviar via WhatsApp (100% sem links do supabase) */}
+          {/* 1. Botão Enviar via WhatsApp */}
           <button
             type="button"
             onClick={handleOpenWhatsApp}
@@ -272,27 +272,27 @@ export function ReceiptSuccessModal({
           </button>
 
           <div className="grid grid-cols-2 gap-2.5">
-            {/* 2. Botão Baixar Imagem do Recibo (PNG) */}
+            {/* 2. Botão Gerar Recibo (PDF) */}
             <button
               type="button"
-              onClick={handleDownloadImage}
-              disabled={isGeneratingImage}
+              onClick={handleDownloadPdf}
+              disabled={isGeneratingPdf}
               className="py-3 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
             >
-              {isGeneratingImage ? (
+              {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Gerando PNG...</span>
+                  <span>Gerando PDF...</span>
                 </>
               ) : (
                 <>
-                  <ImageIcon className="w-4 h-4" />
-                  <span>Baixar Imagem (PNG)</span>
+                  <Download className="w-4 h-4" />
+                  <span>Gerar Recibo (PDF)</span>
                 </>
               )}
             </button>
 
-            {/* 3. Botão Concluir (Fecha o modal e reseta formulário) */}
+            {/* 3. Botão Concluir */}
             <button
               type="button"
               onClick={handleConcluir}
@@ -335,7 +335,7 @@ export function ReceiptSuccessModal({
                   className="hover:text-slate-200 flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Imprimir Cupom</span>
+                  <span>Imprimir Recibo</span>
                 </button>
               </>
             )}
