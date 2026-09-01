@@ -3,6 +3,7 @@ import { Printer, X, Church, CheckCircle, FileText, Check, Download, Loader2 } f
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
 import { FechamentoCulto, ConfigIgreja, CategoriaEntrada } from '../types';
+import { saveOrShareReceiptFile } from '../services/receiptImageService';
 import {
   formatCurrency,
   calcularResumoLancamentos,
@@ -231,7 +232,16 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
         ? fechamento.data
         : new Date().toISOString().split('T')[0];
 
-      pdf.save(`Relatorio_Tesouraria_${dataFormatted}.pdf`);
+      const fileName = `Relatorio_Tesouraria_${dataFormatted}.pdf`;
+      const blob = pdf.output('blob');
+
+      await saveOrShareReceiptFile({
+        blob,
+        fileName,
+        mimeType: 'application/pdf',
+        title: `Relatório de Tesouraria - ${dataFormatted}`,
+        text: `Relatório de Fechamento de Culto - ${config.nomeIgreja || 'ABS CHURCH'} (${dataFormatted})`,
+      });
     } catch (err) {
       console.error('Erro ao gerar PDF com html2canvas e jsPDF:', err);
       window.print();

@@ -9,7 +9,10 @@ import {
   buildOfficialWhatsAppReceiptMessage,
 } from '../utils/receiptHelper';
 import { downloadElementAsPng } from '../services/receiptImageService';
-import { generateReceiptPdfDocument } from '../services/receiptPdfService';
+import {
+  generateReceiptPdfDocument,
+  downloadOrShareReceiptPdf,
+} from '../services/receiptPdfService';
 import {
   Printer,
   Share2,
@@ -45,6 +48,7 @@ export function SingleReceiptModal({
   const [printMode, setPrintMode] = useState<'a4' | 'thermal'>('thermal');
   const [copied, setCopied] = useState(false);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const printRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !lancamento) return null;
@@ -92,6 +96,7 @@ export function SingleReceiptModal({
         {
           scale: 3,
           backgroundColor: '#ffffff',
+          title: `Recibo de Contribuição Nº ${receiptDigits}`,
         }
       );
     } catch (err) {
@@ -101,18 +106,21 @@ export function SingleReceiptModal({
     }
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
+    if (isGeneratingPdf) return;
     try {
-      const { doc, fileName } = generateReceiptPdfDocument({
+      setIsGeneratingPdf(true);
+      await downloadOrShareReceiptPdf({
         lancamento,
         config,
         pastorName,
         tesoureiroName,
       });
-      doc.save(fileName);
     } catch (err) {
       console.error('Erro ao gerar PDF do recibo:', err);
       window.print();
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -301,10 +309,20 @@ export function SingleReceiptModal({
             <button
               type="button"
               onClick={handleDownloadPdf}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+              disabled={isGeneratingPdf}
+              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-70"
             >
-              <Download className="w-3.5 h-3.5 text-amber-400" />
-              <span>Baixar PDF</span>
+              {isGeneratingPdf ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400" />
+                  <span>Gerando...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Baixar PDF</span>
+                </>
+              )}
             </button>
 
             {/* Imprimir */}

@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf';
 import { FechamentoCulto, ActiveTab, User, ConfigIgreja } from '../types';
 import { generateChurchReport } from '../services/api';
 import { isSubscriptionActive, getMercadoPagoSubscriptionUrl } from '../services/treasuryService';
+import { saveOrShareReceiptFile } from '../services/receiptImageService';
 
 interface RelatorioIAViewProps {
   fechamento: FechamentoCulto;
@@ -182,7 +183,16 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
         ? fechamento.data
         : new Date().toISOString().split('T')[0];
 
-      pdf.save(`Relatorio_IA_Tesouraria_${dataFormatted}.pdf`);
+      const fileName = `Relatorio_IA_Tesouraria_${dataFormatted}.pdf`;
+      const blob = pdf.output('blob');
+
+      await saveOrShareReceiptFile({
+        blob,
+        fileName,
+        mimeType: 'application/pdf',
+        title: `Relatório de Tesouraria com IA - ${dataFormatted}`,
+        text: `Relatório Executivo de Tesouraria com IA (${dataFormatted})`,
+      });
     } catch (err) {
       console.error('Erro ao baixar PDF:', err);
       window.print();

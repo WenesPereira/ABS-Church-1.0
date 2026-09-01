@@ -7,6 +7,7 @@ import {
   formatPhoneDisplay,
   buildOfficialWhatsAppReceiptMessage,
 } from '../utils/receiptHelper';
+import { saveOrShareReceiptFile, SaveFileResult } from './receiptImageService';
 
 export interface GenerateReceiptPdfOptions {
   lancamento: Lancamento;
@@ -347,4 +348,24 @@ export async function processAndUploadReceiptPdf(
     isUploadedToStorage,
     error: uploadError,
   };
+}
+
+/**
+ * Faz o download ou compartilhamento nativo do PDF do recibo
+ * Prioriza Web Share API no Mobile/WebView e fallback para download Blob direto no Desktop
+ */
+export async function downloadOrShareReceiptPdf(
+  options: GenerateReceiptPdfOptions
+): Promise<SaveFileResult> {
+  const { blob, fileName } = generateReceiptPdfDocument(options);
+  const rawReceipt = options.lancamento.receiptNumber || '000001';
+  const receiptDigits = formatReceiptNumberDigits(rawReceipt);
+
+  return await saveOrShareReceiptFile({
+    blob,
+    fileName,
+    mimeType: 'application/pdf',
+    title: `Recibo de Contribuição Nº ${receiptDigits}`,
+    text: `Recibo Oficial de Contribuição Nº ${receiptDigits} - ${options.config.nomeIgreja || 'ABS CHURCH'}`,
+  });
 }
