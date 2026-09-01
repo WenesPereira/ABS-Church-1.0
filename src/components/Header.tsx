@@ -22,6 +22,7 @@ import {
   AlertCircle,
   Loader2,
   Crown,
+  Bell,
 } from 'lucide-react';
 import { ActiveTab, FechamentoCulto, ConfigIgreja, User } from '../types';
 import { formatCurrency, calcularResumoLancamentos } from '../utils/calculations';
@@ -38,6 +39,7 @@ interface HeaderProps {
   syncStatus?: 'idle' | 'saving' | 'saved' | 'error';
   onManualSave?: () => void;
   onOpenSubscriptionModal?: () => void;
+  onOpenChangelog?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -51,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   syncStatus = 'idle',
   onManualSave,
   onOpenSubscriptionModal,
+  onOpenChangelog,
 }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -292,6 +295,23 @@ export const Header: React.FC<HeaderProps> = ({
               </button>
             )}
 
+            {/* BOTÃO NOVIDADES (CHANGELOG) */}
+            {onOpenChangelog && (
+              <button
+                type="button"
+                onClick={onOpenChangelog}
+                className="relative p-2 sm:px-2.5 sm:py-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-200 text-xs font-semibold border border-slate-700 hover:border-amber-500/50 hover:text-amber-300 transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+                title="O que há de novo? (Novidades da Versão)"
+              >
+                <div className="relative">
+                  <Bell className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full animate-ping" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-400 rounded-full" />
+                </div>
+                <span className="hidden xl:inline text-amber-300 font-medium">Novidades</span>
+              </button>
+            )}
+
             {/* BOTÃO IMPRIMIR / PDF */}
             <button
               type="button"
@@ -410,6 +430,26 @@ export const Header: React.FC<HeaderProps> = ({
                   );
                 })}
               </div>
+
+              {/* Botão Novidades no Menu Mobile */}
+              {onOpenChangelog && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMobileMenuOpen(false);
+                    onOpenChangelog();
+                  }}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-semibold bg-slate-950/70 text-slate-300 border border-slate-800 hover:bg-slate-800 hover:text-amber-300 transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-amber-400" />
+                    <span>O que há de novo?</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    Novidades
+                  </span>
+                </button>
+              )}
 
               {currentUser && (
                 <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2">

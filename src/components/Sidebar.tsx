@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Crown,
   Zap,
+  Bell,
 } from 'lucide-react';
 import { ActiveTab, FechamentoCulto, User } from '../types';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -24,6 +25,7 @@ interface SidebarProps {
   fechamentoAtual?: FechamentoCulto;
   currentUser?: User | null;
   onOpenSubscriptionModal?: () => void;
+  onOpenChangelog?: () => void;
 }
 
 interface NavGroup {
@@ -46,6 +48,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   fechamentoAtual,
   currentUser,
   onOpenSubscriptionModal,
+  onOpenChangelog,
 }) => {
   const isSubscribed = isSubscriptionActive(currentUser);
   const isSuper = isSuperAdmin(currentUser);
@@ -270,6 +273,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   ? 'Todos os recursos de IA, relatórios e nuvem liberados.'
                   : 'Desbloqueie IA, impressão térmica e fechamentos ilimitados.'}
               </p>
+            </button>
+          )}
+
+          {/* Botão O que há de novo? (Changelog) */}
+          {onOpenChangelog && (
+            <button
+              type="button"
+              onClick={onOpenChangelog}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-850 border border-slate-800 hover:border-amber-500/40 text-xs transition-all cursor-pointer group active:scale-98"
+            >
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-lg bg-amber-500/15 text-amber-400 group-hover:bg-amber-500/25">
+                  <Bell className="w-3.5 h-3.5" />
+                </div>
+                <span className="text-[11px] font-semibold text-slate-300 group-hover:text-amber-300">
+                  O que há de novo?
+                </span>
+              </div>
+              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                v1.2.0
+              </span>
             </button>
           )}
 

@@ -30,6 +30,7 @@ interface SubscriptionModalProps {
   onClose: () => void;
   currentUser: User | null;
   onStatusUpdated?: (updatedUser: User) => void;
+  onPaymentSuccess?: (updatedUser: User) => void;
   allowRenew?: boolean;
 }
 
@@ -38,6 +39,7 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
   onClose,
   currentUser,
   onStatusUpdated,
+  onPaymentSuccess,
   allowRenew = false,
 }) => {
   const [isVerifying, setIsVerifying] = useState(false);
@@ -46,32 +48,10 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     message: string;
   } | null>(null);
 
+  if (!isOpen) return null;
+
   const isSubscribed = isSubscriptionActive(currentUser);
   const isSuper = isSuperAdmin(currentUser);
-
-  // Polling automático no Supabase a cada 3 segundos enquanto a modal estiver aberta
-  React.useEffect(() => {
-    if (!isOpen || !currentUser?.id || isSubscribed || isSuper) return;
-
-    const timer = setInterval(async () => {
-      try {
-        const fresh = await fetchUserProfile(currentUser.id);
-        if (fresh && isSubscriptionActive(fresh)) {
-          setVerificationFeedback({
-            type: 'success',
-            message: 'Assinatura confirmada com sucesso! Acesso PRO liberado.',
-          });
-          if (onStatusUpdated) onStatusUpdated(fresh);
-        }
-      } catch (e) {
-        console.error('Erro no polling do SubscriptionModal:', e);
-      }
-    }, 3000);
-
-    return () => clearInterval(timer);
-  }, [isOpen, currentUser?.id, isSubscribed, isSuper, onStatusUpdated]);
-
-  if (!isOpen) return null;
 
   const handleCheckStatus = async () => {
     if (!currentUser?.id) {
@@ -88,19 +68,29 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
     try {
       const freshUser = await fetchUserProfile(currentUser.id);
       if (freshUser) {
-        if (isSubscriptionActive(freshUser)) {
+        const wasActive = isSubscriptionActive(currentUser);
+        const isNowActive = isSubscriptionActive(freshUser);
+        const expiryChanged =
+          freshUser?.subscriptionExpiresAt &&
+          currentUser?.subscriptionExpiresAt &&
+          new Date(freshUser.subscriptionExpiresAt).getTime() >
+            new Date(currentUser.subscriptionExpiresAt).getTime();
+
+        if ((!wasActive && isNowActive) || (allowRenew && expiryChanged)) {
           setVerificationFeedback({
             type: 'success',
             message: 'Parabéns! Sua assinatura Tesouraria Pro está ativa com sucesso.',
           });
-          if (onStatusUpdated) {
+          if (onPaymentSuccess) {
+            onPaymentSuccess(freshUser);
+          } else if (onStatusUpdated) {
             onStatusUpdated(freshUser);
           }
         } else {
           setVerificationFeedback({
             type: 'info',
             message:
-              'Ainda não identificamos a confirmação da assinatura no sistema. Se você acabou de pagar pelo Mercado Pago (Pix ou Cartão), pode levar alguns instantes para a compensação bancária.',
+              'Aguardando compensação do pagamento pelo Mercado Pago. Se você acabou de pagar via Pix ou Cartão, a liberação ocorre automaticamente em instantes.',
           });
         }
       } else {
@@ -248,7 +238,17 @@ export const SubscriptionModal: React.FC<SubscriptionModalProps> = ({
               currentUser={currentUser}
               onStatusUpdated={onStatusUpdated}
               onSuccess={() => {
-                setTimeout(() => onClose(), 1500);
+                setTimeout(async () => {
+                  onClose();
+                  let updated = currentUser;
+                  if (currentUser?.id) {
+                    const fresh = await fetchUserProfile(currentUser.id);
+                    if (fresh) updated = fresh;
+                  }
+                  if (onPaymentSuccess && updated) {
+                    onPaymentSuccess(updated);
+                  }
+                }, 1500);
               }}
             />
           )}

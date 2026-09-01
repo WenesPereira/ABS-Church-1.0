@@ -39,17 +39,22 @@ import { PrintReceiptModal } from './components/PrintReceiptModal';
 import { SubscriptionModal } from './components/SubscriptionModal';
 import { SubscriptionDetailsModal } from './components/SubscriptionDetailsModal';
 import { SubscriptionGateView } from './components/SubscriptionGateView';
+import { ChangelogModal, APP_VERSION, APP_VERSION_STORAGE_KEY } from './components/ChangelogModal';
 import { Crown, Sparkles, CheckCircle2, X, AlertTriangle } from 'lucide-react';
 import { DEMO_USER, DEMO_CONFIG, DEMO_FECHAMENTOS } from './data/mockData';
 
 function createEmptyFechamento(config: ConfigIgreja, user?: User | null): FechamentoCulto {
   const today = new Date().toISOString().split('T')[0];
+  const pastorPadrao = config.pastorLocal || config.pastorPresidente || undefined;
   return {
     id: `culto-${Date.now()}`,
     nomeIgreja: config.nomeIgreja || 'Minha Igreja',
     data: today,
     hora: '19:00',
     tipoCulto: 'Fechamento de Caixa',
+    pastorLocal: config.pastorLocal || undefined,
+    pastorPresidente: config.pastorPresidente || undefined,
+    pastorName: pastorPadrao,
     tesoureiro: user?.nome || config.tesoureiroPadrao || 'Tesoureiro Principal',
     segundaTestemunha: config.segundoTesoureiroPadrao || undefined,
     porcentagemMatriz: config.porcentagemMatriz ?? 20,
@@ -92,6 +97,21 @@ export default function App() {
 
   // Modal Print State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+
+  // Modal Changelog (O que há de novo?) State & Auto-Open Logic
+  const [isChangelogModalOpen, setIsChangelogModalOpen] = useState(false);
+
+  // Verificação automática de nova versão no LocalStorage
+  useEffect(() => {
+    try {
+      const savedVersion = localStorage.getItem(APP_VERSION_STORAGE_KEY);
+      if (savedVersion !== APP_VERSION) {
+        setIsChangelogModalOpen(true);
+      }
+    } catch (e) {
+      console.warn('Não foi possível verificar a versão no localStorage:', e);
+    }
+  }, []);
 
   // Modal Subscription State
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
@@ -685,6 +705,7 @@ export default function App() {
         syncStatus={syncStatus}
         onManualSave={handleManualSave}
         onOpenSubscriptionModal={handleOpenSubscription}
+        onOpenChangelog={() => setIsChangelogModalOpen(true)}
       />
 
       <div className="flex flex-col lg:flex-row flex-1 min-h-0">
@@ -696,6 +717,7 @@ export default function App() {
           fechamentoAtual={fechamentoAtual}
           currentUser={currentUser}
           onOpenSubscriptionModal={handleOpenSubscription}
+          onOpenChangelog={() => setIsChangelogModalOpen(true)}
         />
 
         {/* Conteúdo Principal com espaço extra para Bottom Nav e Safe Area */}
@@ -711,6 +733,7 @@ export default function App() {
                 onOpenPrintModal={() => setIsPrintModalOpen(true)}
                 currentUser={currentUser}
                 onOpenSubscriptionModal={handleOpenSubscription}
+                config={configIgreja}
               />
             )}
 
@@ -720,6 +743,9 @@ export default function App() {
                 setFechamento={handleSetFechamentoAtual}
                 onNavigate={setActiveTab}
                 currentUser={currentUser}
+                syncStatus={syncStatus}
+                setSyncStatus={setSyncStatus}
+                config={configIgreja}
               />
             )}
 
@@ -787,6 +813,12 @@ export default function App() {
         />
       )}
 
+      {/* Modal "O que há de novo?" (Changelog) */}
+      <ChangelogModal
+        isOpen={isChangelogModalOpen}
+        onClose={() => setIsChangelogModalOpen(false)}
+      />
+
       {/* Modal de Detalhes da Assinatura Pro */}
       <SubscriptionDetailsModal
         isOpen={isSubscriptionDetailsModalOpen}
@@ -809,12 +841,20 @@ export default function App() {
         allowRenew={isRenewMode}
         onStatusUpdated={(updated) => {
           setCurrentUser(updated);
-          if (isSubscriptionActive(updated)) {
+          // Se não for renovação e a assinatura acabou de ficar ativa, libera o acesso
+          if (!isRenewMode && isSubscriptionActive(updated)) {
             setIsSubscriptionModalOpen(false);
             setIsRenewMode(false);
             setIsPaymentSuccessModalOpen(true);
             setActiveTab('fechamento');
           }
+        }}
+        onPaymentSuccess={(updated) => {
+          setCurrentUser(updated);
+          setIsSubscriptionModalOpen(false);
+          setIsRenewMode(false);
+          setIsPaymentSuccessModalOpen(true);
+          setActiveTab('fechamento');
         }}
       />
 

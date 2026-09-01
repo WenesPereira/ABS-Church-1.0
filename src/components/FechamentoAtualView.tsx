@@ -18,6 +18,8 @@ import {
   Building2,
   Check,
   Loader2,
+  Receipt,
+  MessageCircle,
 } from 'lucide-react';
 
 import {
@@ -25,6 +27,8 @@ import {
   CategoriaEntrada,
   ContagemDinheiro,
   User as UserType,
+  ConfigIgreja,
+  Lancamento,
 } from '../types';
 
 import {
@@ -35,6 +39,13 @@ import {
   CATEGORIA_ENTRADA_LABELS,
 } from '../utils/calculations';
 import { deleteLancamento, isSuperAdmin } from '../services/treasuryService';
+import {
+  formatReceiptDisplay,
+  buildWhatsAppReceiptMessage,
+  getWhatsAppShareUrl,
+} from '../utils/receiptHelper';
+import { ReceiptsSearchModal } from './ReceiptsSearchModal';
+import { SingleReceiptModal } from './SingleReceiptModal';
 
 interface FechamentoAtualViewProps {
   fechamento: FechamentoCulto;
@@ -45,6 +56,7 @@ interface FechamentoAtualViewProps {
   onOpenPrintModal: () => void;
   currentUser?: UserType | null;
   onOpenSubscriptionModal?: () => void;
+  config?: ConfigIgreja;
 }
 
 export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
@@ -56,6 +68,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   onOpenPrintModal,
   currentUser,
   onOpenSubscriptionModal,
+  config,
 }) => {
   /*
    * Proteções para dados antigos/incompletos.
@@ -107,6 +120,8 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
     fechamento.deduzirMatrizBasePrebenda ?? false;
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isReceiptsSearchOpen, setIsReceiptsSearchOpen] = useState(false);
+  const [selectedReceiptForPrint, setSelectedReceiptForPrint] = useState<Lancamento | null>(null);
 
   const resumo = calcularResumoLancamentos(
     lancamentos,
@@ -224,6 +239,8 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
   /*
    * Abre/fecha o caixa.
+   * Ao encerrar o caixa e gravar a Ata de Fechamento, salva o nome do pastor responsável
+   * daquele momento no campo pastor_name do registro, preservando o histórico auditável.
    */
   const handleToggleStatus = () => {
     setFechamento((prev) => {
@@ -232,6 +249,15 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           ? 'fechado'
           : 'aberto';
 
+      const pastorMomento =
+        prev.pastorName?.trim() ||
+        prev.pastorLocal?.trim() ||
+        prev.pastorPresidente?.trim() ||
+        config?.pastorLocal?.trim() ||
+        config?.pastorPresidente?.trim() ||
+        (currentUser?.cargo?.toLowerCase().includes('pastor') ? currentUser.nome?.trim() : undefined) ||
+        'Pastor Responsável';
+
       return {
         ...prev,
         status: novoStatus,
@@ -239,6 +265,12 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           novoStatus === 'fechado'
             ? new Date().toISOString()
             : undefined,
+        pastorName:
+          novoStatus === 'fechado'
+            ? pastorMomento
+            : prev.pastorName,
+        pastorLocal: prev.pastorLocal || (novoStatus === 'fechado' ? config?.pastorLocal : undefined),
+        pastorPresidente: prev.pastorPresidente || (novoStatus === 'fechado' ? config?.pastorPresidente : undefined),
       };
     });
   };
@@ -462,6 +494,16 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Badge de Status da Assinatura */}
             {renderSubscriptionBadge()}
+
+            {/* Selo de Ata Encerrada com Pastor da Auditoria */}
+            {fechamento.status === 'fechado' && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold shadow-sm">
+                <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>
+                  Pastor da Ata: <strong className="text-emerald-200">{fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Não informado'}</strong>
+                </span>
+              </div>
+            )}
 
             {/* Botão de Encerramento/Abertura de Caixa */}
             <button
@@ -690,7 +732,54 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           </div>
 
           {/* LINHA 2: Responsáveis e Nomes Longos */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 lg:gap-4 items-end pt-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 lg:gap-4 items-end pt-1">
+            {/* Pastor Responsável (Ata) */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider whitespace-nowrap">
+                  Pastor Responsável (Ata)
+                </span>
+              </div>
+
+              <input
+                type="text"
+                value={fechamento.pastorName || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFechamento((prev) => ({
+                    ...prev,
+                    pastorName: val,
+                  }));
+                }}
+                placeholder="Ex: Pr. Carlos Silva"
+                className="w-full bg-slate-950 border border-amber-500/30 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500 font-medium"
+              />
+            </div>
+
+            {/* Pastor Local */}
+            <div className="flex flex-col justify-end">
+              <div className="flex items-center mb-1.5 min-h-[1.25rem]">
+                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
+                  Pastor Local
+                </span>
+              </div>
+
+              <input
+                type="text"
+                value={fechamento.pastorLocal || ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFechamento((prev) => ({
+                    ...prev,
+                    pastorLocal: val,
+                    pastorName: prev.pastorName || val.trim() || prev.pastorPresidente?.trim(),
+                  }));
+                }}
+                placeholder="Ex: Pr. Roberto"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+            </div>
+
             {/* Pastor Presidente */}
             <div className="flex flex-col justify-end">
               <div className="flex items-center mb-1.5 min-h-[1.25rem]">
@@ -702,12 +791,14 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               <input
                 type="text"
                 value={fechamento.pastorPresidente || ''}
-                onChange={(e) =>
-                  handleUpdateMeta(
-                    'pastorPresidente',
-                    e.target.value
-                  )
-                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFechamento((prev) => ({
+                    ...prev,
+                    pastorPresidente: val,
+                    pastorName: prev.pastorName || prev.pastorLocal?.trim() || val.trim(),
+                  }));
+                }}
                 placeholder="Ex: Pr. Carlos"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
@@ -731,28 +822,6 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                   )
                 }
                 placeholder="Nome do tesoureiro"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-            </div>
-
-            {/* Pastor Local */}
-            <div className="flex flex-col justify-end">
-              <div className="flex items-center mb-1.5 min-h-[1.25rem]">
-                <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                  Pastor Local
-                </span>
-              </div>
-
-              <input
-                type="text"
-                value={fechamento.pastorLocal || ''}
-                onChange={(e) =>
-                  handleUpdateMeta(
-                    'pastorLocal',
-                    e.target.value
-                  )
-                }
-                placeholder="Ex: Pr. Roberto"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
             </div>
@@ -1225,7 +1294,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           <div className="pt-2 border-t border-amber-500/20 text-xs text-slate-400 flex items-center justify-between">
             <span>Pastor Beneficiário:</span>
             <span className="font-bold text-slate-200">
-              {fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'}
+              {fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'}
             </span>
           </div>
         </div>
@@ -1341,24 +1410,35 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
             <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
               <FileText className="w-4 h-4 text-amber-400" />
               <span>
-                Dízimos, Ofertas e Despesas Registradas (
-                {lancamentos.length})
+                Dízimos, Ofertas e Despesas Registradas ({lancamentos.length})
               </span>
             </h3>
 
             <p className="text-xs text-slate-400">
-              Detalhamento individual das entradas e saídas.
+              Detalhamento individual das entradas com emissão de recibos e saídas.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onGoToLancamentos}
-            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/20"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Lançar Dízimo / Oferta</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsReceiptsSearchOpen(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer border border-slate-700 shadow-sm"
+              title="Consultar e reenviar recibos para contribuintes"
+            >
+              <Receipt className="w-4 h-4 text-amber-400" />
+              <span>Recibos & WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onGoToLancamentos}
+              className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/20"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Lançar Dízimo / Oferta</span>
+            </button>
+          </div>
         </div>
 
         {lancamentos.length === 0 ? (
@@ -1382,9 +1462,9 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-950 text-slate-400 uppercase font-bold text-[10px] tracking-wider border-b border-slate-800">
                 <tr>
-                  <th className="p-3">Tipo</th>
+                  <th className="p-3">Recibo / Tipo</th>
                   <th className="p-3">Categoria</th>
-                  <th className="p-3">Descrição / Pessoa</th>
+                  <th className="p-3">Dizimista / Descrição</th>
                   <th className="p-3">Forma Pagto.</th>
                   <th className="p-3 text-right">Valor (R$)</th>
                   <th className="p-3 text-center">Ações</th>
@@ -1406,23 +1486,50 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                   const formaPagamento =
                     l.formaPagamento || 'dinheiro';
 
+                  const receiptNum = l.receiptNumber
+                    ? formatReceiptDisplay(l.receiptNumber)
+                    : null;
+
+                  const contributorName = l.contributorName || l.nomePessoa;
+                  const waMsg = buildWhatsAppReceiptMessage({
+                    receiptNumber: l.receiptNumber || '000001',
+                    churchName: config?.nomeIgreja || 'ABS CHURCH',
+                    contributorName: contributorName || 'Contribuinte',
+                    tipo: l.categoria === 'dizimo' ? 'DÍZIMO' : 'OFERTA',
+                    valor,
+                    dataHora: l.data,
+                  });
+                  const waUrl = getWhatsAppShareUrl(l.contributorPhone, waMsg);
+
                   return (
                     <tr
                       key={l.id}
                       className="hover:bg-slate-800/40 transition-colors"
                     >
                       <td className="p-3">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${
-                            tipoLancamento === 'entrada'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                          }`}
-                        >
-                          {tipoLancamento === 'entrada'
-                            ? 'Entrada'
-                            : 'Saída'}
-                        </span>
+                        <div className="flex flex-col gap-1 items-start">
+                          {receiptNum && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceiptForPrint(l)}
+                              className="px-2 py-0.5 bg-amber-500/15 border border-amber-500/40 text-amber-300 font-mono font-bold text-[10px] rounded hover:bg-amber-500/25 transition-colors cursor-pointer"
+                              title="Clique para Imprimir/Reemitir Recibo"
+                            >
+                              {receiptNum}
+                            </button>
+                          )}
+                          <span
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-bold uppercase text-[9px] ${
+                              tipoLancamento === 'entrada'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            }`}
+                          >
+                            {tipoLancamento === 'entrada'
+                              ? 'Entrada'
+                              : 'Saída'}
+                          </span>
+                        </div>
                       </td>
 
                       <td className="p-3 font-semibold text-slate-200">
@@ -1430,15 +1537,14 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                       </td>
 
                       <td className="p-3">
-                        <div className="font-medium text-slate-100">
-                          {l.descricao || 'Sem descrição'}
-                        </div>
-
-                        {l.nomePessoa && (
-                          <div className="text-[10px] text-amber-400/90 font-medium">
-                            Pessoa: {l.nomePessoa}
+                        {contributorName && (
+                          <div className="text-xs text-amber-400 font-bold">
+                            {contributorName}
                           </div>
                         )}
+                        <div className="text-slate-300 text-xs mt-0.5">
+                          {l.descricao || 'Sem descrição'}
+                        </div>
                       </td>
 
                       <td className="p-3 capitalize font-mono text-slate-400">
@@ -1462,21 +1568,46 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                       </td>
 
                       <td className="p-3 text-center">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteLancamento(l.id)
-                          }
-                          disabled={deletingId === l.id}
-                          className="p-1 hover:text-rose-400 text-slate-600 disabled:opacity-50 transition-colors cursor-pointer"
-                          title="Remover lançamento"
-                        >
-                          {deletingId === l.id ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
+                        <div className="flex items-center justify-center gap-1.5">
+                          {tipoLancamento === 'entrada' && (
+                            <a
+                              href={waUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1.5 bg-emerald-600/20 hover:bg-emerald-600 rounded-lg text-emerald-300 hover:text-white transition-colors cursor-pointer"
+                              title="Enviar via WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </a>
                           )}
-                        </button>
+
+                          {tipoLancamento === 'entrada' && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedReceiptForPrint(l)}
+                              className="p-1.5 bg-slate-800 hover:bg-slate-700 rounded-lg text-amber-400 transition-colors cursor-pointer"
+                              title="Imprimir Recibo"
+                            >
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeleteLancamento(l.id)
+                            }
+                            disabled={deletingId === l.id}
+                            className="p-1.5 hover:text-rose-400 text-slate-600 disabled:opacity-50 transition-colors cursor-pointer hover:bg-rose-500/10 rounded-lg"
+                            title="Remover lançamento"
+                          >
+                            {deletingId === l.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-400" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -1535,6 +1666,52 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Modal de Consulta e Reemissão de Recibos */}
+      <ReceiptsSearchModal
+        isOpen={isReceiptsSearchOpen}
+        onClose={() => setIsReceiptsSearchOpen(false)}
+        lancamentos={lancamentos}
+        config={
+          config || {
+            nomeIgreja: 'ABS CHURCH',
+            pastorPresidente: '',
+            pastorLocal: '',
+            tesoureiroPadrao: '',
+            porcentagemMatriz: 20,
+            aplicarRepasseMatriz: true,
+            tipoBaseRepasseMatriz: 'todas',
+            porcentagemPrebenda: 0,
+            aplicarPrebenda: false,
+          }
+        }
+        pastorName={fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || config?.pastorPresidente}
+        tesoureiroName={fechamento.tesoureiro || config?.tesoureiroPadrao}
+      />
+
+      {/* Modal de Impressão Individual */}
+      {selectedReceiptForPrint && (
+        <SingleReceiptModal
+          isOpen={Boolean(selectedReceiptForPrint)}
+          onClose={() => setSelectedReceiptForPrint(null)}
+          lancamento={selectedReceiptForPrint}
+          config={
+            config || {
+              nomeIgreja: 'ABS CHURCH',
+              pastorPresidente: '',
+              pastorLocal: '',
+              tesoureiroPadrao: '',
+              porcentagemMatriz: 20,
+              aplicarRepasseMatriz: true,
+              tipoBaseRepasseMatriz: 'todas',
+              porcentagemPrebenda: 0,
+              aplicarPrebenda: false,
+            }
+          }
+          pastorName={fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || config?.pastorPresidente}
+          tesoureiroName={fechamento.tesoureiro || config?.tesoureiroPadrao}
+        />
+      )}
     </div>
   );
 };

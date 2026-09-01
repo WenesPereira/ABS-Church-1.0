@@ -85,8 +85,8 @@ ESTRUTURA DO RELATÓRIO (DIVIDIDO ESTRITAMENTE EM 4 BLOCOS OBJETIVOS):
 
 ### 4. Assinaturas
 - Linhas de assinatura para:
-  * **Tesoureiro Responsável**
-  * **Pastor Responsável**
+  * **Tesoureiro Responsável**: ${fechamentoData.tesoureiro || 'Tesoureiro'}
+  * **Pastor Responsável**: ${fechamentoData.pastorName || fechamentoData.pastorLocal || fechamentoData.pastorPresidente || 'Pastor Titular'}
 (Sem repetição de cabeçalho ou dados redundantes).
 
 Responda em Português do Brasil com excelente clareza, rigor gramatical e formatação limpa e executiva em Markdown.

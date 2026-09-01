@@ -59,11 +59,34 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
     return trimmed;
   };
 
-  const churchName = config?.nomeIgreja || fechamento.nomeIgreja || currentUser?.nomeIgreja || 'ABS CHURCH';
+  const churchName = fechamento.nomeIgreja || config?.nomeIgreja || currentUser?.nomeIgreja || 'ABS CHURCH';
   const cnpjNumber = config?.cnpj;
-  const pastorPresidenteAssinatura = getValidSignerName(fechamento.pastorPresidente || config?.pastorPresidente, 'Pastor Presidente');
-  const tesoureiroAssinatura = getValidSignerName(fechamento.tesoureiro || config?.tesoureiroPadrao, 'Tesoureiro Principal');
-  const pastorLocalAssinatura = getValidSignerName(fechamento.pastorLocal || config?.pastorLocal, 'Pastor Local');
+
+  // Preserva estritamente o histórico auditável da ata: utiliza o pastor_name gravado naquele registro específico
+  const pastorGravadoNoRegistro = getValidSignerName(fechamento.pastorName);
+  const pastorLocalGravado = getValidSignerName(fechamento.pastorLocal, 'Pastor Local');
+  const pastorPresidenteGravado = getValidSignerName(fechamento.pastorPresidente, 'Pastor Presidente');
+
+  // Para atas e relatórios fechados/históricos, NUNCA busca o perfil atual do usuário ou config atual
+  const pastorResponsavelHistorico =
+    pastorGravadoNoRegistro ||
+    pastorLocalGravado ||
+    pastorPresidenteGravado ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config?.pastorLocal || config?.pastorPresidente) : '');
+
+  const pastorPresidenteAssinatura =
+    pastorGravadoNoRegistro ||
+    pastorPresidenteGravado ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config?.pastorPresidente, 'Pastor Presidente') : '');
+
+  const pastorLocalAssinatura =
+    pastorGravadoNoRegistro ||
+    pastorLocalGravado ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config?.pastorLocal, 'Pastor Local') : '');
+
+  const tesoureiroAssinatura =
+    getValidSignerName(fechamento.tesoureiro, 'Tesoureiro Principal') ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config?.tesoureiroPadrao, 'Tesoureiro Principal') : 'Tesoureiro Responsável');
 
   const handleDownloadPdf = async () => {
     const element = document.getElementById('ai-report-printable-card');
@@ -387,7 +410,7 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
               {/* 3. ASSINATURAS EXCLUSIVAMENTE NO FINAL DO RELATÓRIO (RODAPÉ) */}
               <div className="pt-14 pb-2 border-t border-slate-300 print-avoid-break mt-8">
                 <div className={`grid gap-8 text-center text-[10px] ${
-                  pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura
+                  pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro
                     ? 'grid-cols-3'
                     : 'grid-cols-2'
                 }`}>
@@ -398,17 +421,17 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
                     <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Tesoureiro Responsável</p>
                   </div>
 
-                  {pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura ? (
+                  {pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro ? (
                     <>
                       <div>
                         <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                          {pastorLocalAssinatura}
+                          {pastorLocalGravado}
                         </div>
                         <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Local / Titular</p>
                       </div>
                       <div>
                         <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                          {pastorPresidenteAssinatura}
+                          {pastorPresidenteGravado}
                         </div>
                         <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Presidente</p>
                       </div>
@@ -416,10 +439,10 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
                   ) : (
                     <div>
                       <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                        {pastorLocalAssinatura || pastorPresidenteAssinatura || 'Pastor Responsável'}
+                        {pastorResponsavelHistorico || 'Pastor Responsável'}
                       </div>
                       <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
-                        {pastorPresidenteAssinatura && !pastorLocalAssinatura ? 'Pastor Presidente' : 'Pastor Responsável'}
+                        Pastor Responsável
                       </p>
                     </div>
                   )}

@@ -291,8 +291,8 @@ export async function checkMercadoPagoPayment(
 
   // 1. Consulta diretamente os endpoints backend que verificam o status na API do Mercado Pago
   const checkEndpoints = [
-    `/.netlify/functions/check-payment?paymentId=${encodeURIComponent(paymentId || '')}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
     `/api/mercadopago/check-payment/${encodeURIComponent(paymentId || '')}${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`,
+    `/.netlify/functions/check-payment?paymentId=${encodeURIComponent(paymentId || '')}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
     `/netlify/functions/check-payment?paymentId=${encodeURIComponent(paymentId || '')}${userId ? `&userId=${encodeURIComponent(userId)}` : ''}`,
   ];
 
@@ -326,10 +326,15 @@ export async function checkMercadoPagoPayment(
 
   // 2. Se as rotas de backend falharem e houver userId e paymentId,
   // verifica se o Webhook gravou ESPECIFICAMENTE este mp_payment_id no perfil
-  if (userId && paymentId) {
+  if (userId && paymentId && !paymentId.startsWith('DEMO-PIX-')) {
     try {
       const profile = await fetchUserProfile(userId);
-      if (profile && (profile as any).mp_payment_id === String(paymentId)) {
+      const isSpecificPayment =
+        profile &&
+        (profile.mpPaymentId === String(paymentId) ||
+          (profile as any).mp_payment_id === String(paymentId));
+
+      if (isSpecificPayment) {
         return {
           paymentId,
           status: 'approved',
@@ -354,15 +359,18 @@ export async function checkMercadoPagoPayment(
  */
 export function subscribeToUserSubscriptionStatus(
   userId: string,
-  onActivated: (user: User) => void
+  onActivated: (user: User) => void,
+  expectedPaymentId?: string,
+  initialExpiresAt?: string
 ): () => void {
   if (!isSupabaseConfigured || !userId) {
     return () => {};
   }
 
   try {
+    const channelName = `profile_status_${userId}_${expectedPaymentId || 'general'}_${Date.now()}`;
     const channel = supabase
-      .channel(`profile_status_${userId}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -372,15 +380,38 @@ export function subscribeToUserSubscriptionStatus(
         },
         async (payload) => {
           const row = (payload.new || {}) as any;
-          if (
+          const matchesUser =
             row.user_id === userId ||
             row.id === userId ||
-            !row.user_id
-          ) {
-            const freshUser = await fetchUserProfile(userId);
-            if (freshUser && isSubscriptionActive(freshUser)) {
-              onActivated(freshUser);
+            !row.user_id;
+
+          if (!matchesUser) return;
+
+          // Se estiver aguardando um pagamento específico (ex: renovação ou novo PIX),
+          // SÓ aciona se o row contiver o mp_payment_id correspondente
+          // OU se a data de expiração foi estendida
+          if (expectedPaymentId) {
+            const rowPaymentId = String(row.mp_payment_id || '');
+            const isMatchingPayment = rowPaymentId === String(expectedPaymentId);
+
+            let isExtended = false;
+            if (row.subscription_expires_at && initialExpiresAt) {
+              const newTime = new Date(row.subscription_expires_at).getTime();
+              const oldTime = new Date(initialExpiresAt).getTime();
+              if (!Number.isNaN(newTime) && !Number.isNaN(oldTime) && newTime > oldTime) {
+                isExtended = true;
+              }
             }
+
+            if (!isMatchingPayment && !isExtended) {
+              // Não corresponde à nova transação solicitada; ignora
+              return;
+            }
+          }
+
+          const freshUser = await fetchUserProfile(userId);
+          if (freshUser && isSubscriptionActive(freshUser)) {
+            onActivated(freshUser);
           }
         }
       )

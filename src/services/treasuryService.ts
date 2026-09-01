@@ -5,13 +5,24 @@ import {
   Lancamento,
   TipoLancamento,
   User,
+  Contributor,
   SupabaseConfiguracaoIgrejaRow,
   SupabaseFechamentoCultoRow,
   SupabaseLancamentoRow,
   SupabasePerfilUsuarioRow,
+  SupabaseContributorRow,
   CategoriaEntrada,
   CategoriaSaida,
 } from '../types';
+import {
+  formatReceiptNumberDigits,
+  sanitizeContributorId,
+  isValidUUID,
+  insertLancamentoResilient,
+  getOrderedTipoStrategies,
+  setCachedTipoStrategy,
+} from '../utils/receiptHelper';
+import { DEMO_CONTRIBUTORS } from '../data/mockData';
 
 export const LOCAL_SUPPORT_KEY = 'tesouraria_app_support_config';
 
@@ -660,8 +671,12 @@ function mapRowToLancamento(row: SupabaseLancamentoRow): Lancamento {
     descricao: row.descricao,
     valor: Number(row.valor),
     formaPagamento: row.forma_pagamento,
-    nomePessoa: row.nome_pessoa || undefined,
+    nomePessoa: row.nome_pessoa || row.contributor_name || undefined,
     data: row.data,
+    contributorId: row.contributor_id || undefined,
+    contributorName: row.contributor_name || row.nome_pessoa || undefined,
+    contributorPhone: row.contributor_phone || undefined,
+    receiptNumber: row.receipt_number ? formatReceiptNumberDigits(row.receipt_number) : undefined,
   };
 }
 
@@ -684,6 +699,7 @@ function mapRowToFechamento(
     pastorPresidente: row.pastor_presidente || undefined,
     tesoureiro: row.tesoureiro,
     pastorLocal: row.pastor_local || undefined,
+    pastorName: row.pastor_name || row.pastor_local || row.pastor_presidente || undefined,
     segundaTestemunha: row.segunda_testemunha || undefined,
     porcentagemMatriz: row.porcentagem_matriz != null ? Number(row.porcentagem_matriz) : 20,
     aplicarRepasseMatriz: row.aplicar_repasse_matriz ?? true,
@@ -747,16 +763,73 @@ export async function fetchConfiguracaoIgreja(userId?: string): Promise<{ data: 
   }
 }
 
-// Helper para extrair coluna não encontrada do erro PGRST204 ou mensagem de schema cache
+// Helper para extrair coluna não encontrada do erro PGRST204 ou mensagem de schema cache / postgrest
 function extractMissingColumn(error: any): string | null {
   if (!error) return null;
   const msg = `${error.message || ''} ${error.details || ''} ${error.hint || ''}`;
-  const match = msg.match(/Could not find the '([^']+)' column/i);
-  if (match && match[1]) {
-    return match[1];
-  }
+  
+  // Format 1: Could not find the 'xyz' column of 'table' in the schema cache
+  const m1 = msg.match(/Could not find the ['"]([^'"]+)['"] column/i);
+  if (m1 && m1[1]) return m1[1];
+
+  // Format 2: Could not find the column 'xyz' of 'table'
+  const m2 = msg.match(/Could not find the column ['"]([^'"]+)['"]/i);
+  if (m2 && m2[1]) return m2[1];
+
+  // Format 3: column "xyz" of relation "table" does not exist
+  const m3 = msg.match(/column ['"]([^'"]+)['"] of relation/i);
+  if (m3 && m3[1]) return m3[1];
+
+  // Format 4: column "xyz" does not exist
+  const m4 = msg.match(/column ['"]([^'"]+)['"] does not exist/i);
+  if (m4 && m4[1]) return m4[1];
+
+  // Format 5: 'xyz' column in the schema cache
+  const m5 = msg.match(/['"]([^'"]+)['"] column/i);
+  if (m5 && m5[1]) return m5[1];
+
   return null;
 }
+
+const OPTIONAL_CONFIG_COLS_ORDER = [
+  'tipo_base_prebenda',
+  'categorias_prebenda',
+  'deduzir_matriz_base_prebenda',
+  'tipo_base_repasse_matriz',
+  'categorias_repasse_matriz',
+  'aplicar_prebenda',
+  'porcentagem_prebenda',
+  'aplicar_repasse_matriz',
+  'porcentagem_matriz',
+  'logo_url',
+  'segundo_tesoureiro_padrao',
+  'pastor_local',
+  'cidade_uf',
+  'cnpj',
+];
+
+const OPTIONAL_FECHAMENTO_COLS_ORDER = [
+  'tipo_base_prebenda',
+  'categorias_prebenda',
+  'deduzir_matriz_base_prebenda',
+  'tipo_base_repasse_matriz',
+  'categorias_repasse_matriz',
+  'pastor_name',
+  'aplicar_prebenda',
+  'porcentagem_prebenda',
+  'relatorio_ia',
+  'segunda_testemunha',
+  'pastor_local',
+  'pastor_presidente',
+  'data_inicio',
+  'data_fim',
+  'pregador',
+  'passagem_biblica',
+  'qtd_membros',
+  'qtd_visitantes',
+  'aplicar_repasse_matriz',
+  'porcentagem_matriz',
+];
 
 export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
@@ -774,7 +847,7 @@ export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: stri
     let success = false;
 
     // Tenta salvar com auto-remoção graciosa de colunas caso a tabela no Supabase não tenha as migrações mais recentes
-    for (let attempt = 0; attempt < 6; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
       const { data, error } = await supabase
         .from('configuracao_igreja')
         .upsert(currentRow, { onConflict: 'id' })
@@ -789,20 +862,20 @@ export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: stri
       lastError = error;
       const missingCol = extractMissingColumn(error);
       if (missingCol && missingCol in currentRow) {
-        console.warn(`Supabase: coluna '${missingCol}' ausente na tabela configuracao_igreja. Removendo do payload para salvar compatível...`);
+        console.warn(`Supabase: coluna '${missingCol}' ausente na tabela configuracao_igreja. Removendo do payload para compatibilidade...`);
         delete (currentRow as any)[missingCol];
         continue;
-      } else if (error.code === 'PGRST204') {
-        if ('aplicar_prebenda' in currentRow) {
-          delete (currentRow as any).aplicar_prebenda;
-          continue;
-        }
-        if ('porcentagem_prebenda' in currentRow) {
-          delete (currentRow as any).porcentagem_prebenda;
-          continue;
-        }
-        if ('logo_url' in currentRow) {
-          delete (currentRow as any).logo_url;
+      } else if (
+        error.code === 'PGRST204' ||
+        error.message?.includes('schema cache') ||
+        error.message?.includes('Could not find the') ||
+        error.message?.includes('column') ||
+        error.message?.includes('does not exist')
+      ) {
+        const nextColToRemove = OPTIONAL_CONFIG_COLS_ORDER.find((col) => col in currentRow);
+        if (nextColToRemove) {
+          console.warn(`Supabase: removendo coluna opcional '${nextColToRemove}' para tentar salvar configuracao_igreja compatível...`);
+          delete (currentRow as any)[nextColToRemove];
           continue;
         }
       }
@@ -852,11 +925,12 @@ export async function fetchFechamentos(userId?: string): Promise<{ data: Fechame
       return { data: [], isSupabase: true };
     }
 
-    // 2. Busca os lançamentos filtrando explicitamente pelo usuário logado
+    // 2. Busca os lançamentos filtrando explicitamente pelo usuário logado com ordenação decrescente
     const { data: lancamentosRows, error: lancamentosError } = await supabase
       .from('lancamentos')
       .select('*')
-      .eq('user_id', uid);
+      .eq('user_id', uid)
+      .order('receipt_number', { ascending: false, nullsFirst: false });
 
     if (lancamentosError) {
       console.error('Erro Supabase ao buscar lancamentos:', lancamentosError);
@@ -893,6 +967,13 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
           m100: 0, m050: 0, m025: 0, m010: 0, m005: 0,
         };
 
+    // Determina o nome do pastor responsável no momento do fechamento da ata
+    const resolvedPastorName =
+      fechamento.pastorName?.trim() ||
+      fechamento.pastorLocal?.trim() ||
+      fechamento.pastorPresidente?.trim() ||
+      null;
+
     const fechamentoRow: Partial<SupabaseFechamentoCultoRow> = {
       id: fechamento.id || `culto-${Date.now()}`,
       user_id: uid,
@@ -909,6 +990,7 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       pastor_presidente: fechamento.pastorPresidente || null,
       tesoureiro: fechamento.tesoureiro || 'Tesoureiro Principal',
       pastor_local: fechamento.pastorLocal || null,
+      pastor_name: resolvedPastorName,
       segunda_testemunha: fechamento.segundaTestemunha || null,
       porcentagem_matriz: fechamento.porcentagemMatriz != null ? Number(fechamento.porcentagemMatriz) : 20,
       aplicar_repasse_matriz: fechamento.aplicarRepasseMatriz ?? true,
@@ -936,7 +1018,7 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
     let fData: any = null;
 
     // Tentativa resiliente com auto-remoção de colunas que não existam no schema cache atual do Supabase
-    for (let attempt = 0; attempt < 6; attempt++) {
+    for (let attempt = 0; attempt < 30; attempt++) {
       const res = await supabase
         .from('fechamentos_culto')
         .upsert(currentRow, { onConflict: 'id' })
@@ -951,20 +1033,20 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
       fError = res.error;
       const missingCol = extractMissingColumn(fError);
       if (missingCol && missingCol in currentRow) {
-        console.warn(`Supabase: coluna '${missingCol}' ausente na tabela fechamentos_culto. Removendo do payload para salvar compatível...`);
+        console.warn(`Supabase: coluna '${missingCol}' ausente na tabela fechamentos_culto. Removendo do payload para compatibilidade...`);
         delete (currentRow as any)[missingCol];
         continue;
-      } else if (fError.code === 'PGRST204') {
-        if ('aplicar_prebenda' in currentRow) {
-          delete (currentRow as any).aplicar_prebenda;
-          continue;
-        }
-        if ('porcentagem_prebenda' in currentRow) {
-          delete (currentRow as any).porcentagem_prebenda;
-          continue;
-        }
-        if ('relatorio_ia' in currentRow) {
-          delete (currentRow as any).relatorio_ia;
+      } else if (
+        fError.code === 'PGRST204' ||
+        fError.message?.includes('schema cache') ||
+        fError.message?.includes('Could not find the') ||
+        fError.message?.includes('column') ||
+        fError.message?.includes('does not exist')
+      ) {
+        const nextColToRemove = OPTIONAL_FECHAMENTO_COLS_ORDER.find((col) => col in currentRow);
+        if (nextColToRemove) {
+          console.warn(`Supabase: removendo coluna opcional '${nextColToRemove}' para salvar fechamentos_culto compatível...`);
+          delete (currentRow as any)[nextColToRemove];
           continue;
         }
       }
@@ -978,44 +1060,7 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
 
     // Salva os lançamentos vinculados explicitamente com user_id
     if (fechamento.lancamentos && fechamento.lancamentos.length > 0) {
-      const allTipoStrategies: { name: string; resolve: (isSaida: boolean, cat: string) => string }[] = [
-        { name: 'lowercase', resolve: (isSaida) => (isSaida ? 'saida' : 'entrada') },
-        { name: 'accent_lower', resolve: (isSaida) => (isSaida ? 'saída' : 'entrada') },
-        { name: 'capitalized', resolve: (isSaida) => (isSaida ? 'Saida' : 'Entrada') },
-        { name: 'capitalized_accent', resolve: (isSaida) => (isSaida ? 'Saída' : 'Entrada') },
-        { name: 'uppercase', resolve: (isSaida) => (isSaida ? 'SAIDA' : 'ENTRADA') },
-        { name: 'accent_upper', resolve: (isSaida) => (isSaida ? 'SAÍDA' : 'ENTRADA') },
-        { name: 'receita_despesa_lower', resolve: (isSaida) => (isSaida ? 'despesa' : 'receita') },
-        { name: 'receita_despesa_cap', resolve: (isSaida) => (isSaida ? 'Despesa' : 'Receita') },
-        { name: 'receita_despesa_upper', resolve: (isSaida) => (isSaida ? 'DESPESA' : 'RECEITA') },
-        { name: 'credito_debito_lower', resolve: (isSaida) => (isSaida ? 'debito' : 'credito') },
-        { name: 'credito_debito_accent_lower', resolve: (isSaida) => (isSaida ? 'débito' : 'crédito') },
-        { name: 'credito_debito_cap', resolve: (isSaida) => (isSaida ? 'Débito' : 'Crédito') },
-        { name: 'credito_debito_cap_no_accent', resolve: (isSaida) => (isSaida ? 'Debito' : 'Credito') },
-        { name: 'credito_debito_upper', resolve: (isSaida) => (isSaida ? 'DEBITO' : 'CREDITO') },
-        { name: 'credito_debito_accent_upper', resolve: (isSaida) => (isSaida ? 'DÉBITO' : 'CRÉDITO') },
-        { name: 'single_char_es', resolve: (isSaida) => (isSaida ? 'S' : 'E') },
-        { name: 'single_char_es_lower', resolve: (isSaida) => (isSaida ? 's' : 'e') },
-        { name: 'single_char_cd', resolve: (isSaida) => (isSaida ? 'D' : 'C') },
-        { name: 'single_char_cd_lower', resolve: (isSaida) => (isSaida ? 'd' : 'c') },
-        { name: 'single_char_rd', resolve: (isSaida) => (isSaida ? 'D' : 'R') },
-        { name: 'in_out_lower', resolve: (isSaida) => (isSaida ? 'out' : 'in') },
-        { name: 'in_out_upper', resolve: (isSaida) => (isSaida ? 'OUT' : 'IN') },
-        { name: 'income_expense_lower', resolve: (isSaida) => (isSaida ? 'expense' : 'income') },
-        { name: 'income_expense_cap', resolve: (isSaida) => (isSaida ? 'Expense' : 'Income') },
-        { name: 'income_expense_upper', resolve: (isSaida) => (isSaida ? 'EXPENSE' : 'INCOME') },
-        { name: 'category_as_type', resolve: (isSaida, cat) => cat || (isSaida ? 'outros' : 'oferta_culto') },
-        { name: 'category_as_type_upper', resolve: (isSaida, cat) => (cat || (isSaida ? 'outros' : 'oferta_culto')).toUpperCase() },
-        { name: 'dizimo_despesa', resolve: (isSaida) => (isSaida ? 'despesa' : 'dizimo') },
-        { name: 'dizimo_despesa_accent', resolve: (isSaida) => (isSaida ? 'Despesa' : 'Dízimo') },
-      ];
-
-      const tipoStrategies = lastSuccessfulTipoStrategy
-        ? [
-            ...allTipoStrategies.filter((s) => s.name === lastSuccessfulTipoStrategy),
-            ...allTipoStrategies.filter((s) => s.name !== lastSuccessfulTipoStrategy),
-          ]
-        : allTipoStrategies;
+      const tipoStrategies = getOrderedTipoStrategies();
 
       let lastError: any = null;
       let savedSuccessfully = false;
@@ -1026,28 +1071,73 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
           const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
           const finalTipo = strategy.resolve(isSaida, l.categoria);
 
-          return {
+          const contributorNameClean = (l.contributorName?.trim() || l.nomePessoa?.trim()) || null;
+          const contributorPhoneClean = l.contributorPhone?.trim()
+            ? l.contributorPhone.replace(/\D/g, '') || null
+            : null;
+          const contributorIdClean = sanitizeContributorId(l.contributorId);
+
+          let numericReceipt: number | null = null;
+          if (l.receiptNumber !== undefined && l.receiptNumber !== null && String(l.receiptNumber).trim() !== '') {
+            const digits = String(l.receiptNumber).replace(/\D/g, '');
+            const parsed = parseInt(digits, 10);
+            if (!Number.isNaN(parsed)) {
+              numericReceipt = parsed;
+            }
+          }
+
+          const rowPayload: any = {
             id: l.id,
             user_id: uid,
+            church_id: uid,
             fechamento_id: fechamento.id,
             tipo: finalTipo,
             categoria: l.categoria || (isSaida ? 'outros' : 'oferta_culto'),
             descricao: l.descricao || 'Lançamento',
             valor: Number(l.valor) || 0,
             forma_pagamento: l.formaPagamento || 'dinheiro',
-            nome_pessoa: l.nomePessoa || null,
+            nome_pessoa: contributorNameClean,
             data: toSqlDate(l.data),
+            contributor_id: contributorIdClean,
+            contributor_name: contributorNameClean,
+            contributor_phone: contributorPhoneClean,
+            receipt_number: numericReceipt,
           };
+
+          // Garante que nenhum campo undefined seja enviado
+          Object.keys(rowPayload).forEach((k) => {
+            if (rowPayload[k] === undefined) {
+              rowPayload[k] = null;
+            }
+          });
+
+          return rowPayload;
         });
 
-        const { error } = await supabase
+        let { error } = await supabase
           .from('lancamentos')
           .upsert(rows, { onConflict: 'id' })
           .select();
 
+        // Se o erro for de coluna inexistente (PGRST204), remove as novas colunas e tenta novamente
+        if (error && (error.code === 'PGRST204' || error.message?.includes('Could not find the') || error.message?.includes('column'))) {
+          const sanitizedRows = rows.map((r: any) => {
+            const copy = { ...r };
+            if (error.message?.includes('church_id')) delete copy.church_id;
+            if (error.message?.includes('contributor_id')) delete copy.contributor_id;
+            if (error.message?.includes('contributor_name')) delete copy.contributor_name;
+            if (error.message?.includes('contributor_phone')) delete copy.contributor_phone;
+            if (error.message?.includes('receipt_number')) delete copy.receipt_number;
+            return copy;
+          });
+          const resRetry = await supabase.from('lancamentos').upsert(sanitizedRows, { onConflict: 'id' });
+          error = resRetry.error;
+        }
+
         if (!error) {
           savedSuccessfully = true;
           lastSuccessfulTipoStrategy = strategy.name;
+          setCachedTipoStrategy(strategy.name);
           break;
         }
 
@@ -1064,35 +1154,50 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
           const rawTipo = String(l.tipo || '').toLowerCase().trim();
           const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
 
-          for (const strategy of tipoStrategies) {
-            const singleRow = {
-              id: l.id,
-              user_id: uid,
-              fechamento_id: fechamento.id,
-              tipo: strategy.resolve(isSaida, l.categoria),
-              categoria: l.categoria || (isSaida ? 'outros' : 'oferta_culto'),
-              descricao: l.descricao || 'Lançamento',
-              valor: Number(l.valor) || 0,
-              forma_pagamento: l.formaPagamento || 'dinheiro',
-              nome_pessoa: l.nomePessoa || null,
-              data: toSqlDate(l.data),
-            };
+          const contributorNameClean = (l.contributorName?.trim() || l.nomePessoa?.trim()) || null;
+          const contributorPhoneClean = l.contributorPhone?.trim()
+            ? l.contributorPhone.replace(/\D/g, '') || null
+            : null;
+          const contributorIdClean = sanitizeContributorId(l.contributorId);
 
-            const { error: rowErr } = await supabase
-              .from('lancamentos')
-              .upsert(singleRow, { onConflict: 'id' });
+          let numericReceipt: number | null = null;
+          if (l.receiptNumber !== undefined && l.receiptNumber !== null && String(l.receiptNumber).trim() !== '') {
+            const digits = String(l.receiptNumber).replace(/\D/g, '');
+            const parsed = parseInt(digits, 10);
+            if (!Number.isNaN(parsed)) {
+              numericReceipt = parsed;
+            }
+          }
 
-            if (!rowErr) {
-              lastSuccessfulTipoStrategy = strategy.name;
-              savedSuccessfully = true;
-              break;
+          const basePayload: any = {
+            id: l.id,
+            user_id: uid,
+            church_id: uid,
+            fechamento_id: fechamento.id,
+            categoria: l.categoria || (isSaida ? 'outros' : 'oferta_culto'),
+            descricao: l.descricao || 'Lançamento',
+            valor: Number(l.valor) || 0,
+            forma_pagamento: l.formaPagamento || 'dinheiro',
+            nome_pessoa: contributorNameClean,
+            data: toSqlDate(l.data),
+            contributor_id: contributorIdClean,
+            contributor_name: contributorNameClean,
+            contributor_phone: contributorPhoneClean,
+            receipt_number: numericReceipt,
+          };
+
+          const singleRes = await insertLancamentoResilient(basePayload, isSaida, basePayload.categoria, true);
+          if (singleRes.success) {
+            savedSuccessfully = true;
+            if (singleRes.strategyUsed) {
+              lastSuccessfulTipoStrategy = singleRes.strategyUsed;
             }
           }
         }
       }
 
       if (!savedSuccessfully && lastError) {
-        console.warn('Aviso ao sincronizar lançamentos:', lastError.message || lastError);
+        console.error('ERRO SUPABASE ao sincronizar lançamentos:', lastError);
       }
     }
 
@@ -1140,6 +1245,346 @@ export async function deleteFechamento(fechamentoId: string, userId?: string): P
   } catch (err) {
     console.error('Erro Supabase inesperado ao excluir fechamento:', err);
     return false;
+  }
+}
+
+/* =========================================================
+   SERVIÇOS DE DIZIMISTAS / CONTRIBUINTES E RECIBOS SEQUENCIAIS
+   ========================================================= */
+
+const LOCAL_CONTRIBUTORS_PREFIX = 'eklesia_contributors_';
+const LOCAL_RECEIPT_SEQ_PREFIX = 'eklesia_receipt_seq_';
+
+function getLocalContributors(userId?: string): Contributor[] {
+  try {
+    const key = `${LOCAL_CONTRIBUTORS_PREFIX}${userId || 'default'}`;
+    const raw = localStorage.getItem(key);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return userId === 'demo-user-session' ? DEMO_CONTRIBUTORS : [];
+}
+
+function saveLocalContributors(contributors: Contributor[], userId?: string): void {
+  try {
+    const key = `${LOCAL_CONTRIBUTORS_PREFIX}${userId || 'default'}`;
+    localStorage.setItem(key, JSON.stringify(contributors));
+  } catch {}
+}
+
+export async function fetchContributors(userId?: string): Promise<{ data: Contributor[]; isSupabase: boolean }> {
+  const localList = getLocalContributors(userId);
+  if (!isSupabaseConfigured) {
+    return { data: localList, isSupabase: false };
+  }
+
+  try {
+    const uid = await getCurrentUserId(userId);
+    if (!uid) {
+      return { data: localList, isSupabase: true };
+    }
+
+    const { data, error } = await supabase
+      .from('contributors')
+      .select('*')
+      .eq('user_id', uid)
+      .order('name', { ascending: true });
+
+    if (error) {
+      console.warn('Aviso Supabase ao buscar tabela contributors:', error.message);
+      return { data: localList, isSupabase: false };
+    }
+
+    if (data) {
+      const mapped: Contributor[] = data.map((row: SupabaseContributorRow) => ({
+        id: row.id,
+        userId: row.user_id,
+        name: row.name,
+        phone: row.phone || undefined,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      }));
+      saveLocalContributors(mapped, uid);
+      return { data: mapped, isSupabase: true };
+    }
+
+    return { data: localList, isSupabase: true };
+  } catch (err) {
+    console.error('Erro inesperado ao carregar contribuintes:', err);
+    return { data: localList, isSupabase: false };
+  }
+}
+
+export async function saveContributor(
+  contributor: Partial<Contributor>,
+  userId?: string
+): Promise<{ success: boolean; data?: Contributor; error?: string }> {
+  const uid = await getCurrentUserId(userId);
+  const nowIso = new Date().toISOString();
+  const id = contributor.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `contrib-${Date.now()}`);
+
+  const itemToSave: Contributor = {
+    id,
+    userId: uid || undefined,
+    name: (contributor.name || '').trim(),
+    phone: contributor.phone ? contributor.phone.trim() : undefined,
+    createdAt: contributor.createdAt || nowIso,
+    updatedAt: nowIso,
+  };
+
+  if (!itemToSave.name) {
+    return { success: false, error: 'O nome do dizimista/contribuinte é obrigatório.' };
+  }
+
+  // Atualiza cache local
+  const currentLocal = getLocalContributors(uid || undefined);
+  const existingIdx = currentLocal.findIndex((c) => c.id === itemToSave.id || c.name.toLowerCase() === itemToSave.name.toLowerCase());
+  let updatedList: Contributor[];
+  if (existingIdx >= 0) {
+    updatedList = [...currentLocal];
+    updatedList[existingIdx] = { ...updatedList[existingIdx], ...itemToSave };
+  } else {
+    updatedList = [itemToSave, ...currentLocal];
+  }
+  saveLocalContributors(updatedList, uid || undefined);
+
+  if (!isSupabaseConfigured || !uid) {
+    return { success: true, data: itemToSave };
+  }
+
+  try {
+    const payload: Partial<SupabaseContributorRow> = {
+      id: itemToSave.id,
+      user_id: uid,
+      name: itemToSave.name,
+      phone: itemToSave.phone || null,
+      created_at: itemToSave.createdAt,
+      updated_at: nowIso,
+    };
+
+    const { data, error } = await supabase
+      .from('contributors')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Erro ao salvar contribuinte no Supabase (salvo localmente):', error.message);
+      return { success: true, data: itemToSave };
+    }
+
+    const saved: Contributor = {
+      id: data?.id || itemToSave.id,
+      userId: data?.user_id || uid,
+      name: data?.name || itemToSave.name,
+      phone: data?.phone || itemToSave.phone,
+      createdAt: data?.created_at || itemToSave.createdAt,
+      updatedAt: data?.updated_at || nowIso,
+    };
+
+    return { success: true, data: saved };
+  } catch (err: any) {
+    console.error('Erro inesperado ao salvar contribuinte:', err);
+    return { success: true, data: itemToSave };
+  }
+}
+
+export async function deleteContributor(
+  contributorId: string,
+  userId?: string
+): Promise<{ success: boolean; error?: string }> {
+  const uid = await getCurrentUserId(userId);
+
+  // Remove do local
+  const currentLocal = getLocalContributors(uid || undefined);
+  const filtered = currentLocal.filter((c) => c.id !== contributorId);
+  saveLocalContributors(filtered, uid || undefined);
+
+  if (!isSupabaseConfigured || !uid) {
+    return { success: true };
+  }
+
+  try {
+    const { error } = await supabase
+      .from('contributors')
+      .delete()
+      .eq('id', contributorId)
+      .eq('user_id', uid);
+
+    if (error) {
+      console.error('Erro ao excluir contribuinte no Supabase:', error.message);
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Erro inesperado ao excluir contribuinte:', err);
+    return { success: false, error: err?.message };
+  }
+}
+
+/**
+ * LÓGICA DE NUMERAÇÃO SEQUENCIAL ISOLADA POR IGREJA (user_id / church_id):
+ * Obtém o próximo número de recibo inteiro (ex: 104) calculado no instante da gravação (MAX(receipt_number) + 1).
+ */
+export async function calculateNextReceiptNumber(userId?: string): Promise<number> {
+  const uid = await getCurrentUserId(userId);
+  const seqKey = `${LOCAL_RECEIPT_SEQ_PREFIX}${uid || 'default'}`;
+
+  let maxNum = 0;
+
+  // 1. Lê contador local salvo
+  try {
+    const savedSeq = localStorage.getItem(seqKey);
+    if (savedSeq) {
+      const parsed = parseInt(savedSeq, 10);
+      if (!Number.isNaN(parsed) && parsed > maxNum) {
+        maxNum = parsed;
+      }
+    }
+  } catch {}
+
+  // 2. Se for conta demo, define base inicial para exemplos se ainda estiver no 0
+  if (uid === 'demo-user-session' && maxNum < 103) {
+    maxNum = 103;
+  }
+
+  // 3. Consulta no Supabase o maior receipt_number registrado para este user_id / church_id
+  if (isSupabaseConfigured && uid && uid !== 'demo-user-session') {
+    try {
+      const { data, error } = await supabase
+        .from('lancamentos')
+        .select('receipt_number')
+        .or(`user_id.eq.${uid},church_id.eq.${uid}`)
+        .not('receipt_number', 'is', null);
+
+      if (!error && data && data.length > 0) {
+        for (const row of data) {
+          if (row.receipt_number !== null && row.receipt_number !== undefined) {
+            const cleanDigits = String(row.receipt_number).replace(/\D/g, '');
+            const parsed = parseInt(cleanDigits, 10);
+            if (!Number.isNaN(parsed) && parsed > maxNum) {
+              maxNum = parsed;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Aviso ao consultar maior recibo no Supabase:', err);
+    }
+  }
+
+  const nextNum = maxNum + 1;
+
+  // Atualiza cache de sequência
+  try {
+    localStorage.setItem(seqKey, nextNum.toString());
+  } catch {}
+
+  return nextNum;
+}
+
+export async function getNextReceiptNumber(userId?: string): Promise<string> {
+  const nextNum = await calculateNextReceiptNumber(userId);
+  return String(nextNum).padStart(6, '0');
+}
+
+export interface InsertLancamentoResult {
+  success: boolean;
+  data?: any;
+  error?: string;
+  receiptNumber?: number | null;
+  formattedReceiptNumber?: string | null;
+}
+
+/**
+ * Insere um novo lançamento diretamente na tabela 'lancamentos' do Supabase
+ * seguindo rigorosamente os tipos, parâmetros nulos e captura explícita de erros.
+ */
+export async function insertLancamentoSupabase(
+  lancamento: Lancamento,
+  churchId?: string,
+  fechamentoId?: string
+): Promise<InsertLancamentoResult> {
+  if (!isSupabaseConfigured) {
+    return { success: true, receiptNumber: null, formattedReceiptNumber: null };
+  }
+
+  try {
+    const uid = await getCurrentUserId(churchId);
+    const effectiveChurchId = uid || churchId || 'default-church';
+
+    // 1. Calcula receipt_number (inteiro) EXCLUSIVAMENTE agora no momento da submissão se for entrada
+    let nextReceiptInt: number | null = null;
+    let formattedReceipt: string | null = null;
+
+    if (lancamento.tipo === 'entrada') {
+      nextReceiptInt = await calculateNextReceiptNumber(effectiveChurchId);
+      formattedReceipt = String(nextReceiptInt).padStart(6, '0');
+    }
+
+    // 2. Mapeamento limpo e rigoroso de dados
+    const contributorNameClean = (lancamento.contributorName?.trim() || lancamento.nomePessoa?.trim()) || null;
+    const contributorPhoneClean = lancamento.contributorPhone?.trim()
+      ? lancamento.contributorPhone.replace(/\D/g, '') || null
+      : null;
+    const contributorIdClean = sanitizeContributorId(lancamento.contributorId);
+
+    const rawTipo = String(lancamento.tipo || '').toLowerCase().trim();
+    const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
+    const finalCategoria = lancamento.categoria || (isSaida ? 'outros' : 'oferta_culto');
+
+    const payload: Record<string, any> = {
+      id: lancamento.id,
+      church_id: effectiveChurchId,
+      user_id: effectiveChurchId,
+      fechamento_id: fechamentoId || 'fechamento-geral',
+      categoria: finalCategoria,
+      descricao: lancamento.descricao?.trim() || (isSaida ? 'Despesa / Saída' : 'Oferta / Entrada'),
+      valor: Number(lancamento.valor) || 0,
+      forma_pagamento: lancamento.formaPagamento || 'dinheiro',
+      nome_pessoa: contributorNameClean,
+      contributor_id: contributorIdClean,
+      contributor_name: contributorNameClean,
+      contributor_phone: contributorPhoneClean,
+      receipt_number: nextReceiptInt,
+      data: toSqlDate(lancamento.data),
+    };
+
+    // Garante que NENHUM campo undefined seja enviado
+    Object.keys(payload).forEach((key) => {
+      if (payload[key] === undefined) {
+        payload[key] = null;
+      }
+    });
+
+    // 3. Chamada resiliente tratando automaticamente restrições CHECK (lancamentos_tipo_check) e colunas ausentes
+    const res = await insertLancamentoResilient(payload, isSaida, finalCategoria, false);
+
+    if (!res.success) {
+      console.error('ERRO SUPABASE:', res.error);
+      return {
+        success: false,
+        error: res.error?.message || 'Erro ao salvar lançamento na tabela lancamentos.',
+        receiptNumber: nextReceiptInt,
+        formattedReceiptNumber: formattedReceipt,
+      };
+    }
+
+    return {
+      success: true,
+      data: res.data,
+      receiptNumber: nextReceiptInt,
+      formattedReceiptNumber: formattedReceipt,
+    };
+  } catch (err: any) {
+    console.error('ERRO SUPABASE:', err);
+    return {
+      success: false,
+      error: err?.message || 'Erro inesperado ao salvar lançamento no Supabase.',
+    };
   }
 }
 
@@ -1395,6 +1840,7 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         subscriptionPlan: isSuper ? 'pro_isento' : (data.subscription_plan || 'mensal'),
         subscriptionExpiresAt: isSuper ? 'Vitalício / Isento' : (data.subscription_expires_at || undefined),
         mpPreapprovalId: data.mp_preapproval_id || undefined,
+        mpPaymentId: data.mp_payment_id ? String(data.mp_payment_id) : undefined,
         createdAt: data.created_at || new Date().toISOString(),
       };
     }

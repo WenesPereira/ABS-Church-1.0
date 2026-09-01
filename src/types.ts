@@ -1,4 +1,4 @@
-export type ActiveTab = 'fechamento' | 'lancamentos' | 'contagem' | 'historico' | 'relatorio_ia' | 'config';
+export type ActiveTab = 'fechamento' | 'lancamentos' | 'contagem' | 'dizimistas' | 'historico' | 'relatorio_ia' | 'config';
 
 export type TipoLancamento = 'entrada' | 'saida';
 
@@ -28,6 +28,15 @@ export type FormaPagamento =
   | 'cartao_credito' 
   | 'transferencia';
 
+export interface Contributor {
+  id: string;
+  userId?: string;
+  name: string;
+  phone?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Lancamento {
   id: string;
   tipo: TipoLancamento;
@@ -37,6 +46,10 @@ export interface Lancamento {
   formaPagamento: FormaPagamento;
   nomePessoa?: string; // Nome do dizimista ou credor
   data: string;
+  contributorId?: string;
+  contributorName?: string;
+  contributorPhone?: string;
+  receiptNumber?: string; // Número sequencial formatado de 6 dígitos (ex: "000102" ou "#000102")
 }
 
 export interface ContagemDinheiro {
@@ -69,6 +82,7 @@ export interface FechamentoCulto {
   pastorPresidente?: string;
   tesoureiro: string;
   pastorLocal?: string;
+  pastorName?: string; // Nome histórico do pastor responsável gravado na ata de fechamento
   segundaTestemunha?: string;
   porcentagemMatriz?: number; // Porcentagem a ser enviada para a matriz / sede (ex: 20%)
   aplicarRepasseMatriz?: boolean; // Se deve ou não aplicar o repasse para a matriz
@@ -124,6 +138,7 @@ export interface User {
   subscriptionPlan?: string;
   subscriptionExpiresAt?: string;
   mpPreapprovalId?: string;
+  mpPaymentId?: string;
   isDemo?: boolean;
 }
 
@@ -188,6 +203,7 @@ export interface SupabaseFechamentoCultoRow {
   pastor_presidente: string | null;
   tesoureiro: string;
   pastor_local: string | null;
+  pastor_name?: string | null;
   segunda_testemunha: string | null;
   porcentagem_matriz: number | null;
   aplicar_repasse_matriz: boolean | null;
@@ -208,6 +224,15 @@ export interface SupabaseFechamentoCultoRow {
   updated_at?: string;
 }
 
+export interface SupabaseContributorRow {
+  id: string;
+  user_id: string;
+  name: string;
+  phone: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface SupabaseLancamentoRow {
   id: string;
   user_id: string;
@@ -219,6 +244,10 @@ export interface SupabaseLancamentoRow {
   forma_pagamento: FormaPagamento;
   nome_pessoa: string | null;
   data: string;
+  contributor_id?: string | null;
+  contributor_name?: string | null;
+  contributor_phone?: string | null;
+  receipt_number?: string | number | null;
   created_at?: string;
   updated_at?: string;
 }

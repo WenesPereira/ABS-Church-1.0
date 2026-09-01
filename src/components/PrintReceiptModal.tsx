@@ -98,9 +98,31 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     return trimmed;
   };
 
-  const pastorPresidenteAssinatura = getValidSignerName(fechamento.pastorPresidente || config.pastorPresidente, 'Pastor Presidente');
-  const tesoureiroAssinatura = getValidSignerName(fechamento.tesoureiro || config.tesoureiroPadrao, 'Tesoureiro Principal');
-  const pastorLocalAssinatura = getValidSignerName(fechamento.pastorLocal || config.pastorLocal, 'Pastor Local');
+  // Preserva estritamente o histórico auditável da ata: utiliza o pastor_name gravado naquele registro específico
+  const pastorGravadoNoRegistro = getValidSignerName(fechamento.pastorName);
+  const pastorLocalGravado = getValidSignerName(fechamento.pastorLocal, 'Pastor Local');
+  const pastorPresidenteGravado = getValidSignerName(fechamento.pastorPresidente, 'Pastor Presidente');
+
+  // Para registros fechados ou com pastor gravado, NUNCA busca o perfil atual do usuário ou config atual
+  const pastorResponsavelHistorico =
+    pastorGravadoNoRegistro ||
+    pastorLocalGravado ||
+    pastorPresidenteGravado ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config.pastorLocal || config.pastorPresidente) : '');
+
+  const pastorPresidenteAssinatura =
+    pastorGravadoNoRegistro ||
+    pastorPresidenteGravado ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config.pastorPresidente, 'Pastor Presidente') : '');
+
+  const pastorLocalAssinatura =
+    pastorGravadoNoRegistro ||
+    pastorLocalGravado ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config.pastorLocal, 'Pastor Local') : '');
+
+  const tesoureiroAssinatura =
+    getValidSignerName(fechamento.tesoureiro, 'Tesoureiro Principal') ||
+    (fechamento.status === 'aberto' ? getValidSignerName(config.tesoureiroPadrao, 'Tesoureiro Principal') : 'Tesoureiro Responsável');
 
   const saidaLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'saida');
   const dizimoLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'entrada' && l.categoria === 'dizimo');
@@ -339,7 +361,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           {/* Header Centralizado */}
           <div className="text-center border-b-2 border-slate-900 pb-4 space-y-1.5 print-avoid-break">
             <h2 className="text-lg sm:text-xl font-black uppercase tracking-wider text-slate-900">
-              {config.nomeIgreja || 'ABS CHURCH'}
+              {fechamento.nomeIgreja || config.nomeIgreja || 'ABS CHURCH'}
             </h2>
             {config.cnpj && (
               <p className="text-[10px] text-slate-600 font-mono tracking-normal">
@@ -377,16 +399,25 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                         <span className="font-mono text-emerald-800 font-bold">Total: {formatCurrency(resumo.totalDizimos)}</span>
                       </p>
                       <div className="space-y-1 divide-y divide-emerald-200/60">
-                        {dizimoLancamentos.map((dizimo) => (
-                          <div key={dizimo.id} className="pt-1 flex justify-between items-center text-[10px] text-emerald-950">
-                            <span>
-                              • <strong>{dizimo.nomePessoa || 'Dizimista Anônimo / Não Identificado'}</strong>
-                              {dizimo.descricao && dizimo.descricao.toLowerCase() !== 'dízimo' && dizimo.descricao.toLowerCase() !== 'dizimo' ? ` (${dizimo.descricao})` : ''}
-                              <span className="text-[9px] text-slate-500 ml-1 font-mono">[{dizimo.formaPagamento.toUpperCase()}]</span>
-                            </span>
-                            <span className="font-mono font-bold text-emerald-800 ml-2 shrink-0">{formatCurrency(dizimo.valor)}</span>
-                          </div>
-                        ))}
+                        {dizimoLancamentos.map((dizimo) => {
+                          const nome = dizimo.contributorName || dizimo.nomePessoa || 'Dizimista Anônimo / Não Identificado';
+                          const numRecibo = dizimo.receiptNumber ? `#${String(dizimo.receiptNumber).padStart(6, '0')}` : null;
+                          return (
+                            <div key={dizimo.id} className="pt-1 flex justify-between items-center text-[10px] text-emerald-950">
+                              <span>
+                                • <strong>{nome}</strong>
+                                {numRecibo && (
+                                  <span className="text-[9px] text-amber-800 font-mono font-bold ml-1.5 bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-300">
+                                    {numRecibo}
+                                  </span>
+                                )}
+                                {dizimo.descricao && dizimo.descricao.toLowerCase() !== 'dízimo' && dizimo.descricao.toLowerCase() !== 'dizimo' ? ` (${dizimo.descricao})` : ''}
+                                <span className="text-[9px] text-slate-500 ml-1 font-mono">[{dizimo.formaPagamento.toUpperCase()}]</span>
+                              </span>
+                              <span className="font-mono font-bold text-emerald-800 ml-2 shrink-0">{formatCurrency(dizimo.valor)}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </td>
                   </tr>
@@ -462,7 +493,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                       <div>
                         (-) Prebenda Pastoral ({resumo.porcentagemPrebenda}%):
                         <span className="block text-[9px] text-amber-800 font-normal">
-                          Beneficiário: {fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'} (Base: {formatCurrency(resumo.baseCalculoPrebenda)}{deduzirMatrizBasePrebenda ? ' • Deduzida a Matriz' : ' • Cálculo Bruto'})
+                          Beneficiário: {fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'} (Base: {formatCurrency(resumo.baseCalculoPrebenda)}{deduzirMatrizBasePrebenda ? ' • Deduzida a Matriz' : ' • Cálculo Bruto'})
                         </span>
                       </div>
                     </td>
@@ -502,7 +533,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           {/* Signatures Line - Exclusivamente ao final do relatório (rodapé) */}
           <div className="pt-14 pb-2 border-t border-slate-300 print-avoid-break mt-6">
             <div className={`grid gap-8 text-center text-[10px] ${
-              pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura
+              pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro
                 ? 'grid-cols-3'
                 : 'grid-cols-2'
             }`}>
@@ -513,17 +544,17 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                 <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Tesoureiro Responsável</p>
               </div>
 
-              {pastorPresidenteAssinatura && pastorLocalAssinatura && pastorPresidenteAssinatura !== pastorLocalAssinatura ? (
+              {pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro ? (
                 <>
                   <div>
                     <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                      {pastorLocalAssinatura}
+                      {pastorLocalGravado}
                     </div>
                     <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Local / Titular</p>
                   </div>
                   <div>
                     <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                      {pastorPresidenteAssinatura}
+                      {pastorPresidenteGravado}
                     </div>
                     <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Presidente</p>
                   </div>
@@ -531,10 +562,10 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
               ) : (
                 <div>
                   <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                    {pastorLocalAssinatura || pastorPresidenteAssinatura || 'Pastor Responsável'}
+                    {pastorResponsavelHistorico || 'Pastor Responsável'}
                   </div>
                   <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
-                    {pastorPresidenteAssinatura && !pastorLocalAssinatura ? 'Pastor Presidente' : 'Pastor Responsável'}
+                    Pastor Responsável
                   </p>
                 </div>
               )}

@@ -87,10 +87,23 @@ CREATE TABLE IF NOT EXISTS public.configuracao_igreja (
     categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
     porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00,
     aplicar_prebenda BOOLEAN DEFAULT false,
+    tipo_base_prebenda TEXT DEFAULT 'todas',
+    categorias_prebenda JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    deduzir_matriz_base_prebenda BOOLEAN DEFAULT false,
     logo_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Garantir colunas novas em configuracao_igreja
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS tipo_base_prebenda TEXT DEFAULT 'todas';
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS categorias_prebenda JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb;
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS deduzir_matriz_base_prebenda BOOLEAN DEFAULT false;
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS tipo_base_repasse_matriz TEXT DEFAULT 'todas';
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb;
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS aplicar_prebenda BOOLEAN DEFAULT false;
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00;
+ALTER TABLE public.configuracao_igreja ADD COLUMN IF NOT EXISTS logo_url TEXT;
 
 -- Habilitar Row Level Security (RLS)
 ALTER TABLE public.configuracao_igreja ENABLE ROW LEVEL SECURITY;
@@ -137,6 +150,7 @@ CREATE TABLE IF NOT EXISTS public.fechamentos_culto (
     pastor_presidente TEXT,
     tesoureiro TEXT NOT NULL DEFAULT 'Tesoureiro Principal',
     pastor_local TEXT,
+    pastor_name TEXT,
     segunda_testemunha TEXT,
     porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
     aplicar_repasse_matriz BOOLEAN DEFAULT true,
@@ -144,6 +158,9 @@ CREATE TABLE IF NOT EXISTS public.fechamentos_culto (
     categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
     porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00,
     aplicar_prebenda BOOLEAN DEFAULT false,
+    tipo_base_prebenda TEXT DEFAULT 'todas',
+    categorias_prebenda JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb,
+    deduzir_matriz_base_prebenda BOOLEAN DEFAULT false,
     observacoes TEXT,
     contagem_dinheiro JSONB NOT NULL DEFAULT '{"c200":0,"c100":0,"c50":0,"c20":0,"c10":0,"c5":0,"c2":0,"m100":0,"m050":0,"m025":0,"m010":0,"m005":0}'::jsonb,
     status TEXT NOT NULL DEFAULT 'aberto' CHECK (status IN ('aberto', 'fechado')),
@@ -153,6 +170,22 @@ CREATE TABLE IF NOT EXISTS public.fechamentos_culto (
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
+
+-- Garantir colunas novas em fechamentos_culto
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS tipo_base_prebenda TEXT DEFAULT 'todas';
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS categorias_prebenda JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS deduzir_matriz_base_prebenda BOOLEAN DEFAULT false;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS tipo_base_repasse_matriz TEXT DEFAULT 'todas';
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS categorias_repasse_matriz JSONB DEFAULT '["dizimo", "oferta_culto", "oferta_missoes", "oferta_especial", "doacao", "outros"]'::jsonb;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS pastor_name TEXT;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS pastor_local TEXT;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS pastor_presidente TEXT;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS segunda_testemunha TEXT;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS aplicar_prebenda BOOLEAN DEFAULT false;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS porcentagem_prebenda NUMERIC(5,2) DEFAULT 0.00;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS aplicar_repasse_matriz BOOLEAN DEFAULT true;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00;
+ALTER TABLE public.fechamentos_culto ADD COLUMN IF NOT EXISTS relatorio_ia TEXT;
 
 -- Habilitar Row Level Security (RLS)
 ALTER TABLE public.fechamentos_culto ENABLE ROW LEVEL SECURITY;
@@ -181,7 +214,45 @@ CREATE POLICY "Usuários podem excluir seus fechamentos"
 
 
 -- ==============================================================================
--- TABELA 4: public.lancamentos (Entradas de Dízimos/Ofertas e Saídas/Despesas)
+-- TABELA 4: public.contributors (Dizimistas e Contribuintes da Igreja)
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.contributors (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    name TEXT NOT NULL,
+    phone TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+-- Habilitar Row Level Security (RLS)
+ALTER TABLE public.contributors ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de Segurança (RLS) para contributors
+DROP POLICY IF EXISTS "Usuários podem visualizar seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem visualizar seus contribuintes"
+    ON public.contributors FOR SELECT
+    USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem criar seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem criar seus contribuintes"
+    ON public.contributors FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem atualizar seus contribuintes"
+    ON public.contributors FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem excluir seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem excluir seus contribuintes"
+    ON public.contributors FOR DELETE
+    USING (auth.uid() = user_id);
+
+
+-- ==============================================================================
+-- TABELA 5: public.lancamentos (Entradas de Dízimos/Ofertas e Saídas/Despesas)
 -- ==============================================================================
 CREATE TABLE IF NOT EXISTS public.lancamentos (
     id TEXT PRIMARY KEY,
@@ -193,6 +264,10 @@ CREATE TABLE IF NOT EXISTS public.lancamentos (
     valor NUMERIC(12,2) NOT NULL DEFAULT 0.00,
     forma_pagamento TEXT NOT NULL DEFAULT 'dinheiro',
     nome_pessoa TEXT,
+    contributor_id UUID REFERENCES public.contributors(id) ON DELETE SET NULL,
+    contributor_name TEXT,
+    contributor_phone TEXT,
+    receipt_number TEXT,
     data DATE NOT NULL DEFAULT CURRENT_DATE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
@@ -231,9 +306,13 @@ CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_config_user_id ON public.configuracao_igreja(user_id);
 CREATE INDEX IF NOT EXISTS idx_fechamentos_user_id ON public.fechamentos_culto(user_id);
 CREATE INDEX IF NOT EXISTS idx_fechamentos_data ON public.fechamentos_culto(data);
+CREATE INDEX IF NOT EXISTS idx_contributors_user_id ON public.contributors(user_id);
+CREATE INDEX IF NOT EXISTS idx_contributors_name ON public.contributors(name);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_user_id ON public.lancamentos(user_id);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_fechamento_id ON public.lancamentos(fechamento_id);
 CREATE INDEX IF NOT EXISTS idx_lancamentos_tipo ON public.lancamentos(tipo);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_receipt_number ON public.lancamentos(receipt_number);
+CREATE INDEX IF NOT EXISTS idx_lancamentos_contributor_id ON public.lancamentos(contributor_id);
 
 
 -- ==============================================================================
@@ -289,9 +368,51 @@ CREATE TRIGGER on_auth_user_created
 -- ==============================================================================
 -- MIGRAÇÕES PARA BANCOS SUPABASE JÁ EXISTENTES (EXECUTE SE JÁ TIVER TABELAS CRIADAS)
 -- ==============================================================================
+-- 1. Criação da tabela de dizimistas e contribuintes caso não exista
+CREATE TABLE IF NOT EXISTS public.contributors (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE DEFAULT auth.uid(),
+    name TEXT NOT NULL,
+    phone TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.contributors ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem visualizar seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem visualizar seus contribuintes"
+    ON public.contributors FOR SELECT
+    USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem criar seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem criar seus contribuintes"
+    ON public.contributors FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem atualizar seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem atualizar seus contribuintes"
+    ON public.contributors FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Usuários podem excluir seus contribuintes" ON public.contributors;
+CREATE POLICY "Usuários podem excluir seus contribuintes"
+    ON public.contributors FOR DELETE
+    USING (auth.uid() = user_id);
+
+-- 2. Atualização das colunas na tabela de lançamentos
+ALTER TABLE IF EXISTS public.lancamentos 
+    ADD COLUMN IF NOT EXISTS contributor_id UUID,
+    ADD COLUMN IF NOT EXISTS contributor_name TEXT,
+    ADD COLUMN IF NOT EXISTS contributor_phone TEXT,
+    ADD COLUMN IF NOT EXISTS receipt_number TEXT;
+
+-- 3. Atualização das colunas de fechamentos e configurações
 ALTER TABLE IF EXISTS public.fechamentos_culto 
     ADD COLUMN IF NOT EXISTS data_inicio DATE,
     ADD COLUMN IF NOT EXISTS data_fim DATE,
+    ADD COLUMN IF NOT EXISTS pastor_name TEXT,
     ADD COLUMN IF NOT EXISTS porcentagem_matriz NUMERIC(5,2) DEFAULT 20.00,
     ADD COLUMN IF NOT EXISTS aplicar_repasse_matriz BOOLEAN DEFAULT true,
     ADD COLUMN IF NOT EXISTS tipo_base_repasse_matriz TEXT DEFAULT 'todas',

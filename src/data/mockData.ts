@@ -1,4 +1,4 @@
-import { FechamentoCulto, ConfigIgreja, User } from '../types';
+import { FechamentoCulto, ConfigIgreja, User, Contributor } from '../types';
 
 export const DEMO_USER: User = {
   id: 'demo-user-session',
@@ -12,6 +12,44 @@ export const DEMO_USER: User = {
   subscriptionExpiresAt: 'Acesso Demonstração',
   isDemo: true,
 };
+
+export const DEMO_CONTRIBUTORS: Contributor[] = [
+  {
+    id: 'contrib-1',
+    userId: 'demo-user-session',
+    name: 'Roberto da Silva',
+    phone: '11988887777',
+    createdAt: '2026-08-01T10:00:00Z',
+  },
+  {
+    id: 'contrib-2',
+    userId: 'demo-user-session',
+    name: 'Maria Helena Costa',
+    phone: '11977776666',
+    createdAt: '2026-08-01T10:00:00Z',
+  },
+  {
+    id: 'contrib-3',
+    userId: 'demo-user-session',
+    name: 'Paulo César Lima',
+    phone: '11966665555',
+    createdAt: '2026-08-01T10:00:00Z',
+  },
+  {
+    id: 'contrib-4',
+    userId: 'demo-user-session',
+    name: 'Família Mendes',
+    phone: '11955554444',
+    createdAt: '2026-08-01T10:00:00Z',
+  },
+  {
+    id: 'contrib-5',
+    userId: 'demo-user-session',
+    name: 'Diácono Anderson Souza',
+    phone: '11944443333',
+    createdAt: '2026-08-02T10:00:00Z',
+  },
+];
 
 export const DEMO_CONFIG: ConfigIgreja = {
   nomeIgreja: 'Igreja Batista Esperança Central',
@@ -76,6 +114,10 @@ export const DEMO_FECHAMENTOS: FechamentoCulto[] = [
         valor: 950.0,
         formaPagamento: 'pix',
         nomePessoa: 'Roberto da Silva',
+        contributorId: 'contrib-1',
+        contributorName: 'Roberto da Silva',
+        contributorPhone: '11988887777',
+        receiptNumber: '000101',
         data: '2026-08-17',
       },
       {
@@ -86,6 +128,10 @@ export const DEMO_FECHAMENTOS: FechamentoCulto[] = [
         valor: 420.0,
         formaPagamento: 'dinheiro',
         nomePessoa: 'Maria Helena Costa',
+        contributorId: 'contrib-2',
+        contributorName: 'Maria Helena Costa',
+        contributorPhone: '11977776666',
+        receiptNumber: '000102',
         data: '2026-08-17',
       },
       {
@@ -96,6 +142,10 @@ export const DEMO_FECHAMENTOS: FechamentoCulto[] = [
         valor: 1350.0,
         formaPagamento: 'transferencia',
         nomePessoa: 'Paulo César Lima',
+        contributorId: 'contrib-3',
+        contributorName: 'Paulo César Lima',
+        contributorPhone: '11966665555',
+        receiptNumber: '000103',
         data: '2026-08-17',
       },
       {

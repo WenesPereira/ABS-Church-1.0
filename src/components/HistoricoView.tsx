@@ -38,6 +38,9 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
     return (
       f.tipoCulto.toLowerCase().includes(term) ||
       (f.pregador && f.pregador.toLowerCase().includes(term)) ||
+      (f.pastorName && f.pastorName.toLowerCase().includes(term)) ||
+      (f.pastorLocal && f.pastorLocal.toLowerCase().includes(term)) ||
+      (f.pastorPresidente && f.pastorPresidente.toLowerCase().includes(term)) ||
       f.data.includes(term) ||
       f.tesoureiro.toLowerCase().includes(term)
     );
@@ -211,7 +214,14 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-800/80">
-                    <span className="text-[11px]">Tesoureiro: <strong className="text-slate-300">{culto.tesoureiro}</strong></span>
+                    <div className="flex flex-col text-[11px] leading-tight">
+                      <span>Tesoureiro: <strong className="text-slate-300">{culto.tesoureiro}</strong></span>
+                      {(culto.pastorName || culto.pastorLocal || culto.pastorPresidente) && (
+                        <span className="text-[10px] text-slate-400">
+                          Pastor: <strong className="text-slate-300">{culto.pastorName || culto.pastorLocal || culto.pastorPresidente}</strong>
+                        </span>
+                      )}
+                    </div>
 
                     <div className="flex items-center gap-2">
                       <button
