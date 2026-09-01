@@ -7,15 +7,17 @@ export interface GenerateReceiptImageOptions {
 }
 
 /**
- * Converte um elemento DOM (card de recibo) em imagem PNG de alta definição e executa o download automático
+ * Converte um elemento DOM (card de recibo) em imagem PNG de alta definição,
+ * com suporte nativo a Web Share API para celulares/PWA e fallback seguro via Blob URL.
  */
 export async function downloadElementAsPng(
   element: HTMLElement,
   fileName: string = 'recibo.png',
   options: GenerateReceiptImageOptions = {}
-): Promise<string> {
-  const scale = options.scale || 2.5; // Resolução nítida para compartilhamento e impressão
-  const backgroundColor = options.backgroundColor || '#020617'; // slate-950
+): Promise<void> {
+  const scale = options.scale || 3; // Alta resolução para legibilidade e impressão
+  const backgroundColor = options.backgroundColor || '#020617';
+  const cleanFileName = fileName.endsWith('.png') ? fileName : `${fileName}.png`;
 
   const canvas = await html2canvas(element, {
     scale,
@@ -46,27 +48,63 @@ export async function downloadElementAsPng(
     },
   });
 
-  const dataUrl = canvas.toDataURL('image/png');
+  // Converte o canvas para Blob binário em vez de base64 DataURL gigante
+  const blob = await new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((b) => resolve(b), 'image/png');
+  });
 
-  // Dispara o download automático do arquivo PNG no dispositivo
+  if (!blob) {
+    throw new Error('Falha ao gerar o arquivo binário da imagem do recibo.');
+  }
+
+  // 1. Tenta compartilhamento nativo no celular / PWA (Web Share API com suporte a arquivos)
+  if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function') {
+    try {
+      const file = new File([blob], cleanFileName, { type: 'image/png' });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'Recibo de Contribuição',
+          text: `Recibo Oficial de Contribuição - ${cleanFileName.replace('.png', '')}`,
+        });
+        return;
+      }
+    } catch (shareErr: any) {
+      // Se o usuário cancelou o menu nativo de compartilhamento (AbortError), encerra sem forçar download duplo
+      if (shareErr?.name === 'AbortError') {
+        return;
+      }
+      console.warn('Web Share cancelado ou não aceito, executando download Blob URL:', shareErr);
+    }
+  }
+
+  // 2. Download seguro via Blob Object URL com nome limpo de arquivo
+  const blobUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = dataUrl;
-  link.download = fileName.endsWith('.png') ? fileName : `${fileName}.png`;
+  link.style.display = 'none';
+  link.href = blobUrl;
+  link.download = cleanFileName;
+  link.rel = 'noopener';
   document.body.appendChild(link);
   link.click();
-  document.body.removeChild(link);
 
-  return dataUrl;
+  // Limpeza do elemento e revogação da URL da memória após o clique
+  setTimeout(() => {
+    if (document.body.contains(link)) {
+      document.body.removeChild(link);
+    }
+    URL.revokeObjectURL(blobUrl);
+  }, 1000);
 }
 
 /**
- * Converte o elemento DOM do recibo em um Blob PNG para compartilhamento nativo se suportado
+ * Converte o elemento DOM do recibo em um Blob PNG
  */
 export async function generateElementPngBlob(
   element: HTMLElement,
   options: GenerateReceiptImageOptions = {}
 ): Promise<Blob | null> {
-  const scale = options.scale || 2.5;
+  const scale = options.scale || 3;
   const backgroundColor = options.backgroundColor || '#020617';
 
   const canvas = await html2canvas(element, {
