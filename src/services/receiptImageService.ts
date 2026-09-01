@@ -24,11 +24,22 @@ export function isMobileDevice(): boolean {
 }
 
 /**
+ * Detecta se o app está rodando em modo instalado / PWA / standalone / TWA
+ */
+export function isStandaloneApp(): boolean {
+  if (typeof window === 'undefined') return false;
+  const isStandalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (window.navigator as any).standalone === true ||
+    document.referrer.includes('android-app://');
+  return isStandalone;
+}
+
+/**
  * Exibe um modal/overlay de fallback para WebViews que bloqueiam downloads diretos,
  * instruindo o usuário a pressionar e segurar a imagem para salvá-la na galeria.
  */
 export function showMobileImagePreviewOverlay(blobUrl: string, fileName: string): void {
-  // Remove qualquer overlay anterior
   const existing = document.getElementById('receipt-image-preview-overlay');
   if (existing) {
     existing.remove();
@@ -81,7 +92,10 @@ export function showMobileImagePreviewOverlay(blobUrl: string, fileName: string)
 }
 
 /**
- * Salva ou compartilha um arquivo (PNG / PDF) com estratégia otimizada para Mobile/WebView/Desktop
+ * Salva ou compartilha um arquivo (PNG / PDF) com estratégia otimizada:
+ * - App Instalado / Mobile: Web Share API com arquivos para salvar na Galeria/Fotos/Downloads
+ * - Desktop / Navegador Web: Download direto via tag <a> com nome limpo e Blob URL
+ * - Fallback defensivo para WebView: Visualizador com instrução de toque longo
  */
 export async function saveOrShareReceiptFile(options: {
   blob: Blob;
@@ -93,46 +107,55 @@ export async function saveOrShareReceiptFile(options: {
   const { blob, fileName, mimeType, title = 'Recibo de Contribuição', text } = options;
   const isMobile = isMobileDevice();
 
-  // 1. PRIORIDADE: Web Share API (Compartilhamento Nativo com Arquivos)
-  if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function') {
+  // 1. FLUXO APP INSTALADO / SMARTPHONE (Web Share API nativo com suporte a arquivos)
+  if (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.share === 'function' &&
+    typeof navigator.canShare === 'function'
+  ) {
     try {
       const file = new File([blob], fileName, { type: mimeType });
-      if (navigator.canShare({ files: [file] })) {
+      const canShareFiles = navigator.canShare({ files: [file] });
+
+      if (canShareFiles) {
         await navigator.share({
           files: [file],
-          title,
+          title: title || `Recibo #${fileName.replace(/\D/g, '')}`,
           text: text || `Recibo Oficial de Contribuição - ${fileName}`,
         });
         return { success: true, method: 'share', blob };
       }
     } catch (shareErr: any) {
+      // Se o usuário cancelou o menu nativo do sistema operacional (AbortError), encerra sem forçar download duplo
       if (shareErr?.name === 'AbortError') {
-        // Usuário apenas fechou a gaveta nativa de compartilhamento
         return { success: true, method: 'share-abort', blob };
       }
-      console.warn('Web Share API não completou ou indisponível:', shareErr);
+      console.warn('Web Share API não completou ou foi cancelado:', shareErr);
     }
   }
 
-  // 2. DISPOSITIVOS MÓVEIS / WEBVIEW SEM WEB SHARE:
+  // 2. DISPOSITIVOS MÓVEIS / WEBVIEW SEM SUPORTE A ARQUIVOS VIA SHARE
   const blobUrl = URL.createObjectURL(blob);
 
   if (isMobile) {
     if (mimeType === 'image/png') {
-      // Exibe preview amigável com instrução de salvar na galeria
+      // Exibe preview amigável para salvar na galeria
       showMobileImagePreviewOverlay(blobUrl, fileName);
       return { success: true, method: 'fallback-preview', fileUrl: blobUrl, blob };
     } else {
-      // Para PDF em WebView, abre em nova aba
+      // Para PDF em WebView, abre em nova aba/janela segura
       try {
-        window.open(blobUrl, '_blank');
+        const opened = window.open(blobUrl, '_blank');
+        if (opened) {
+          return { success: true, method: 'fallback-preview', fileUrl: blobUrl, blob };
+        }
       } catch {
-        // fallback para link
+        // segue para o link abaixo
       }
     }
   }
 
-  // 3. DESKTOP / FALLBACK GERAL: Download direto via tag <a> com nome limpo
+  // 3. FLUXO WEB (DESKTOP / NAVEGADOR PADRÃO): Download direto via Blob Object URL
   try {
     const link = document.createElement('a');
     link.style.display = 'none';
@@ -146,7 +169,6 @@ export async function saveOrShareReceiptFile(options: {
       if (document.body.contains(link)) {
         document.body.removeChild(link);
       }
-      // Se não for preview ativo, revoga a url
       if (!isMobile || mimeType !== 'image/png') {
         URL.revokeObjectURL(blobUrl);
       }
@@ -154,14 +176,14 @@ export async function saveOrShareReceiptFile(options: {
 
     return { success: true, method: 'download', fileUrl: blobUrl, blob };
   } catch (err) {
-    console.error('Erro ao acionar download:', err);
+    console.error('Erro ao acionar download no navegador:', err);
     return { success: false, method: 'download', fileUrl: blobUrl, blob };
   }
 }
 
 /**
  * Converte um elemento DOM (card de recibo) em imagem PNG de alta definição,
- * com suporte nativo a Web Share API para celulares/PWA e fallback seguro para WebView.
+ * preservando o layout CSS original, bordas, cores e alinhamentos.
  */
 export async function downloadElementAsPng(
   element: HTMLElement,
@@ -169,7 +191,14 @@ export async function downloadElementAsPng(
   options: GenerateReceiptImageOptions = {}
 ): Promise<SaveFileResult> {
   const scale = options.scale || 3;
-  const backgroundColor = options.backgroundColor || '#020617';
+  // Se options.backgroundColor não for passado, usa a cor de fundo do próprio elemento
+  const computedBg = window.getComputedStyle(element).backgroundColor;
+  const backgroundColor =
+    options.backgroundColor ||
+    (computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent'
+      ? computedBg
+      : '#090d16');
+
   const cleanFileName = fileName.endsWith('.png') ? fileName : `${fileName}.png`;
 
   const canvas = await html2canvas(element, {
@@ -178,26 +207,6 @@ export async function downloadElementAsPng(
     allowTaint: true,
     backgroundColor,
     logging: false,
-    onclone: (clonedDoc) => {
-      try {
-        const allElements = clonedDoc.querySelectorAll('*');
-        allElements.forEach((el) => {
-          const htmlEl = el as HTMLElement;
-          const style = window.getComputedStyle(htmlEl);
-          if (style.backgroundColor && style.backgroundColor.includes('oklch')) {
-            htmlEl.style.backgroundColor = '#0f172a';
-          }
-          if (style.color && style.color.includes('oklch')) {
-            htmlEl.style.color = '#f8fafc';
-          }
-          if (style.borderColor && style.borderColor.includes('oklch')) {
-            htmlEl.style.borderColor = '#334155';
-          }
-        });
-      } catch (e) {
-        console.warn('Aviso de sanitização de cores para html2canvas:', e);
-      }
-    },
   });
 
   const blob = await new Promise<Blob | null>((resolve) => {
@@ -212,7 +221,7 @@ export async function downloadElementAsPng(
     blob,
     fileName: cleanFileName,
     mimeType: 'image/png',
-    title: options.title || 'Recibo de Contribuição',
+    title: options.title || `Recibo #${cleanFileName.replace(/\D/g, '')}`,
   });
 }
 
@@ -224,7 +233,12 @@ export async function generateElementPngBlob(
   options: GenerateReceiptImageOptions = {}
 ): Promise<Blob | null> {
   const scale = options.scale || 3;
-  const backgroundColor = options.backgroundColor || '#020617';
+  const computedBg = window.getComputedStyle(element).backgroundColor;
+  const backgroundColor =
+    options.backgroundColor ||
+    (computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent'
+      ? computedBg
+      : '#090d16');
 
   const canvas = await html2canvas(element, {
     scale,
