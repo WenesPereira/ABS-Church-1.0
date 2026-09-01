@@ -9,93 +9,15 @@ export interface GenerateReceiptImageOptions {
 
 export interface SaveFileResult {
   success: boolean;
-  method: 'share' | 'share-abort' | 'download' | 'fallback-preview';
+  method: 'share' | 'share-abort' | 'download';
   fileUrl?: string;
   blob?: Blob;
 }
 
 /**
- * Detecta se o ambiente atual é um dispositivo móvel (Android / iOS) ou WebView
- */
-export function isMobileDevice(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera || '';
-  return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile/i.test(userAgent);
-}
-
-/**
- * Detecta se o app está rodando em modo instalado / PWA / standalone / TWA
- */
-export function isStandaloneApp(): boolean {
-  if (typeof window === 'undefined') return false;
-  const isStandalone =
-    window.matchMedia('(display-mode: standalone)').matches ||
-    (window.navigator as any).standalone === true ||
-    document.referrer.includes('android-app://');
-  return isStandalone;
-}
-
-/**
- * Exibe um modal/overlay de fallback para WebViews que bloqueiam downloads diretos,
- * instruindo o usuário a pressionar e segurar a imagem para salvá-la na galeria.
- */
-export function showMobileImagePreviewOverlay(blobUrl: string, fileName: string): void {
-  const existing = document.getElementById('receipt-image-preview-overlay');
-  if (existing) {
-    existing.remove();
-  }
-
-  const overlay = document.createElement('div');
-  overlay.id = 'receipt-image-preview-overlay';
-  overlay.className =
-    'fixed inset-0 z-[9999] flex flex-col items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md animate-in fade-in duration-200';
-
-  overlay.innerHTML = `
-    <div class="relative w-full max-w-md bg-slate-900 border border-amber-500/40 rounded-3xl p-5 shadow-2xl space-y-4 text-slate-100 max-h-[90vh] flex flex-col items-center">
-      <!-- Botão Fechar -->
-      <button id="close-receipt-preview-btn" class="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer" title="Fechar">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-      </button>
-
-      <div class="text-center space-y-1">
-        <h4 class="font-black text-base text-white">Recibo Gerado</h4>
-        <div class="p-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-300 font-medium flex items-center justify-center gap-1.5">
-          <span>👆 <strong>Pressione e segure</strong> sobre a imagem abaixo para <strong>Salvar na Galeria</strong></span>
-        </div>
-      </div>
-
-      <div class="w-full flex-1 overflow-y-auto flex items-center justify-center p-2 bg-slate-950/60 rounded-2xl border border-slate-800">
-        <img src="${blobUrl}" alt="${fileName}" class="max-h-[55vh] w-auto object-contain rounded-xl shadow-lg border border-slate-800" />
-      </div>
-
-      <div class="w-full pt-1 flex gap-2">
-        <button id="ok-receipt-preview-btn" class="w-full py-3 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm rounded-xl shadow-md transition-all text-center cursor-pointer">
-          Concluir
-        </button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(overlay);
-
-  const closeBtn = document.getElementById('close-receipt-preview-btn');
-  const okBtn = document.getElementById('ok-receipt-preview-btn');
-
-  const cleanup = () => {
-    if (document.body.contains(overlay)) {
-      document.body.removeChild(overlay);
-    }
-  };
-
-  if (closeBtn) closeBtn.onclick = cleanup;
-  if (okBtn) okBtn.onclick = cleanup;
-}
-
-/**
- * Salva ou compartilha um arquivo (PNG / PDF) com estratégia otimizada:
- * - App Instalado / Mobile: Web Share API com arquivos para salvar na Galeria/Fotos/Downloads
- * - Desktop / Navegador Web: Download direto via tag <a> com nome limpo e Blob URL
- * - Fallback defensivo para WebView: Visualizador com instrução de toque longo
+ * Salva ou compartilha um arquivo (PNG / PDF) de forma direta e sem modais intermediários:
+ * 1. Web Share API direta se o dispositivo tiver suporte a compartilhamento de arquivos (Mobile / PWA / WebView)
+ * 2. Download direto com Blob Object URL no Desktop ou se o Web Share não estiver disponível
  */
 export async function saveOrShareReceiptFile(options: {
   blob: Blob;
@@ -104,10 +26,12 @@ export async function saveOrShareReceiptFile(options: {
   title?: string;
   text?: string;
 }): Promise<SaveFileResult> {
-  const { blob, fileName, mimeType, title = 'Recibo de Contribuição', text } = options;
-  const isMobile = isMobileDevice();
+  const { blob, fileName, mimeType, title, text } = options;
+  const rawNumber = fileName.replace(/\D/g, '') || '000001';
+  const cleanTitle = title || `Recibo #${rawNumber}`;
+  const cleanText = text || `Recibo oficial de contribuição #${rawNumber}`;
 
-  // 1. FLUXO APP INSTALADO / SMARTPHONE (Web Share API nativo com suporte a arquivos)
+  // 1. PRIORIDADE MÓVEL: Acionamento direto da Web Share API nativa com arquivos
   if (
     typeof navigator !== 'undefined' &&
     typeof navigator.share === 'function' &&
@@ -115,48 +39,26 @@ export async function saveOrShareReceiptFile(options: {
   ) {
     try {
       const file = new File([blob], fileName, { type: mimeType });
-      const canShareFiles = navigator.canShare({ files: [file] });
-
-      if (canShareFiles) {
+      if (navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: title || `Recibo #${fileName.replace(/\D/g, '')}`,
-          text: text || `Recibo Oficial de Contribuição - ${fileName}`,
+          title: cleanTitle,
+          text: cleanText,
         });
         return { success: true, method: 'share', blob };
       }
     } catch (shareErr: any) {
-      // Se o usuário cancelou o menu nativo do sistema operacional (AbortError), encerra sem forçar download duplo
+      // Se o usuário apenas fechou a gaveta nativa de compartilhamento (AbortError), não faz nada extra
       if (shareErr?.name === 'AbortError') {
         return { success: true, method: 'share-abort', blob };
       }
-      console.warn('Web Share API não completou ou foi cancelado:', shareErr);
+      console.warn('Web Share API não completou, aplicando fallback de download direto:', shareErr);
     }
   }
 
-  // 2. DISPOSITIVOS MÓVEIS / WEBVIEW SEM SUPORTE A ARQUIVOS VIA SHARE
-  const blobUrl = URL.createObjectURL(blob);
-
-  if (isMobile) {
-    if (mimeType === 'image/png') {
-      // Exibe preview amigável para salvar na galeria
-      showMobileImagePreviewOverlay(blobUrl, fileName);
-      return { success: true, method: 'fallback-preview', fileUrl: blobUrl, blob };
-    } else {
-      // Para PDF em WebView, abre em nova aba/janela segura
-      try {
-        const opened = window.open(blobUrl, '_blank');
-        if (opened) {
-          return { success: true, method: 'fallback-preview', fileUrl: blobUrl, blob };
-        }
-      } catch {
-        // segue para o link abaixo
-      }
-    }
-  }
-
-  // 3. FLUXO WEB (DESKTOP / NAVEGADOR PADRÃO): Download direto via Blob Object URL
+  // 2. FALLBACK DIRETO (Desktop ou Web Share não disponível): Download via link <a> e Blob URL
   try {
+    const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.style.display = 'none';
     link.href = blobUrl;
@@ -169,21 +71,19 @@ export async function saveOrShareReceiptFile(options: {
       if (document.body.contains(link)) {
         document.body.removeChild(link);
       }
-      if (!isMobile || mimeType !== 'image/png') {
-        URL.revokeObjectURL(blobUrl);
-      }
-    }, 1500);
+      URL.revokeObjectURL(blobUrl);
+    }, 2000);
 
     return { success: true, method: 'download', fileUrl: blobUrl, blob };
   } catch (err) {
-    console.error('Erro ao acionar download no navegador:', err);
-    return { success: false, method: 'download', fileUrl: blobUrl, blob };
+    console.error('Erro ao acionar download direto do arquivo:', err);
+    return { success: false, method: 'download', blob };
   }
 }
 
 /**
  * Converte um elemento DOM (card de recibo) em imagem PNG de alta definição,
- * preservando o layout CSS original, bordas, cores e alinhamentos.
+ * preservando 100% do visual elegante original, e aciona compartilhamento nativo / download direto.
  */
 export async function downloadElementAsPng(
   element: HTMLElement,
@@ -191,15 +91,18 @@ export async function downloadElementAsPng(
   options: GenerateReceiptImageOptions = {}
 ): Promise<SaveFileResult> {
   const scale = options.scale || 3;
-  // Se options.backgroundColor não for passado, usa a cor de fundo do próprio elemento
+  const cleanFileName = fileName.endsWith('.png') ? fileName : `${fileName}.png`;
+  const rawNumber = cleanFileName.replace(/\D/g, '') || '000001';
+
+  // Pequeno delay para assegurar que todas as fontes, SVGs e estilos estejam totalmente pintados
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
   const computedBg = window.getComputedStyle(element).backgroundColor;
   const backgroundColor =
     options.backgroundColor ||
     (computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent'
       ? computedBg
-      : '#090d16');
-
-  const cleanFileName = fileName.endsWith('.png') ? fileName : `${fileName}.png`;
+      : '#ffffff');
 
   const canvas = await html2canvas(element, {
     scale,
@@ -221,7 +124,8 @@ export async function downloadElementAsPng(
     blob,
     fileName: cleanFileName,
     mimeType: 'image/png',
-    title: options.title || `Recibo #${cleanFileName.replace(/\D/g, '')}`,
+    title: options.title || `Recibo #${rawNumber}`,
+    text: `Recibo oficial de contribuição #${rawNumber}`,
   });
 }
 
@@ -238,7 +142,7 @@ export async function generateElementPngBlob(
     options.backgroundColor ||
     (computedBg && computedBg !== 'rgba(0, 0, 0, 0)' && computedBg !== 'transparent'
       ? computedBg
-      : '#090d16');
+      : '#ffffff');
 
   const canvas = await html2canvas(element, {
     scale,

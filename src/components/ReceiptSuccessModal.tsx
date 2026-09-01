@@ -97,10 +97,11 @@ export function ReceiptSuccessModal({
       setIsGeneratingImage(true);
       await downloadElementAsPng(
         receiptCardRef.current,
-        `recibo_${receiptDigits}.png`,
+        `recibo_#${receiptDigits}.png`,
         {
           scale: 3,
           backgroundColor: '#090d16',
+          title: `Recibo #${receiptDigits}`,
         }
       );
     } catch (err) {

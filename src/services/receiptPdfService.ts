@@ -357,15 +357,21 @@ export async function processAndUploadReceiptPdf(
 export async function downloadOrShareReceiptPdf(
   options: GenerateReceiptPdfOptions
 ): Promise<SaveFileResult> {
-  const { blob, fileName } = generateReceiptPdfDocument(options);
-  const rawReceipt = options.lancamento.receiptNumber || '000001';
-  const receiptDigits = formatReceiptNumberDigits(rawReceipt);
+  try {
+    const { blob, fileName } = generateReceiptPdfDocument(options);
+    const rawReceipt = options.lancamento.receiptNumber || '000001';
+    const receiptDigits = formatReceiptNumberDigits(rawReceipt);
+    const cleanFileName = `recibo_#${receiptDigits}.pdf`;
 
-  return await saveOrShareReceiptFile({
-    blob,
-    fileName,
-    mimeType: 'application/pdf',
-    title: `Recibo de Contribuição Nº ${receiptDigits}`,
-    text: `Recibo Oficial de Contribuição Nº ${receiptDigits} - ${options.config.nomeIgreja || 'ABS CHURCH'}`,
-  });
+    return await saveOrShareReceiptFile({
+      blob,
+      fileName: cleanFileName || fileName,
+      mimeType: 'application/pdf',
+      title: `Recibo #${receiptDigits}`,
+      text: `Recibo oficial de contribuição #${receiptDigits} - ${options.config.nomeIgreja || 'ABS CHURCH'}`,
+    });
+  } catch (err) {
+    console.error('Erro na geração ou compartilhamento do PDF do recibo:', err);
+    throw err;
+  }
 }

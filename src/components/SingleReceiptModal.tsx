@@ -92,11 +92,11 @@ export function SingleReceiptModal({
       setIsGeneratingImage(true);
       await downloadElementAsPng(
         printRef.current,
-        `recibo_${receiptDigits}.png`,
+        `recibo_#${receiptDigits}.png`,
         {
           scale: 3,
           backgroundColor: '#ffffff',
-          title: `Recibo de Contribuição Nº ${receiptDigits}`,
+          title: `Recibo #${receiptDigits}`,
         }
       );
     } catch (err) {
@@ -118,7 +118,10 @@ export function SingleReceiptModal({
       });
     } catch (err) {
       console.error('Erro ao gerar PDF do recibo:', err);
-      window.print();
+      // Fallback seguro: abre a tela de impressão / salvar em PDF do sistema
+      if (typeof window !== 'undefined' && typeof window.print === 'function') {
+        window.print();
+      }
     } finally {
       setIsGeneratingPdf(false);
     }
