@@ -79,9 +79,8 @@ export async function uploadBlobToSupabase(
 }
 
 /**
- * Salva ou compartilha um arquivo (PNG / PDF) de forma direta e sem modais intermediários.
- * Faz upload temporário para o Supabase Storage para gerar link HTTP e aciona a Web Share API
- * no Android/iOS ou download limpo no Desktop.
+ * Salva ou compartilha um arquivo (PNG / PDF) utilizando prioritariamente a Web Share API nativa com File object.
+ * Abre diretamente a gaveta de aplicativos do Android/iOS (WhatsApp, Drive, Adobe, etc.) sem disparar alertas de download de navegador.
  */
 export async function saveOrShareReceiptFile(options: {
   blob: Blob;
@@ -93,63 +92,16 @@ export async function saveOrShareReceiptFile(options: {
 }): Promise<SaveFileResult> {
   const { blob, fileName, mimeType, title, text, bucket = 'recibos' } = options;
   const rawNumber = fileName.replace(/\D/g, '') || '000001';
-  const cleanTitle = title || 'Documento ABS Church';
-  const cleanText = text || 'Acesse o comprovante/relatório oficial:';
+  const cleanTitle = title || (mimeType === 'application/pdf' ? `Relatório #${rawNumber}` : `Recibo #${rawNumber}`);
+  const cleanText = text || (mimeType === 'application/pdf' ? 'Relatório Oficial de Tesouraria - ABS Church' : 'Comprovante de Contribuição - ABS Church');
 
-  // 1. Upload do Blob gerado para o Supabase Storage para obter a URL pública HTTP
-  let publicUrl: string | undefined;
-  try {
-    const uploadRes = await uploadBlobToSupabase(blob, fileName, mimeType, bucket);
-    if (uploadRes.publicUrl) {
-      publicUrl = uploadRes.publicUrl;
-    }
-  } catch (upErr) {
-    console.warn('Upload temporário no Supabase Storage falhou:', upErr);
-  }
+  // 1. Cria o objeto File nativo a partir do Blob
+  const file = new File([blob], fileName, { type: mimeType });
 
-  // 2. Abertura Garantida da Gaveta de Apps (Web Share API com URL HTTP)
-  if (publicUrl) {
-    const shareData = {
-      title: cleanTitle,
-      text: cleanText,
-      url: publicUrl,
-    };
-
-    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-      try {
-        await navigator.share(shareData);
-        return { success: true, method: 'share', fileUrl: publicUrl, blob };
-      } catch (err: any) {
-        if (err?.name !== 'AbortError') {
-          console.error('Erro ao compartilhar:', err);
-        } else {
-          return { success: true, method: 'share-abort', fileUrl: publicUrl, blob };
-        }
-      }
-    }
-
-    // Fallback caso navigator.share não seja suportado ou falhe
+  // 2. DISPARO NATIVO: Web Share API com File (Abre a gaveta de aplicativos nativa do sistema)
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     try {
-      window.location.href = publicUrl;
-    } catch {
-      window.open(publicUrl, '_blank');
-    }
-    return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
-  }
-
-  // 3. Fallback Offline se o Supabase Storage não estiver configurado
-  const isMobile =
-    typeof navigator !== 'undefined' &&
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-  if (isMobile) {
-    if (
-      typeof navigator !== 'undefined' &&
-      typeof navigator.share === 'function' &&
-      typeof navigator.canShare === 'function'
-    ) {
-      try {
-        const file = new File([blob], fileName, { type: mimeType });
+      if (typeof navigator.canShare === 'function') {
         if (navigator.canShare({ files: [file] })) {
           await navigator.share({
             files: [file],
@@ -158,36 +110,87 @@ export async function saveOrShareReceiptFile(options: {
           });
           return { success: true, method: 'share', blob };
         }
-      } catch (shareErr: any) {
-        if (shareErr?.name === 'AbortError') {
-          return { success: true, method: 'share-abort', blob };
-        }
+      } else {
+        // WebView / navegador sem canShare mas com suporte a share com files
+        await navigator.share({
+          files: [file],
+          title: cleanTitle,
+          text: cleanText,
+        });
+        return { success: true, method: 'share', blob };
       }
+    } catch (shareErr: any) {
+      if (shareErr?.name === 'AbortError') {
+        return { success: true, method: 'share-abort', blob };
+      }
+      console.warn('Web Share com File não completado:', shareErr);
     }
-
-    const blobUrl = URL.createObjectURL(blob);
-    window.location.href = blobUrl;
-    return { success: true, method: 'new-window', fileUrl: blobUrl, blob };
   }
 
-  // Fallback Desktop via Blob local
-  try {
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.style.display = 'none';
-    link.href = blobUrl;
-    link.download = fileName;
-    link.rel = 'noopener';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      if (document.body.contains(link)) document.body.removeChild(link);
-      URL.revokeObjectURL(blobUrl);
-    }, 3000);
-    return { success: true, method: 'download', fileUrl: blobUrl, blob };
-  } catch (err) {
-    console.error('Erro ao acionar download direto no desktop:', err);
-    return { success: false, method: 'download', blob };
+  // Opcional: upload em segundo plano no Supabase Storage para backup
+  if (isSupabaseConfigured) {
+    uploadBlobToSupabase(blob, fileName, mimeType, bucket).catch((e) =>
+      console.warn('Backup silencioso no Supabase Storage falhou:', e)
+    );
+  }
+
+  // 3. Fallback limpo (Desktop ou ambiente sem suporte a Web Share API de arquivos)
+  if (mimeType === 'image/png') {
+    try {
+      const dataUrl = URL.createObjectURL(blob);
+      const w = window.open('');
+      if (w) {
+        w.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>${cleanTitle}</title>
+              <style>
+                body { margin: 0; padding: 16px; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; min-height: 100vh; }
+                img { max-width: 100%; height: auto; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+                .tip { margin-bottom: 12px; color: #f59e0b; font-size: 14px; font-weight: bold; text-align: center; }
+              </style>
+            </head>
+            <body>
+              <div class="tip">Toque e segure na imagem para salvar ou compartilhar</div>
+              <img src="${dataUrl}" alt="${cleanTitle}"/>
+            </body>
+          </html>
+        `);
+        w.document.close();
+        return { success: true, method: 'new-window', fileUrl: dataUrl, blob };
+      }
+    } catch (popupErr) {
+      console.warn('Fallback window.open falhou:', popupErr);
+    }
+
+    const dataUrl = URL.createObjectURL(blob);
+    showReceiptImageModal(dataUrl, rawNumber, cleanTitle);
+    return { success: true, method: 'overlay', fileUrl: dataUrl, blob };
+  } else {
+    // Para PDF no Desktop
+    try {
+      const blobUrl = URL.createObjectURL(blob);
+      const w = window.open(blobUrl, '_blank');
+      if (!w) {
+        const link = document.createElement('a');
+        link.style.display = 'none';
+        link.href = blobUrl;
+        link.download = fileName;
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          if (document.body.contains(link)) document.body.removeChild(link);
+          URL.revokeObjectURL(blobUrl);
+        }, 3000);
+      }
+      return { success: true, method: 'new-window', fileUrl: blobUrl, blob };
+    } catch (desktopErr) {
+      console.error('Erro no fallback do PDF:', desktopErr);
+      return { success: false, method: 'download', blob };
+    }
   }
 }
 
@@ -303,7 +306,7 @@ export async function generateAndShareReceipt(
 ): Promise<ShareReceiptResult> {
   const { element, receiptNumber, churchName = 'ABS CHURCH', backgroundColor } = options;
   const cleanNumber = receiptNumber.replace(/\D/g, '') || '000001';
-  const fileName = `recibo_#${cleanNumber}.png`;
+  const fileName = `Recibo_${cleanNumber}.png`;
 
   try {
     // 1. Renderiza o elemento com html2canvas de alta definição
@@ -322,18 +325,81 @@ export async function generateAndShareReceipt(
       logging: false,
     });
 
-    const imgData = canvas.toDataURL('image/png');
+    return new Promise<ShareReceiptResult>((resolve) => {
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          resolve({ success: false, method: 'share', error: 'Falha ao gerar blob do recibo' });
+          return;
+        }
 
-    // 2. Converte para Blob e faz o upload/compartilhamento seguro via Supabase Storage
-    const response = await fetch(imgData);
-    const blob = await response.blob();
+        const file = new File([blob], fileName, { type: 'image/png' });
 
-    return await saveOrShareReceiptFile({
-      blob,
-      fileName,
-      mimeType: 'image/png',
-      title: `Recibo #${cleanNumber}`,
-      text: `Recibo de Contribuição #${cleanNumber} - ${churchName}`,
+        // 2. DISPARO NATIVO: Web Share API com File (Abre a gaveta de apps nativa do Android/iOS)
+        if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+          try {
+            if (typeof navigator.canShare === 'function') {
+              if (navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  files: [file],
+                  title: `Recibo #${cleanNumber}`,
+                  text: `Comprovante de Contribuição - ${churchName}`,
+                });
+                resolve({ success: true, method: 'share', blob });
+                return;
+              }
+            } else {
+              await navigator.share({
+                files: [file],
+                title: `Recibo #${cleanNumber}`,
+                text: `Comprovante de Contribuição - ${churchName}`,
+              });
+              resolve({ success: true, method: 'share', blob });
+              return;
+            }
+          } catch (err: any) {
+            if (err?.name === 'AbortError') {
+              resolve({ success: true, method: 'share-abort', blob });
+              return;
+            }
+            console.warn('Web Share com File cancelado ou não suportado:', err);
+          }
+        }
+
+        // 3. Fallback: abre a imagem em dataURL numa nova janela limpa ou modal overlay
+        try {
+          const dataUrl = canvas.toDataURL('image/png');
+          const w = window.open('');
+          if (w) {
+            w.document.write(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Recibo #${cleanNumber}</title>
+                  <style>
+                    body { margin: 0; padding: 16px; background: #0f172a; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: sans-serif; min-height: 100vh; }
+                    img { max-width: 100%; height: auto; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+                    .tip { margin-bottom: 12px; color: #f59e0b; font-size: 14px; font-weight: bold; text-align: center; }
+                  </style>
+                </head>
+                <body>
+                  <div class="tip">Toque e segure na imagem para salvar ou compartilhar</div>
+                  <img src="${dataUrl}" alt="Recibo #${cleanNumber}"/>
+                </body>
+              </html>
+            `);
+            w.document.close();
+            resolve({ success: true, method: 'new-window', fileUrl: dataUrl, blob });
+            return;
+          }
+        } catch (popupErr) {
+          console.warn('Fallback popup falhou:', popupErr);
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        showReceiptImageModal(dataUrl, cleanNumber, churchName);
+        resolve({ success: true, method: 'overlay', fileUrl: dataUrl, blob });
+      }, 'image/png');
     });
   } catch (err: any) {
     console.error('Erro ao gerar e compartilhar recibo:', err);

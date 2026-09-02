@@ -23,6 +23,7 @@ import {
   ExternalLink,
   ScrollText,
   Download,
+  Share2,
   Loader2,
 } from 'lucide-react';
 
@@ -92,7 +93,7 @@ export function SingleReceiptModal({
     window.print();
   };
 
-  const handleDownloadPdf = async () => {
+  const handleShareReceipt = async () => {
     if (!printRef.current || isGeneratingPdf) return;
     try {
       setIsGeneratingPdf(true);
@@ -103,7 +104,7 @@ export function SingleReceiptModal({
         contributorName: contributorName,
         backgroundColor: '#ffffff',
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro ao gerar recibo:', err);
       try {
         await downloadOrShareReceiptPdf({
@@ -112,9 +113,9 @@ export function SingleReceiptModal({
           pastorName,
           tesoureiroName,
         });
-      } catch (pdfErr) {
+      } catch (pdfErr: any) {
         console.error('Erro no fallback do recibo:', pdfErr);
-        alert('Não foi possível gerar o recibo. Tente novamente ou use o envio por WhatsApp.');
+        alert('Erro ao gerar recibo: ' + (err?.message || 'Tente novamente ou envie pelo WhatsApp.'));
       }
     } finally {
       setIsGeneratingPdf(false);
@@ -282,22 +283,22 @@ export function SingleReceiptModal({
           </a>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {/* Gerar Recibo (PDF) */}
+            {/* COMPARTILHAR / SALVAR RECIBO */}
             <button
               type="button"
-              onClick={handleDownloadPdf}
+              onClick={handleShareReceipt}
               disabled={isGeneratingPdf}
-              className="py-3 px-4 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-bold text-xs sm:text-sm rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isGeneratingPdf ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Gerando PDF...</span>
+                  <span>Gerando Recibo...</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-4 h-4" />
-                  <span>Gerar Recibo (PDF)</span>
+                  <Share2 className="w-4 h-4" />
+                  <span>COMPARTILHAR / SALVAR RECIBO</span>
                 </>
               )}
             </button>
