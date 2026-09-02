@@ -91,6 +91,17 @@ export function ReceiptSuccessModal({
   };
 
   const handleDownloadPdf = async () => {
+    // Se for dispositivo móvel / touch / WebView, use a solução nativa do Android para PDF
+    const isMobile =
+      typeof navigator !== 'undefined' &&
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      // Dispara o diálogo de impressão do sistema, que no Android permite "Salvar como PDF" com layout perfeito
+      window.print();
+      return;
+    }
+
     if (isGeneratingPdf) return;
     try {
       setIsGeneratingPdf(true);

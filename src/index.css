@@ -141,14 +141,18 @@ select {
 
 @media print {
   @page {
-    size: A4 portrait;
-    margin: 6mm 6mm;
+    size: auto;
+    margin: 8mm;
   }
 
   *,
   *::before,
   *::after {
     box-sizing: border-box !important;
+  }
+
+  body * {
+    visibility: hidden;
   }
 
   html,
@@ -161,8 +165,8 @@ select {
     margin: 0 !important;
     padding: 0 !important;
     overflow: visible !important;
-    background: white !important;
-    color: black !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
@@ -171,19 +175,68 @@ select {
     display: none !important;
   }
 
+  #receipt-card,
+  #receipt-card *,
+  #print-single-receipt-area,
+  #print-single-receipt-area *,
+  #receipt-official-card,
+  #receipt-official-card *,
   #printable-receipt,
+  #printable-receipt *,
   #ai-report-printable-card,
-  #print-single-receipt-area {
+  #ai-report-printable-card * {
+    visibility: visible;
+  }
+
+  #receipt-card,
+  #print-single-receipt-area,
+  #receipt-official-card,
+  #printable-receipt,
+  #ai-report-printable-card {
+    position: absolute;
+    left: 0;
+    top: 0;
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
     border: none !important;
     box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background: white !important;
-    color: black !important;
+    padding: 16px !important;
+    margin: 0 auto !important;
+    background: #ffffff !important;
+    color: #000000 !important;
     box-sizing: border-box !important;
+  }
+
+  #receipt-official-card {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+  }
+
+  #receipt-official-card * {
+    color: #000000 !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  #receipt-official-card .text-slate-400,
+  #receipt-official-card .text-slate-300,
+  #receipt-official-card .text-slate-500 {
+    color: #475569 !important;
+  }
+
+  #receipt-official-card .text-white {
+    color: #0f172a !important;
+  }
+
+  #receipt-official-card .text-emerald-400 {
+    color: #15803d !important;
+  }
+
+  #receipt-official-card .bg-emerald-950\/30 {
+    background-color: #f0fdf4 !important;
+    border: 1px solid #bbf7d0 !important;
   }
 
   .print-avoid-break,
