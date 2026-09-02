@@ -12,6 +12,9 @@ import {
   downloadOrShareReceiptPdf,
 } from '../services/receiptPdfService';
 import {
+  generateAndShareReceipt,
+} from '../services/receiptImageService';
+import {
   Printer,
   Copy,
   Check,
@@ -90,31 +93,28 @@ export function SingleReceiptModal({
   };
 
   const handleDownloadPdf = async () => {
-    // Se for dispositivo móvel / touch / WebView, use a solução nativa do Android para PDF
-    const isMobile =
-      typeof navigator !== 'undefined' &&
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-
-    if (isMobile) {
-      // Dispara o diálogo de impressão do sistema, que no Android permite "Salvar como PDF" com layout perfeito
-      window.print();
-      return;
-    }
-
-    if (isGeneratingPdf) return;
+    if (!printRef.current || isGeneratingPdf) return;
     try {
       setIsGeneratingPdf(true);
-      await downloadOrShareReceiptPdf({
-        lancamento,
-        config,
-        pastorName,
-        tesoureiroName,
+      await generateAndShareReceipt({
+        element: printRef.current,
+        receiptNumber: receiptDigits,
+        churchName: churchName,
+        contributorName: contributorName,
+        backgroundColor: '#ffffff',
       });
     } catch (err) {
-      console.error('Erro ao gerar PDF do recibo:', err);
-      // Fallback seguro: abre a tela de impressão / salvar em PDF do sistema
-      if (typeof window !== 'undefined' && typeof window.print === 'function') {
-        window.print();
+      console.error('Erro ao gerar recibo:', err);
+      try {
+        await downloadOrShareReceiptPdf({
+          lancamento,
+          config,
+          pastorName,
+          tesoureiroName,
+        });
+      } catch (pdfErr) {
+        console.error('Erro no fallback do recibo:', pdfErr);
+        alert("Não foi possível gerar o recibo diretamente. Você também pode usar a opção 'Enviar via WhatsApp'.");
       }
     } finally {
       setIsGeneratingPdf(false);
