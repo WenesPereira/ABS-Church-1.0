@@ -93,10 +93,10 @@ export async function saveOrShareReceiptFile(options: {
 }): Promise<SaveFileResult> {
   const { blob, fileName, mimeType, title, text, bucket = 'recibos' } = options;
   const rawNumber = fileName.replace(/\D/g, '') || '000001';
-  const cleanTitle = title || `Recibo #${rawNumber}`;
-  const cleanText = text || `Recibo oficial de contribuição #${rawNumber}`;
+  const cleanTitle = title || 'Documento ABS Church';
+  const cleanText = text || 'Acesse o comprovante/relatório oficial:';
 
-  // 1. Upload para o Supabase Storage para gerar URL pública 'https://'
+  // 1. Upload do Blob gerado para o Supabase Storage para obter a URL pública HTTP
   let publicUrl: string | undefined;
   try {
     const uploadRes = await uploadBlobToSupabase(blob, fileName, mimeType, bucket);
@@ -104,14 +104,14 @@ export async function saveOrShareReceiptFile(options: {
       publicUrl = uploadRes.publicUrl;
     }
   } catch (upErr) {
-    console.warn('Upload temporário falhou, procedendo com fallback offline:', upErr);
+    console.warn('Upload temporário no Supabase Storage falhou:', upErr);
   }
 
-  // 2. DISPARO NATIVO (GAVETA DE APPS DO ANDROID / ONEDRIVE / ADOBE / DRIVE / WHATSAPP)
+  // 2. Abertura Garantida da Gaveta de Apps (Web Share API com URL HTTP)
   if (publicUrl) {
     const shareData = {
       title: cleanTitle,
-      text: `${cleanText}\nAcesse o documento oficial:`,
+      text: cleanText,
       url: publicUrl,
     };
 
@@ -120,30 +120,29 @@ export async function saveOrShareReceiptFile(options: {
         await navigator.share(shareData);
         return { success: true, method: 'share', fileUrl: publicUrl, blob };
       } catch (err: any) {
-        // Se o usuário cancelar a partilha ou der erro, abre a URL diretamente
-        console.info('Compartilhamento cancelado ou finalizado, abrindo URL diretamente:', err);
-        const win = window.open(publicUrl, '_blank');
-        if (!win) {
-          window.location.href = publicUrl;
+        if (err?.name !== 'AbortError') {
+          console.error('Erro ao compartilhar:', err);
+        } else {
+          return { success: true, method: 'share-abort', fileUrl: publicUrl, blob };
         }
-        return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
       }
-    } else {
-      const win = window.open(publicUrl, '_blank');
-      if (!win) {
-        window.location.href = publicUrl;
-      }
-      return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
     }
+
+    // Fallback caso navigator.share não seja suportado ou falhe
+    try {
+      window.location.href = publicUrl;
+    } catch {
+      window.open(publicUrl, '_blank');
+    }
+    return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
   }
 
-  // 3. FALLBACK OFFLINE SE O SUPABASE NÃO ESTIVER DISPONÍVEL
+  // 3. Fallback Offline se o Supabase Storage não estiver configurado
   const isMobile =
     typeof navigator !== 'undefined' &&
     /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
   if (isMobile) {
-    // Fallback se não obteve publicUrl: tenta Web Share API com File nativo
     if (
       typeof navigator !== 'undefined' &&
       typeof navigator.share === 'function' &&
@@ -166,12 +165,8 @@ export async function saveOrShareReceiptFile(options: {
       }
     }
 
-    // Fallback final no mobile: blob URL
     const blobUrl = URL.createObjectURL(blob);
-    const win = window.open(blobUrl, '_blank');
-    if (!win) {
-      window.location.href = blobUrl;
-    }
+    window.location.href = blobUrl;
     return { success: true, method: 'new-window', fileUrl: blobUrl, blob };
   }
 
@@ -185,14 +180,10 @@ export async function saveOrShareReceiptFile(options: {
     link.rel = 'noopener';
     document.body.appendChild(link);
     link.click();
-
     setTimeout(() => {
-      if (document.body.contains(link)) {
-        document.body.removeChild(link);
-      }
+      if (document.body.contains(link)) document.body.removeChild(link);
       URL.revokeObjectURL(blobUrl);
     }, 3000);
-
     return { success: true, method: 'download', fileUrl: blobUrl, blob };
   } catch (err) {
     console.error('Erro ao acionar download direto no desktop:', err);

@@ -114,7 +114,7 @@ export function SingleReceiptModal({
         });
       } catch (pdfErr) {
         console.error('Erro no fallback do recibo:', pdfErr);
-        alert("Não foi possível gerar o recibo diretamente. Você também pode usar a opção 'Enviar via WhatsApp'.");
+        alert('Não foi possível gerar o recibo. Tente novamente ou use o envio por WhatsApp.');
       }
     } finally {
       setIsGeneratingPdf(false);
