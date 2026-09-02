@@ -107,38 +107,42 @@ export async function saveOrShareReceiptFile(options: {
     console.warn('Upload temporário falhou, procedendo com fallback offline:', upErr);
   }
 
-  const isMobile =
-    typeof navigator !== 'undefined' &&
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // 2. DISPARO NATIVO (GAVETA DE APPS DO ANDROID / ONEDRIVE / ADOBE / DRIVE / WHATSAPP)
+  if (publicUrl) {
+    const shareData = {
+      title: cleanTitle,
+      text: `${cleanText}\nAcesse o documento oficial:`,
+      url: publicUrl,
+    };
 
-  // 2. DISPARO NATIVO NO CELULAR (GAVETA DE APPS / GOOGLE DRIVE / ADOBE / ONEDRIVE / WHATSAPP)
-  if (isMobile) {
-    // Se temos a URL pública do Supabase, o Android reconhece 'https://' nativamente
-    if (publicUrl) {
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        try {
-          await navigator.share({
-            title: cleanTitle,
-            text: `${cleanText}\nAcesse o documento:`,
-            url: publicUrl,
-          });
-          return { success: true, method: 'share', fileUrl: publicUrl, blob };
-        } catch (shareErr: any) {
-          if (shareErr?.name === 'AbortError') {
-            return { success: true, method: 'share-abort', fileUrl: publicUrl, blob };
-          }
-          console.warn('Web Share com URL falhou no celular, abrindo link diretamente:', shareErr);
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        await navigator.share(shareData);
+        return { success: true, method: 'share', fileUrl: publicUrl, blob };
+      } catch (err: any) {
+        // Se o usuário cancelar a partilha ou der erro, abre a URL diretamente
+        console.info('Compartilhamento cancelado ou finalizado, abrindo URL diretamente:', err);
+        const win = window.open(publicUrl, '_blank');
+        if (!win) {
+          window.location.href = publicUrl;
         }
+        return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
       }
-
-      // Se navigator.share não for suportado ou falhou, abre a URL HTTP pública diretamente
+    } else {
       const win = window.open(publicUrl, '_blank');
       if (!win) {
         window.location.href = publicUrl;
       }
       return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
     }
+  }
 
+  // 3. FALLBACK OFFLINE SE O SUPABASE NÃO ESTIVER DISPONÍVEL
+  const isMobile =
+    typeof navigator !== 'undefined' &&
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+  if (isMobile) {
     // Fallback se não obteve publicUrl: tenta Web Share API com File nativo
     if (
       typeof navigator !== 'undefined' &&
@@ -169,26 +173,6 @@ export async function saveOrShareReceiptFile(options: {
       window.location.href = blobUrl;
     }
     return { success: true, method: 'new-window', fileUrl: blobUrl, blob };
-  }
-
-  // 3. AMBIENTE DESKTOP: Download direto ou abertura do link
-  if (publicUrl) {
-    try {
-      const link = document.createElement('a');
-      link.style.display = 'none';
-      link.href = publicUrl;
-      link.download = fileName;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) document.body.removeChild(link);
-      }, 3000);
-      return { success: true, method: 'download', fileUrl: publicUrl, blob };
-    } catch (err) {
-      console.warn('Erro no download desktop com publicUrl, usando blob local:', err);
-    }
   }
 
   // Fallback Desktop via Blob local
