@@ -243,8 +243,41 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
         text: `Relatório de Fechamento de Culto - ${config.nomeIgreja || 'ABS CHURCH'} (${dataFormatted})`,
       });
     } catch (err) {
-      console.error('Erro ao gerar PDF com html2canvas e jsPDF:', err);
-      window.print();
+      console.error('Erro ao gerar PDF do fechamento com html2canvas:', err);
+      try {
+        // Fallback rápido: gera PDF nativo sem html2canvas
+        const fallbackPdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: 'a4',
+        });
+        const churchName = config.nomeIgreja || 'ABS CHURCH';
+        const dataFormatted = fechamento.data || new Date().toISOString().split('T')[0];
+        fallbackPdf.setFont('helvetica', 'bold');
+        fallbackPdf.setFontSize(16);
+        fallbackPdf.text(churchName.toUpperCase(), 105, 20, { align: 'center' });
+        fallbackPdf.setFontSize(12);
+        fallbackPdf.text(`RELATÓRIO DE FECHAMENTO DE CULTO - ${dataFormatted}`, 105, 28, { align: 'center' });
+        fallbackPdf.setFont('helvetica', 'normal');
+        fallbackPdf.setFontSize(10);
+        fallbackPdf.text(`Culto: ${fechamento.tipoCulto || 'Culto Geral'}`, 20, 40);
+        fallbackPdf.text(`Total Entradas: R$ ${Number(resumo.totalEntradas || 0).toFixed(2)}`, 20, 48);
+        fallbackPdf.text(`Total Saídas: R$ ${Number(resumo.totalSaidas || 0).toFixed(2)}`, 20, 56);
+        fallbackPdf.text(`Saldo Líquido: R$ ${Number(resumo.saldoLiquido || 0).toFixed(2)}`, 20, 64);
+        fallbackPdf.text(`Saldo Disponível Caixa: R$ ${Number(resumo.saldoDisponivel || 0).toFixed(2)}`, 20, 72);
+        
+        const fallbackBlob = fallbackPdf.output('blob');
+        await saveOrShareReceiptFile({
+          blob: fallbackBlob,
+          fileName: `Relatorio_Tesouraria_${dataFormatted}.pdf`,
+          mimeType: 'application/pdf',
+          title: `Relatório de Tesouraria - ${dataFormatted}`,
+          text: `Relatório de Fechamento de Culto - ${churchName} (${dataFormatted})`,
+        });
+      } catch (fallbackErr) {
+        console.error('Erro no fallback do relatório:', fallbackErr);
+        alert('Não foi possível gerar o arquivo diretamente. Você pode usar a opção de impressão.');
+      }
     } finally {
       // Restore original responsiveness
       element.style.width = originalWidth;

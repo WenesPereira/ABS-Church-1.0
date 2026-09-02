@@ -57,9 +57,29 @@ export async function saveOrShareReceiptFile(options: {
     }
   }
 
-  // 2. Fallback direto de download
+  // 2. Fallback para Dispositivos Móveis / Android WebViews que bloqueiam Web Share API
+  const isMobile =
+    typeof navigator !== 'undefined' &&
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+  const blobUrl = URL.createObjectURL(blob);
+
+  if (isMobile) {
+    try {
+      const win = window.open(blobUrl, '_blank');
+      if (!win) {
+        window.location.href = blobUrl; // Força visualização nativa na mesma janela se popup for bloqueado
+      }
+      return { success: true, method: 'new-window', fileUrl: blobUrl, blob };
+    } catch (openErr) {
+      console.warn('Falha ao abrir blob URL em nova janela:', openErr);
+      window.location.href = blobUrl;
+      return { success: true, method: 'new-window', fileUrl: blobUrl, blob };
+    }
+  }
+
+  // 3. Fallback para Desktop Tradicional (Download direto via link)
   try {
-    const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.style.display = 'none';
     link.href = blobUrl;
@@ -73,11 +93,11 @@ export async function saveOrShareReceiptFile(options: {
         document.body.removeChild(link);
       }
       URL.revokeObjectURL(blobUrl);
-    }, 2000);
+    }, 3000);
 
     return { success: true, method: 'download', fileUrl: blobUrl, blob };
   } catch (err) {
-    console.error('Erro ao acionar download direto do arquivo:', err);
+    console.error('Erro ao acionar download direto no desktop:', err);
     return { success: false, method: 'download', blob };
   }
 }
@@ -185,28 +205,29 @@ export function showReceiptImageModal(
             text: `Recibo de Contribuição #${cleanNumber} - ${churchName}`,
           });
         } else {
-          // Fallback: abre a imagem em uma nova aba limpa ou download
-          const win = window.open('');
-          if (win) {
-            win.document.write(`
-              <!DOCTYPE html>
-              <html>
-                <head><title>Recibo #${cleanNumber}</title></head>
-                <body style="margin:0; background:#090d16; display:flex; justify-content:center; padding:16px;">
-                  <img src="${imgDataUrl}" style="max-width:100%; height:auto;" />
-                </body>
-              </html>
-            `);
-            win.document.close();
+          // Fallback para WebViews ou navegadores sem Web Share API
+          const isMobileDevice =
+            typeof navigator !== 'undefined' &&
+            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+          const blobUrl = URL.createObjectURL(blob);
+
+          if (isMobileDevice) {
+            const win = window.open(blobUrl, '_blank');
+            if (!win) {
+              window.location.href = blobUrl;
+            }
           } else {
             const a = document.createElement('a');
-            a.href = imgDataUrl;
+            a.style.display = 'none';
+            a.href = blobUrl;
             a.download = `recibo_#${cleanNumber}.png`;
             document.body.appendChild(a);
             a.click();
             setTimeout(() => {
               if (document.body.contains(a)) document.body.removeChild(a);
-            }, 1000);
+              URL.revokeObjectURL(blobUrl);
+            }, 3000);
           }
         }
       } catch (err: any) {

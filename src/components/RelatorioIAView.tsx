@@ -194,8 +194,8 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
         text: `Relatório Executivo de Tesouraria com IA (${dataFormatted})`,
       });
     } catch (err) {
-      console.error('Erro ao baixar PDF:', err);
-      window.print();
+      console.error('Erro ao gerar PDF do relatório de IA:', err);
+      alert('Não foi possível exportar o arquivo diretamente. Tente novamente ou visualize em tela.');
     } finally {
       element.style.width = originalWidth;
       element.style.minWidth = originalMinWidth;
