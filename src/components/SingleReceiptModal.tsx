@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import html2canvas from 'html2canvas-pro';
 import { Lancamento, ConfigIgreja } from '../types';
 import {
   getWhatsAppShareUrl,
@@ -9,12 +10,6 @@ import {
   buildOfficialWhatsAppReceiptMessage,
 } from '../utils/receiptHelper';
 import {
-  downloadOrShareReceiptPdf,
-} from '../services/receiptPdfService';
-import {
-  generateAndShareReceipt,
-} from '../services/receiptImageService';
-import {
   Printer,
   Copy,
   Check,
@@ -22,7 +17,6 @@ import {
   MessageCircle,
   ExternalLink,
   ScrollText,
-  Download,
   Share2,
   Loader2,
 } from 'lucide-react';
@@ -94,29 +88,78 @@ export function SingleReceiptModal({
   };
 
   const handleShareReceipt = async () => {
-    if (!printRef.current || isGeneratingPdf) return;
+    if (isGeneratingPdf) return;
     try {
       setIsGeneratingPdf(true);
-      await generateAndShareReceipt({
-        element: printRef.current,
-        receiptNumber: receiptDigits,
-        churchName: churchName,
-        contributorName: contributorName,
-        backgroundColor: '#ffffff',
+      const element = document.getElementById('receipt-content') || printRef.current;
+      if (!element) {
+        alert('Elemento do recibo não encontrado.');
+        return;
+      }
+
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' });
+
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob(async (blob) => {
+          try {
+            if (!blob) {
+              reject(new Error('Falha ao gerar o arquivo de imagem'));
+              return;
+            }
+            const receiptNumber = receiptDigits;
+            const file = new File([blob], `Recibo_${receiptNumber}.png`, { type: 'image/png' });
+
+            // Tenta abrir a gaveta nativa do celular (WhatsApp, Galeria, Drive)
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: `Recibo #${receiptNumber}`,
+                text: 'Comprovante de Contribuição - ABS Church',
+              });
+              resolve();
+            } else if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+              await navigator.share({
+                files: [file],
+                title: `Recibo #${receiptNumber}`,
+                text: 'Comprovante de Contribuição - ABS Church',
+              });
+              resolve();
+            } else {
+              // Fallback para download direto caso a Share API não responda
+              const link = document.createElement('a');
+              link.download = `Recibo_${receiptNumber}.png`;
+              link.href = canvas.toDataURL('image/png');
+              document.body.appendChild(link);
+              link.click();
+              setTimeout(() => {
+                if (document.body.contains(link)) document.body.removeChild(link);
+              }, 1000);
+              resolve();
+            }
+          } catch (err: any) {
+            if (err?.name === 'AbortError') {
+              resolve();
+              return;
+            }
+            // Fallback para download direto em caso de erro na share API
+            try {
+              const link = document.createElement('a');
+              link.download = `Recibo_${receiptDigits}.png`;
+              link.href = canvas.toDataURL('image/png');
+              document.body.appendChild(link);
+              link.click();
+              setTimeout(() => {
+                if (document.body.contains(link)) document.body.removeChild(link);
+              }, 1000);
+              resolve();
+            } catch (fallbackErr) {
+              reject(err);
+            }
+          }
+        }, 'image/png');
       });
     } catch (err: any) {
-      console.error('Erro ao gerar recibo:', err);
-      try {
-        await downloadOrShareReceiptPdf({
-          lancamento,
-          config,
-          pastorName,
-          tesoureiroName,
-        });
-      } catch (pdfErr: any) {
-        console.error('Erro no fallback do recibo:', pdfErr);
-        alert('Erro ao gerar recibo: ' + (err?.message || 'Tente novamente ou envie pelo WhatsApp.'));
-      }
+      alert('Erro ao processar o recibo: ' + (err?.message || err));
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -181,7 +224,7 @@ export function SingleReceiptModal({
         <div className="bg-slate-950 p-4 sm:p-6 rounded-2xl border border-slate-800 flex justify-center">
           <div
             ref={printRef}
-            id="print-single-receipt-area"
+            id="receipt-content"
             className={`bg-white text-black p-5 sm:p-6 rounded-lg shadow-lg font-sans transition-all ${
               printMode === 'thermal'
                 ? 'w-full max-w-[340px] text-xs leading-tight'

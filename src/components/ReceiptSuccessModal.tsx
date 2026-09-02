@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import html2canvas from 'html2canvas-pro';
 import { Lancamento, ConfigIgreja } from '../types';
 import {
   getWhatsAppShareUrl,
@@ -8,11 +9,8 @@ import {
   formatDateBR,
   buildOfficialWhatsAppReceiptMessage,
 } from '../utils/receiptHelper';
-import { downloadOrShareReceiptPdf } from '../services/receiptPdfService';
-import { generateAndShareReceipt } from '../services/receiptImageService';
 import {
   CheckCircle2,
-  Download,
   Share2,
   Copy,
   Check,
@@ -93,29 +91,78 @@ export function ReceiptSuccessModal({
   };
 
   const handleShareReceipt = async () => {
-    if (!receiptCardRef.current || isGeneratingPdf) return;
+    if (isGeneratingPdf) return;
     try {
       setIsGeneratingPdf(true);
-      await generateAndShareReceipt({
-        element: receiptCardRef.current,
-        receiptNumber: receiptDigits,
-        churchName: churchName,
-        contributorName: contributorName,
-        backgroundColor: '#090d16',
+      const element = document.getElementById('receipt-content') || receiptCardRef.current;
+      if (!element) {
+        alert('Elemento do recibo não encontrado.');
+        return;
+      }
+
+      const canvas = await html2canvas(element, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#090d16' });
+
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob(async (blob) => {
+          try {
+            if (!blob) {
+              reject(new Error('Falha ao gerar imagem do recibo'));
+              return;
+            }
+            const receiptNumber = receiptDigits;
+            const file = new File([blob], `Recibo_${receiptNumber}.png`, { type: 'image/png' });
+
+            // Tenta abrir a gaveta nativa do celular (WhatsApp, Galeria, Drive)
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                files: [file],
+                title: `Recibo #${receiptNumber}`,
+                text: 'Comprovante de Contribuição - ABS Church',
+              });
+              resolve();
+            } else if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+              await navigator.share({
+                files: [file],
+                title: `Recibo #${receiptNumber}`,
+                text: 'Comprovante de Contribuição - ABS Church',
+              });
+              resolve();
+            } else {
+              // Fallback para download direto caso a Share API não responda
+              const link = document.createElement('a');
+              link.download = `Recibo_${receiptNumber}.png`;
+              link.href = canvas.toDataURL('image/png');
+              document.body.appendChild(link);
+              link.click();
+              setTimeout(() => {
+                if (document.body.contains(link)) document.body.removeChild(link);
+              }, 1000);
+              resolve();
+            }
+          } catch (err: any) {
+            if (err?.name === 'AbortError') {
+              resolve();
+              return;
+            }
+            // Fallback para download direto caso navigator.share falhe
+            try {
+              const link = document.createElement('a');
+              link.download = `Recibo_${receiptDigits}.png`;
+              link.href = canvas.toDataURL('image/png');
+              document.body.appendChild(link);
+              link.click();
+              setTimeout(() => {
+                if (document.body.contains(link)) document.body.removeChild(link);
+              }, 1000);
+              resolve();
+            } catch (fallbackErr) {
+              reject(err);
+            }
+          }
+        }, 'image/png');
       });
     } catch (err: any) {
-      console.error('Erro ao gerar recibo:', err);
-      try {
-        await downloadOrShareReceiptPdf({
-          lancamento,
-          config,
-          pastorName,
-          tesoureiroName,
-        });
-      } catch (pdfErr: any) {
-        console.error('Erro no fallback do recibo:', pdfErr);
-        alert('Erro ao gerar recibo: ' + (err?.message || 'Tente novamente ou envie pelo WhatsApp.'));
-      }
+      alert('Erro ao processar o recibo: ' + (err?.message || err));
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -164,7 +211,7 @@ export function ReceiptSuccessModal({
         <div className="p-1 bg-gradient-to-b from-amber-500/20 via-emerald-500/15 to-slate-950 rounded-2xl">
           <div
             ref={receiptCardRef}
-            id="receipt-official-card"
+            id="receipt-content"
             className="bg-[#090d16] border border-slate-800 rounded-xl p-4 sm:p-5 space-y-4 text-slate-100 shadow-xl"
             style={{ fontFamily: 'sans-serif' }}
           >
