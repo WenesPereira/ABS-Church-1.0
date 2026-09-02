@@ -20,7 +20,8 @@ export interface ShareReceiptResult {
 export type SaveFileResult = ShareReceiptResult;
 
 /**
- * Faz upload temporário do Blob para o Supabase Storage e retorna a URL pública HTTP
+ * Faz upload do Blob para o Supabase Storage e retorna a URL pública HTTPS.
+ * Utiliza o bucket 'recibos' ou 'temp_exports'.
  */
 export async function uploadBlobToSupabase(
   blob: Blob,
@@ -65,7 +66,7 @@ export async function uploadBlobToSupabase(
       return { error };
     }
 
-    // 3. Obtém a URL pública do arquivo
+    // 3. Obtém a URL pública HTTPS do arquivo
     const { data: urlData } = supabase.storage
       .from(activeBucket)
       .getPublicUrl(storageFileName);
@@ -79,8 +80,9 @@ export async function uploadBlobToSupabase(
 }
 
 /**
- * Salva ou compartilha um arquivo (PNG / PDF) utilizando prioritariamente a Web Share API nativa com File object.
- * Abre diretamente a gaveta de aplicativos do Android/iOS (WhatsApp, Drive, Adobe, etc.) sem disparar alertas de download de navegador.
+ * Salva ou compartilha um arquivo (PNG / PDF).
+ * Realiza upload para o Supabase Storage (HTTPS) e dispara a Web Share API com a URL pública HTTPS,
+ * eliminando problemas de Base64 / data URLs no WebView do Android.
  */
 export async function saveOrShareReceiptFile(options: {
   blob: Blob;
@@ -93,48 +95,74 @@ export async function saveOrShareReceiptFile(options: {
   const { blob, fileName, mimeType, title, text, bucket = 'recibos' } = options;
   const rawNumber = fileName.replace(/\D/g, '') || '000001';
   const cleanTitle = title || (mimeType === 'application/pdf' ? `Relatório #${rawNumber}` : `Recibo #${rawNumber}`);
-  const cleanText = text || (mimeType === 'application/pdf' ? 'Relatório Oficial de Tesouraria - ABS Church' : 'Comprovante de Contribuição - ABS Church');
+  const cleanText = text || (mimeType === 'application/pdf' ? 'Relatório Oficial de Tesouraria - ABS Church' : `Comprovante de Contribuição #${rawNumber}`);
 
-  // 1. Cria o objeto File nativo a partir do Blob
-  const file = new File([blob], fileName, { type: mimeType });
+  let publicUrl: string | undefined;
 
-  // 2. DISPARO NATIVO: Web Share API com File (Abre a gaveta de aplicativos nativa do sistema)
+  // 1. Upload do Blob para o Supabase Storage para obter URL pública HTTPS
+  if (isSupabaseConfigured) {
+    try {
+      const uploadResult = await uploadBlobToSupabase(blob, fileName, mimeType, bucket);
+      if (uploadResult.publicUrl) {
+        publicUrl = uploadResult.publicUrl;
+      }
+    } catch (uploadErr) {
+      console.warn('Upload para Supabase falhou, utilizando fallback:', uploadErr);
+    }
+  }
+
+  // 2. DISPARO NATIVO: Web Share API com URL pública HTTPS ou Arquivo binário
   if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
     try {
-      if (typeof navigator.canShare === 'function') {
-        if (navigator.canShare({ files: [file] })) {
+      if (publicUrl) {
+        // Compartilhamento via URL HTTPS pública (compatibilidade 100% Android WebView / iOS)
+        await navigator.share({
+          title: cleanTitle,
+          text: cleanText,
+          url: publicUrl,
+        });
+        return { success: true, method: 'share', blob, fileUrl: publicUrl };
+      } else {
+        // Se Supabase não estiver configurado, tenta compartilhar via File object
+        const file = new File([blob], fileName, { type: mimeType });
+        if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
           await navigator.share({
             files: [file],
             title: cleanTitle,
             text: cleanText,
           });
           return { success: true, method: 'share', blob };
+        } else {
+          await navigator.share({
+            title: cleanTitle,
+            text: cleanText,
+          });
+          return { success: true, method: 'share', blob };
         }
-      } else {
-        // WebView / navegador sem canShare mas com suporte a share com files
-        await navigator.share({
-          files: [file],
-          title: cleanTitle,
-          text: cleanText,
-        });
-        return { success: true, method: 'share', blob };
       }
     } catch (shareErr: any) {
       if (shareErr?.name === 'AbortError') {
-        return { success: true, method: 'share-abort', blob };
+        return { success: true, method: 'share-abort', blob, fileUrl: publicUrl };
       }
-      console.warn('Web Share com File não completado:', shareErr);
+      console.warn('Web Share API não completado, tentando abertura:', shareErr);
+      if (publicUrl) {
+        window.open(publicUrl, '_blank');
+        return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
+      }
     }
   }
 
-  // Opcional: upload em segundo plano no Supabase Storage para backup
-  if (isSupabaseConfigured) {
-    uploadBlobToSupabase(blob, fileName, mimeType, bucket).catch((e) =>
-      console.warn('Backup silencioso no Supabase Storage falhou:', e)
-    );
+  // 3. Fallback: Se tem URL pública HTTPS, abre no navegador/nova aba
+  if (publicUrl) {
+    try {
+      window.open(publicUrl, '_blank');
+      return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
+    } catch (winErr) {
+      console.warn('window.open falhou:', winErr);
+    }
   }
 
-  // 3. Fallback direto (Download do arquivo caso navigator.share não esteja disponível)
+  // 4. Fallback final via Blob URL (nunca Base64)
   try {
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -150,20 +178,21 @@ export async function saveOrShareReceiptFile(options: {
     }, 2000);
     return { success: true, method: 'download', fileUrl: blobUrl, blob };
   } catch (err) {
-    console.error('Erro no fallback de download:', err);
+    console.error('Erro no fallback:', err);
     return { success: false, method: 'download', blob };
   }
 }
 
 /**
- * Função principal para gerar o recibo e compartilhar/salvar diretamente via Web Share API com File
+ * Função principal para gerar o recibo e compartilhar/salvar via Supabase Storage HTTPS URL
+ * Eliminando completamente o uso de Base64 / dataURLs.
  */
 export async function generateAndShareReceipt(
   options: GenerateReceiptOptions
 ): Promise<ShareReceiptResult> {
   const { element, receiptNumber, churchName = 'ABS CHURCH', backgroundColor } = options;
   const cleanNumber = receiptNumber.replace(/\D/g, '') || '000001';
-  const fileName = `Recibo_${cleanNumber}.png`;
+  const fileName = `recibo_${cleanNumber}_${Date.now()}.png`;
 
   try {
     const computedBg = window.getComputedStyle(element).backgroundColor;
@@ -189,50 +218,16 @@ export async function generateAndShareReceipt(
             return;
           }
 
-          const file = new File([blob], fileName, { type: 'image/png' });
+          // Salva ou compartilha via Supabase Storage HTTPS URL e Web Share API
+          const result = await saveOrShareReceiptFile({
+            blob,
+            fileName: `Recibo_${cleanNumber}.png`,
+            mimeType: 'image/png',
+            title: `Recibo #${cleanNumber}`,
+            text: `Comprovante de Contribuição #${cleanNumber} - ${churchName}`,
+          });
 
-          // 1. DISPARO NATIVO DIRETO: Web Share API com File (Abre WhatsApp, Drive, Galeria)
-          if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-            try {
-              if (typeof navigator.canShare === 'function') {
-                if (navigator.canShare({ files: [file] })) {
-                  await navigator.share({
-                    files: [file],
-                    title: `Recibo #${cleanNumber}`,
-                    text: `Comprovante de Contribuição - ${churchName}`,
-                  });
-                  resolve({ success: true, method: 'share', blob });
-                  return;
-                }
-              } else {
-                await navigator.share({
-                  files: [file],
-                  title: `Recibo #${cleanNumber}`,
-                  text: `Comprovante de Contribuição - ${churchName}`,
-                });
-                resolve({ success: true, method: 'share', blob });
-                return;
-              }
-            } catch (err: any) {
-              if (err?.name === 'AbortError') {
-                resolve({ success: true, method: 'share-abort', blob });
-                return;
-              }
-              console.warn('Web Share com File não completado:', err);
-            }
-          }
-
-          // 2. Fallback direto para download do arquivo (sem janelas ou modais intermediários)
-          const link = document.createElement('a');
-          link.download = fileName;
-          link.href = canvas.toDataURL('image/png');
-          document.body.appendChild(link);
-          link.click();
-          setTimeout(() => {
-            if (document.body.contains(link)) document.body.removeChild(link);
-          }, 1000);
-
-          resolve({ success: true, method: 'download', blob });
+          resolve(result);
         } catch (blobErr: any) {
           reject(blobErr);
         }

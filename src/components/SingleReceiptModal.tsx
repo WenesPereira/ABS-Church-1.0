@@ -9,6 +9,7 @@ import {
   formatDateBR,
   buildOfficialWhatsAppReceiptMessage,
 } from '../utils/receiptHelper';
+import { supabase, isSupabaseConfigured } from '../services/supabase';
 import {
   Printer,
   Copy,
@@ -97,7 +98,12 @@ export function SingleReceiptModal({
         return;
       }
 
-      const canvas = await html2canvas(element, { scale: 2, useCORS: true, allowTaint: true, backgroundColor: '#ffffff' });
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+      });
 
       await new Promise<void>((resolve, reject) => {
         canvas.toBlob(async (blob) => {
@@ -107,54 +113,94 @@ export function SingleReceiptModal({
               return;
             }
             const receiptNumber = receiptDigits;
-            const file = new File([blob], `Recibo_${receiptNumber}.png`, { type: 'image/png' });
+            const fileName = `recibo_${receiptNumber}_${Date.now()}.png`;
+            let publicUrl: string | undefined;
 
-            // Tenta abrir a gaveta nativa do celular (WhatsApp, Galeria, Drive)
-            if (navigator.canShare && navigator.canShare({ files: [file] })) {
-              await navigator.share({
-                files: [file],
-                title: `Recibo #${receiptNumber}`,
-                text: 'Comprovante de Contribuição - ABS Church',
-              });
-              resolve();
-            } else if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-              await navigator.share({
-                files: [file],
-                title: `Recibo #${receiptNumber}`,
-                text: 'Comprovante de Contribuição - ABS Church',
-              });
+            // 1. Upload do Blob para o Supabase Storage
+            if (isSupabaseConfigured) {
+              try {
+                let activeBucket = 'recibos';
+                let uploadRes = await supabase.storage.from(activeBucket).upload(fileName, blob, {
+                  contentType: 'image/png',
+                  upsert: true,
+                });
+
+                if (uploadRes.error) {
+                  const retryRes = await supabase.storage.from('temp_exports').upload(fileName, blob, {
+                    contentType: 'image/png',
+                    upsert: true,
+                  });
+                  if (!retryRes.error) {
+                    activeBucket = 'temp_exports';
+                  } else {
+                    console.warn('Aviso no upload do recibo:', uploadRes.error.message || uploadRes.error);
+                  }
+                }
+
+                const { data: urlData } = supabase.storage.from(activeBucket).getPublicUrl(fileName);
+                if (urlData?.publicUrl) {
+                  publicUrl = urlData.publicUrl;
+                }
+              } catch (storageErr) {
+                console.warn('Erro ao enviar imagem para o Supabase:', storageErr);
+              }
+            }
+
+            // 2. Disparo da Web Share API nativa com URL HTTPS
+            if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+              try {
+                if (publicUrl) {
+                  await navigator.share({
+                    title: `Recibo #${receiptNumber}`,
+                    text: `Comprovante de Contribuição #${receiptNumber} - ${config.nomeIgreja || 'ABS Church'}`,
+                    url: publicUrl,
+                  });
+                  resolve();
+                  return;
+                } else {
+                  const file = new File([blob], `Recibo_${receiptNumber}.png`, { type: 'image/png' });
+                  if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                      files: [file],
+                      title: `Recibo #${receiptNumber}`,
+                      text: `Comprovante de Contribuição #${receiptNumber} - ${config.nomeIgreja || 'ABS Church'}`,
+                    });
+                    resolve();
+                    return;
+                  }
+                }
+              } catch (err: any) {
+                if (err?.name === 'AbortError') {
+                  resolve();
+                  return;
+                }
+                if (publicUrl) {
+                  window.open(publicUrl, '_blank');
+                  resolve();
+                  return;
+                }
+              }
+            }
+
+            // 3. Fallback: abre a URL pública HTTPS ou cria link de download Blob (nunca Base64)
+            if (publicUrl) {
+              window.open(publicUrl, '_blank');
               resolve();
             } else {
-              // Fallback para download direto caso a Share API não responda
+              const blobUrl = URL.createObjectURL(blob);
               const link = document.createElement('a');
               link.download = `Recibo_${receiptNumber}.png`;
-              link.href = canvas.toDataURL('image/png');
+              link.href = blobUrl;
               document.body.appendChild(link);
               link.click();
               setTimeout(() => {
                 if (document.body.contains(link)) document.body.removeChild(link);
-              }, 1000);
+                URL.revokeObjectURL(blobUrl);
+              }, 2000);
               resolve();
             }
-          } catch (err: any) {
-            if (err?.name === 'AbortError') {
-              resolve();
-              return;
-            }
-            // Fallback para download direto em caso de erro na share API
-            try {
-              const link = document.createElement('a');
-              link.download = `Recibo_${receiptDigits}.png`;
-              link.href = canvas.toDataURL('image/png');
-              document.body.appendChild(link);
-              link.click();
-              setTimeout(() => {
-                if (document.body.contains(link)) document.body.removeChild(link);
-              }, 1000);
-              resolve();
-            } catch (fallbackErr) {
-              reject(err);
-            }
+          } catch (blobErr) {
+            reject(blobErr);
           }
         }, 'image/png');
       });
