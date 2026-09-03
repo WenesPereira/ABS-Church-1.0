@@ -640,6 +640,97 @@ app.post("/api/mercadopago/simulate-approval", async (req, res) => {
   }
 });
 
+const FRIENDLY_HIGH_DEMAND_ERROR =
+  "O servidor da Inteligência Artificial está temporariamente instável devido a alta demanda do Google. Por favor, aguarde alguns instantes e clique em 'Gerar Relatório Completo' novamente.";
+
+function isTransientOrHighDemandError(err: any): boolean {
+  if (!err) return false;
+  const msg = (typeof err === "string" ? err : err.message || JSON.stringify(err)).toLowerCase();
+  const status = err.status || err.statusCode || err.code;
+
+  return (
+    status === 503 ||
+    status === 429 ||
+    status === 500 ||
+    status === 502 ||
+    status === 504 ||
+    msg.includes("503") ||
+    msg.includes("429") ||
+    msg.includes("unavailable") ||
+    msg.includes("high demand") ||
+    msg.includes("overloaded") ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    msg.includes("temporarily") ||
+    msg.includes("fetch failed") ||
+    msg.includes("econnreset") ||
+    msg.includes("etimedout")
+  );
+}
+
+/**
+ * Executa chamada ao Gemini com re-tentativas automáticas (backoff exponencial)
+ * e troca dinâmica de modelo caso o primário esteja indisponível ou sobrecarregado.
+ */
+async function generateGeminiReportWithRetry(
+  ai: GoogleGenAI,
+  promptText: string,
+  systemInstruction: string
+): Promise<string> {
+  const models = [
+    process.env.GEMINI_MODEL || "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash-8b",
+  ].filter(Boolean);
+
+  const uniqueModels = Array.from(new Set(models));
+  let lastError: any = null;
+
+  for (const model of uniqueModels) {
+    const maxRetries = 3;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`[Gemini AI] Tentando modelo '${model}' (tentativa ${attempt}/${maxRetries})...`);
+        const response = await ai.models.generateContent({
+          model,
+          contents: promptText,
+          config: {
+            systemInstruction,
+            temperature: 0.2,
+          },
+        });
+
+        const text = response.text;
+        if (text && text.trim().length > 0) {
+          console.log(`[Gemini AI] Sucesso gerando relatório com modelo '${model}'!`);
+          return text;
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[Gemini AI] Falha no modelo '${model}' tentativa ${attempt}:`, err?.message || err);
+
+        // Se for erro transitório ou alta demanda e ainda houver tentativas para este modelo
+        if (attempt < maxRetries && isTransientOrHighDemandError(err)) {
+          const delayMs = attempt * 2000; // 2s, depois 4s
+          console.log(`[Gemini AI] Aguardando ${delayMs}ms antes de retentar com '${model}'...`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        } else {
+          // Passa para o próximo modelo de fallback
+          break;
+        }
+      }
+    }
+  }
+
+  console.error("[Gemini AI] Todos os modelos e tentativas de retry esgotados. Último erro:", lastError);
+  if (isTransientOrHighDemandError(lastError)) {
+    throw new Error(FRIENDLY_HIGH_DEMAND_ERROR);
+  }
+  throw new Error(lastError?.message || FRIENDLY_HIGH_DEMAND_ERROR);
+}
+
 // Endpoint de Auditoria e Relatório de Fechamento de Caixa da Igreja com IA Gemini
 app.post("/api/gemini/church-report", async (req, res) => {
   try {
@@ -716,16 +807,12 @@ ESTRUTURA DO RELATÓRIO (DIVIDIDO ESTRITAMENTE EM 4 BLOCOS OBJETIVOS):
 Responda em Português do Brasil com excelente clareza, rigor gramatical e formatação limpa e executiva em Markdown.
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.6-flash",
-      contents: promptText,
-      config: {
-        systemInstruction: "Você é um auditor e assistente financeiro especializado em tesouraria de igrejas evangélicas e cristãs. Use sempre os termos corretos em português: 'Expressamos', 'Orientação de Auditoria', 'inconsistência'.",
-        temperature: 0.2,
-      },
-    });
+    const systemInstruction =
+      "Você é um auditor e assistente financeiro especializado em tesouraria de igrejas evangélicas e cristãs. Use sempre os termos corretos em português: 'Expressamos', 'Orientação de Auditoria', 'inconsistência'.";
 
-    let reportText = response.text || "Relatório não gerado.";
+    const rawReportText = await generateGeminiReportWithRetry(ai, promptText, systemInstruction);
+
+    let reportText = rawReportText || "Relatório não gerado.";
 
     // Higienização e correções ortográficas obrigatórias
     reportText = reportText
@@ -746,7 +833,12 @@ Responda em Português do Brasil com excelente clareza, rigor gramatical e forma
     return res.json({ report: reportText });
   } catch (error: any) {
     console.error("Erro no relatório de caixa da igreja:", error);
-    return res.status(500).json({ error: error.message || "Erro ao processar relatório da tesouraria." });
+    const isTransient = isTransientOrHighDemandError(error);
+    const userMessage = isTransient
+      ? FRIENDLY_HIGH_DEMAND_ERROR
+      : error.message || "Erro ao processar relatório da tesouraria.";
+
+    return res.status(isTransient ? 503 : 500).json({ error: userMessage });
   }
 });
 

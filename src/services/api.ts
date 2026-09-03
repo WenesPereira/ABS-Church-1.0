@@ -93,11 +93,36 @@ Responda em Português do Brasil com excelente clareza, rigor gramatical e forma
 `;
 }
 
+const FRIENDLY_HIGH_DEMAND_MESSAGE =
+  "O servidor da Inteligência Artificial está temporariamente instável devido a alta demanda do Google. Por favor, aguarde alguns instantes e clique em 'Gerar Relatório Completo' novamente.";
+
+function isHighDemandOrTransient(errorMsg: string, status?: number): boolean {
+  if (!errorMsg && !status) return false;
+  const s = String(errorMsg || '').toLowerCase();
+  return (
+    status === 503 ||
+    status === 429 ||
+    status === 502 ||
+    status === 504 ||
+    s.includes('503') ||
+    s.includes('429') ||
+    s.includes('unavailable') ||
+    s.includes('high demand') ||
+    s.includes('alta demanda') ||
+    s.includes('overloaded') ||
+    s.includes('temporariamente instável') ||
+    s.includes('resource_exhausted') ||
+    s.includes('rate limit')
+  );
+}
+
 /**
  * Gera o relatório de tesouraria utilizando o backend ou a chave client-side Gemini como fallback seguro.
+ * Aplica re-tentativas automáticas, troca dinâmica de modelos e mensagem amigável em português.
  */
 export async function generateChurchReport(fechamentoData: FechamentoCulto): Promise<string> {
   let backendError: string | null = null;
+  let isBackendHighDemand = false;
 
   // 1. Tenta gerar via rota do backend (/api/gemini/church-report)
   try {
@@ -114,10 +139,28 @@ export async function generateChurchReport(fechamentoData: FechamentoCulto): Pro
       }
     } else {
       const errorData = await res.json().catch(() => ({}));
-      backendError = errorData.error || `Erro HTTP ${res.status} do servidor.`;
+      const rawError = errorData.error || `Erro HTTP ${res.status} do servidor.`;
+      if (isHighDemandOrTransient(rawError, res.status)) {
+        isBackendHighDemand = true;
+        backendError = FRIENDLY_HIGH_DEMAND_MESSAGE;
+      } else {
+        backendError = rawError;
+      }
     }
   } catch (err: any) {
-    backendError = err?.message || 'Erro de conexão com o servidor local.';
+    const msg = err?.message || '';
+    if (isHighDemandOrTransient(msg)) {
+      isBackendHighDemand = true;
+      backendError = FRIENDLY_HIGH_DEMAND_MESSAGE;
+    } else {
+      backendError = msg || 'Erro de conexão com o servidor local.';
+    }
+  }
+
+  // Se o backend já tentou os retries e esgotou devido à alta demanda do Google,
+  // repassamos a mensagem amigável imediatamente para o usuário.
+  if (isBackendHighDemand) {
+    throw new Error(FRIENDLY_HIGH_DEMAND_MESSAGE);
   }
 
   // 2. Fallback: Se o backend não respondeu ou reportou erro de chave, tenta client-side com VITE_GEMINI_API_KEY
@@ -132,35 +175,62 @@ export async function generateChurchReport(fechamentoData: FechamentoCulto): Pro
         apiKey: clientApiKey,
       });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.6-flash',
-        contents: buildAuditPrompt(fechamentoData),
-        config: {
-          systemInstruction:
-            "Você é um auditor e assistente financeiro especializado em tesouraria de igrejas evangélicas e cristãs. Use sempre os termos corretos em português: 'Expressamos', 'Orientação de Auditoria', 'inconsistência'.",
-          temperature: 0.2,
-        },
-      });
+      const modelsToTry = [
+        'gemini-1.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-pro',
+        'gemini-1.5-flash-8b',
+      ];
+      let clientLastError: any = null;
 
-      const text = response.text || '';
-      if (text) {
-        return sanitizeReport(text);
+      for (const model of modelsToTry) {
+        const retries = 3;
+        for (let i = 0; i < retries; i++) {
+          try {
+            console.log(`[Gemini Client] Tentando modelo ${model} (tentativa ${i + 1}/${retries})...`);
+            const response = await ai.models.generateContent({
+              model,
+              contents: buildAuditPrompt(fechamentoData),
+              config: {
+                systemInstruction:
+                  "Você é um auditor e assistente financeiro especializado em tesouraria de igrejas evangélicas e cristãs. Use sempre os termos corretos em português: 'Expressamos', 'Orientação de Auditoria', 'inconsistência'.",
+                temperature: 0.2,
+              },
+            });
+
+            const text = response.text || '';
+            if (text) {
+              return sanitizeReport(text);
+            }
+          } catch (err: any) {
+            clientLastError = err;
+            const errMsg = String(err?.message || '');
+            if (i < retries - 1 && isHighDemandOrTransient(errMsg)) {
+              await new Promise((res) => setTimeout(res, 2000 * (i + 1)));
+            } else {
+              break; // Passa para o próximo modelo se esgotar ou não for transitório
+            }
+          }
+        }
+      }
+
+      if (clientLastError) {
+        const msg = String(clientLastError?.message || '');
+        if (isHighDemandOrTransient(msg)) {
+          throw new Error(FRIENDLY_HIGH_DEMAND_MESSAGE);
+        }
+        if (msg.includes('API_KEY_INVALID') || msg.includes('401') || msg.includes('403')) {
+          throw new Error('Chave de API do Gemini inválida ou não autorizada. Verifique a chave configurada.');
+        }
+        throw new Error(`Falha ao comunicar com o Gemini: ${msg}`);
       }
     } catch (clientErr: any) {
       console.error('Erro na chamada client-side do Gemini:', clientErr);
       const msg = String(clientErr?.message || '');
-
-      if (msg.includes('API_KEY_INVALID') || msg.includes('401') || msg.includes('403')) {
-        throw new Error('Chave de API do Gemini inválida ou não autorizada. Verifique a chave configurada.');
+      if (isHighDemandOrTransient(msg)) {
+        throw new Error(FRIENDLY_HIGH_DEMAND_MESSAGE);
       }
-      if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
-        throw new Error('Limite de requisições do Gemini atingido temporariamente. Aguarde alguns segundos.');
-      }
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('CORS')) {
-        throw new Error('Erro de conexão ou CORS ao contatar a API do Gemini. Verifique sua conexão com a internet.');
-      }
-
-      throw new Error(`Falha ao comunicar com o Gemini: ${msg}`);
+      throw clientErr;
     }
   }
 

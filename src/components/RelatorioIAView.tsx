@@ -226,7 +226,23 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
         relatorioIA: report,
       }));
     } catch (err: any) {
-      setError(err.message || 'Falha ao se comunicar com a IA para gerar o relatório.');
+      const msg = String(err?.message || '');
+      if (
+        msg.includes('503') ||
+        msg.includes('429') ||
+        msg.includes('high demand') ||
+        msg.includes('alta demanda') ||
+        msg.includes('UNAVAILABLE') ||
+        msg.includes('temporariamente instável') ||
+        msg.includes('overloaded') ||
+        msg.includes('RESOURCE_EXHAUSTED')
+      ) {
+        setError(
+          "O servidor da Inteligência Artificial está temporariamente instável devido a alta demanda do Google. Por favor, aguarde alguns instantes e clique em 'Gerar Relatório Completo' novamente."
+        );
+      } else {
+        setError(err.message || 'Falha ao se comunicar com a IA para gerar o relatório.');
+      }
     } finally {
       setLoading(false);
     }
