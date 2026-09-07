@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="50%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+    <linearGradient id="crossGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#cbd5e1" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="110" fill="url(#bgGrad)" />
+  <rect width="504" height="504" x="4" y="4" rx="106" fill="none" stroke="url(#goldGrad)" stroke-width="4" stroke-opacity="0.35" />
+
+  <!-- Outer Ring Accent -->
+  <circle cx="256" cy="235" r="150" fill="none" stroke="url(#goldGrad)" stroke-width="3" stroke-dasharray="8 6" stroke-opacity="0.4" />
+  <circle cx="256" cy="235" r="132" fill="#0f172a" fill-opacity="0.6" stroke="url(#goldGrad)" stroke-width="2" stroke-opacity="0.25" />
+
+  <!-- Radiance / Glow behind Cross -->
+  <circle cx="256" cy="205" r="55" fill="#f59e0b" fill-opacity="0.2" filter="url(#glow)" />
+
+  <!-- Christian Cross -->
+  <!-- Vertical Beam -->
+  <rect x="238" y="125" width="36" height="180" rx="8" fill="url(#crossGrad)" filter="url(#glow)" />
+  <rect x="238" y="125" width="36" height="180" rx="8" fill="url(#crossGrad)" />
+  
+  <!-- Horizontal Beam -->
+  <rect x="176" y="170" width="160" height="36" rx="8" fill="url(#crossGrad)" />
+
+  <!-- Gold Center Star/Diamond Highlight -->
+  <polygon points="256,173 269,188 256,203 243,188" fill="url(#goldGrad)" />
+
+  <!-- Stylized Open Bible / Wings at Base -->
+  <path d="M 175 320 Q 215 305 256 322 Q 297 305 337 320 Q 330 338 297 328 Q 256 342 215 328 Q 182 338 175 320 Z" fill="url(#goldGrad)" />
+  <path d="M 256 323 L 256 341" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+
+  <!-- Brand Typography -->
+  <text x="256" y="405" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="38" font-weight="900" fill="#f8fafc" text-anchor="middle" letter-spacing="8">EKLESIA</text>
+  <text x="256" y="435" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="14" font-weight="700" fill="#f59e0b" text-anchor="middle" letter-spacing="4">TESOURARIA &amp; CAIXA</text>
+</svg>

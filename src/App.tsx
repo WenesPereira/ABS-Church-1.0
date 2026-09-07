@@ -810,6 +810,7 @@ export default function App() {
           fechamento={fechamentoAtual}
           config={configIgreja}
           onClose={() => setIsPrintModalOpen(false)}
+          onUpdateFechamento={handleSetFechamentoAtual}
         />
       )}
 

@@ -18,6 +18,23 @@ export const CATEGORIA_ENTRADA_LABELS: Record<CategoriaEntrada, string> = {
   outros: 'Outras Entradas',
 };
 
+/**
+ * Retorna o rótulo formatado da base de cálculo do repasse da matriz.
+ * Ex: 'Somente Dízimos', 'Toda a Entrada' ou 'Dízimos + Ofertas de Culto'
+ */
+export function formatBaseMatrizLabel(
+  tipoBase: 'todas' | 'selecionadas' = 'todas',
+  categorias: CategoriaEntrada[] = ALL_ENTRADA_CATEGORIES
+): string {
+  if (tipoBase === 'todas' || !categorias || categorias.length === 0 || categorias.length === ALL_ENTRADA_CATEGORIES.length) {
+    return 'Toda a Entrada';
+  }
+  if (categorias.length === 1 && categorias[0] === 'dizimo') {
+    return 'Somente Dízimos';
+  }
+  return categorias.map((cat) => CATEGORIA_ENTRADA_LABELS[cat] || cat).join(' + ');
+}
+
 export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
@@ -143,6 +160,9 @@ export function calcularResumoLancamentos(
   const saldoDisponivel = totalEntradas - totalSaidas - valorMatriz - valorPrebenda;
   const saldoCongregacao = saldoDisponivel;
 
+  const totalEntradasSemRepasse = Math.max(0, totalEntradas - baseCalculoMatriz);
+  const rotuloBaseMatriz = formatBaseMatrizLabel(tipoBaseRepasse, catsAtivasRepasse);
+
   return {
     totalEntradas,
     totalSaidas,
@@ -151,6 +171,8 @@ export function calcularResumoLancamentos(
     tipoBaseRepasse,
     categoriasRepasse: catsAtivasRepasse,
     baseCalculoMatriz,
+    totalEntradasSemRepasse,
+    rotuloBaseMatriz,
     porcentagemMatriz: pctMatriz,
     valorMatriz,
     aplicarPrebenda: prebendaAtiva,
@@ -180,3 +202,88 @@ export function calcularResumoLancamentos(
 export const CULTOS_LIST = [
   'Fechamento de Caixa'
 ];
+
+export const DEFAULT_RELATORIO_CATEGORIAS: CategoriaEntrada[] = ['dizimo'];
+
+export function getCategoriasRelatorioAtivas(
+  categoriasRelatorio?: CategoriaEntrada[],
+  fallbackDefault: CategoriaEntrada[] = DEFAULT_RELATORIO_CATEGORIAS
+): CategoriaEntrada[] {
+  if (!categoriasRelatorio || !Array.isArray(categoriasRelatorio) || categoriasRelatorio.length === 0) {
+    return fallbackDefault.includes('dizimo') ? fallbackDefault : ['dizimo', ...fallbackDefault];
+  }
+  // Dízimos é sempre obrigatório e fixo
+  if (!categoriasRelatorio.includes('dizimo')) {
+    return ['dizimo', ...categoriasRelatorio];
+  }
+  return categoriasRelatorio;
+}
+
+export function calcularResumoRelatorio(
+  resumoGeral: ReturnType<typeof calcularResumoLancamentos>,
+  categoriasRelatorioAtivas: CategoriaEntrada[]
+) {
+  const catsAtivas = getCategoriasRelatorioAtivas(categoriasRelatorioAtivas);
+
+  const getValorCategoria = (cat: CategoriaEntrada) => {
+    if (cat === 'dizimo') return resumoGeral.totalDizimos;
+    if (cat === 'oferta_culto') return resumoGeral.totalOfertasCulto;
+    if (cat === 'oferta_missoes') return resumoGeral.totalOfertasMissoes;
+    if (cat === 'oferta_especial') return resumoGeral.totalOfertasEspeciais;
+    if (cat === 'doacao') return resumoGeral.totalDoacoes;
+    return resumoGeral.totalOutrasEntradas;
+  };
+
+  const totalEntradasRelatorio = catsAtivas.reduce(
+    (acc, cat) => acc + (getValorCategoria(cat) || 0),
+    0
+  );
+
+  const totalSaidasRelatorio = resumoGeral.totalSaidas;
+  const saldoLiquidoRelatorio = totalEntradasRelatorio - totalSaidasRelatorio;
+
+  // Repasse Matriz incidindo sobre as categorias ativas no relatório
+  let baseMatrizRelatorio = 0;
+  if (resumoGeral.aplicarRepasseMatriz) {
+    catsAtivas.forEach((cat) => {
+      if (resumoGeral.tipoBaseRepasse === 'todas' || resumoGeral.categoriasRepasse.includes(cat)) {
+        baseMatrizRelatorio += getValorCategoria(cat);
+      }
+    });
+  }
+  const valorMatrizRelatorio = resumoGeral.aplicarRepasseMatriz
+    ? (baseMatrizRelatorio * resumoGeral.porcentagemMatriz) / 100
+    : 0;
+
+  // Prebenda Pastoral incidindo sobre as categorias ativas no relatório
+  let baseEntradasPrebendaRelatorio = 0;
+  if (resumoGeral.aplicarPrebenda) {
+    catsAtivas.forEach((cat) => {
+      if (resumoGeral.tipoBasePrebenda === 'todas' || resumoGeral.categoriasPrebenda.includes(cat)) {
+        baseEntradasPrebendaRelatorio += getValorCategoria(cat);
+      }
+    });
+  }
+  const basePrebendaRelatorio = resumoGeral.deduzirMatrizBasePrebenda
+    ? Math.max(0, baseEntradasPrebendaRelatorio - valorMatrizRelatorio)
+    : baseEntradasPrebendaRelatorio;
+
+  const valorPrebendaRelatorio = resumoGeral.aplicarPrebenda
+    ? (basePrebendaRelatorio * resumoGeral.porcentagemPrebenda) / 100
+    : 0;
+
+  const saldoDisponivelRelatorio =
+    totalEntradasRelatorio - totalSaidasRelatorio - valorMatrizRelatorio - valorPrebendaRelatorio;
+
+  return {
+    categoriasAtivas: catsAtivas,
+    totalEntradasRelatorio,
+    totalSaidasRelatorio,
+    saldoLiquidoRelatorio,
+    baseMatrizRelatorio,
+    valorMatrizRelatorio,
+    basePrebendaRelatorio,
+    valorPrebendaRelatorio,
+    saldoDisponivelRelatorio,
+  };
+}

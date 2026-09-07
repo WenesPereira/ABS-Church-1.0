@@ -3,10 +3,19 @@ import { Sparkles, FileText, CheckCircle2, Copy, Printer, Loader2, AlertCircle, 
 import ReactMarkdown from 'react-markdown';
 import html2canvas from 'html2canvas-pro';
 import { jsPDF } from 'jspdf';
-import { FechamentoCulto, ActiveTab, User, ConfigIgreja } from '../types';
+import { FechamentoCulto, ActiveTab, User, ConfigIgreja, CategoriaEntrada } from '../types';
 import { generateChurchReport } from '../services/api';
 import { isSubscriptionActive, getMercadoPagoSubscriptionUrl } from '../services/treasuryService';
 import { saveOrShareReceiptFile } from '../services/receiptImageService';
+import {
+  calcularResumoLancamentos,
+  ALL_ENTRADA_CATEGORIES,
+  getCategoriasRelatorioAtivas,
+  calcularResumoRelatorio,
+  DEFAULT_RELATORIO_CATEGORIAS,
+  CATEGORIA_ENTRADA_LABELS,
+  formatCurrency,
+} from '../utils/calculations';
 
 interface RelatorioIAViewProps {
   fechamento: FechamentoCulto;
@@ -33,7 +42,11 @@ export function sanitizeReportText(text: string): string {
     .replace(/aplicarRepasseMatriz:\s*true/gi, 'Repasse à Matriz: Ativo')
     .replace(/aplicarRepasseMatriz:\s*false/gi, 'Repasse à Matriz: Isento')
     .replace(/aplicarPrebenda:\s*true/gi, 'Prebenda Pastoral: Ativa')
-    .replace(/aplicarPrebenda:\s*false/gi, 'Prebenda Pastoral: Não Aplicada');
+    .replace(/aplicarPrebenda:\s*false/gi, 'Prebenda Pastoral: Não Aplicada')
+    .replace(/\bTesoureiro Responsável\b/gi, 'Tesoureiro(a) Responsável')
+    .replace(/\bPastor Responsável\b/gi, 'Pastor(a) Responsável')
+    .replace(/\bPastor Local\b/gi, 'Pastor(a) Local')
+    .replace(/\bPastor Presidente\b/gi, 'Pastor(a) Presidente');
 }
 
 export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
@@ -63,31 +76,26 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
   const churchName = fechamento.nomeIgreja || config?.nomeIgreja || currentUser?.nomeIgreja || 'ABS CHURCH';
   const cnpjNumber = config?.cnpj;
 
-  // Preserva estritamente o histórico auditável da ata: utiliza o pastor_name gravado naquele registro específico
+  // Preserva estritamente o histórico auditável da ata: utiliza os nomes gravados naquele registro específico
   const pastorGravadoNoRegistro = getValidSignerName(fechamento.pastorName);
-  const pastorLocalGravado = getValidSignerName(fechamento.pastorLocal, 'Pastor Local');
-  const pastorPresidenteGravado = getValidSignerName(fechamento.pastorPresidente, 'Pastor Presidente');
-
-  // Para atas e relatórios fechados/históricos, NUNCA busca o perfil atual do usuário ou config atual
-  const pastorResponsavelHistorico =
-    pastorGravadoNoRegistro ||
-    pastorLocalGravado ||
-    pastorPresidenteGravado ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config?.pastorLocal || config?.pastorPresidente) : '');
+  const pastorLocalGravado = getValidSignerName(fechamento.pastorLocal, 'Pastor(a) Local');
+  const pastorPresidenteGravado = getValidSignerName(fechamento.pastorPresidente, 'Pastor(a) Presidente');
 
   const pastorPresidenteAssinatura =
-    pastorGravadoNoRegistro ||
     pastorPresidenteGravado ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config?.pastorPresidente, 'Pastor Presidente') : '');
+    getValidSignerName(config?.pastorPresidente, 'Pastor(a) Presidente') ||
+    'Pastor(a) Presidente';
 
   const pastorLocalAssinatura =
-    pastorGravadoNoRegistro ||
     pastorLocalGravado ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config?.pastorLocal, 'Pastor Local') : '');
+    pastorGravadoNoRegistro ||
+    getValidSignerName(config?.pastorLocal, 'Pastor(a) Local') ||
+    'Pastor(a) Local';
 
   const tesoureiroAssinatura =
-    getValidSignerName(fechamento.tesoureiro, 'Tesoureiro Principal') ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config?.tesoureiroPadrao, 'Tesoureiro Principal') : 'Tesoureiro Responsável');
+    getValidSignerName(fechamento.tesoureiro, 'Tesoureiro(a) Principal') ||
+    getValidSignerName(config?.tesoureiroPadrao, 'Tesoureiro(a) Principal') ||
+    'Tesoureiro(a) Responsável';
 
   const handleDownloadPdf = async () => {
     const element = document.getElementById('ai-report-printable-card');
@@ -216,10 +224,55 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
     setLoading(true);
     setError(null);
     try {
+      const porcentagemPrebenda = fechamento.porcentagemPrebenda ?? config?.porcentagemPrebenda ?? 0;
+      const porcentagemMatriz = fechamento.porcentagemMatriz ?? config?.porcentagemMatriz ?? 20;
+      const aplicarRepasse = fechamento.aplicarRepasseMatriz ?? config?.aplicarRepasseMatriz ?? true;
+      const aplicarPrebenda = fechamento.aplicarPrebenda ?? config?.aplicarPrebenda ?? false;
+      const tipoBase = fechamento.tipoBaseRepasseMatriz || config?.tipoBaseRepasseMatriz || 'todas';
+      const catsRepasse = fechamento.categoriasRepasseMatriz || config?.categoriasRepasseMatriz || ALL_ENTRADA_CATEGORIES;
+      const tipoBasePrebenda = fechamento.tipoBasePrebenda || config?.tipoBasePrebenda || 'todas';
+      const catsPrebenda = fechamento.categoriasPrebenda || config?.categoriasPrebenda || ALL_ENTRADA_CATEGORIES;
+      const deduzirMatrizBasePrebenda = fechamento.deduzirMatrizBasePrebenda ?? config?.deduzirMatrizBasePrebenda ?? false;
+
+      const categoriasRelatorioAtivas = getCategoriasRelatorioAtivas(
+        fechamento.categoriasRelatorio,
+        config?.categoriasRelatorioPadrao || DEFAULT_RELATORIO_CATEGORIAS
+      );
+
+      // Filtra lançamentos de entrada: apenas categorias ativamente marcadas
+      const lancamentosFiltrados = fechamento.lancamentos.filter((l) => {
+        if (l.tipo === 'saida') return true;
+        return categoriasRelatorioAtivas.includes(l.categoria as CategoriaEntrada);
+      });
+
+      const resumoCalculado = calcularResumoLancamentos(
+        fechamento.lancamentos,
+        porcentagemMatriz,
+        aplicarRepasse,
+        tipoBase,
+        catsRepasse,
+        porcentagemPrebenda,
+        aplicarPrebenda,
+        tipoBasePrebenda,
+        catsPrebenda,
+        deduzirMatrizBasePrebenda
+      );
+
+      const resumoRelatorio = calcularResumoRelatorio(resumoCalculado, categoriasRelatorioAtivas);
+
       const rawReport = await generateChurchReport({
         ...fechamento,
+        lancamentos: lancamentosFiltrados,
         nomeIgreja: churchName,
-      });
+        tesoureiro: tesoureiroAssinatura,
+        pastorLocal: pastorLocalAssinatura,
+        pastorPresidente: pastorPresidenteAssinatura,
+        porcentagemMatriz,
+        aplicarRepasseMatriz: aplicarRepasse,
+        tipoBaseRepasseMatriz: tipoBase,
+        categoriasRepasseMatriz: catsRepasse,
+        resumoCalculado: resumoRelatorio,
+      } as any);
       const report = sanitizeReportText(rawReport);
       setFechamento((prev) => ({
         ...prev,
@@ -246,6 +299,39 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
     } finally {
       setLoading(false);
     }
+  };
+
+  const categoriasRelatorioAtivas = getCategoriasRelatorioAtivas(
+    fechamento.categoriasRelatorio,
+    config?.categoriasRelatorioPadrao || DEFAULT_RELATORIO_CATEGORIAS
+  );
+
+  const handleToggleCat = (cat: CategoriaEntrada) => {
+    if (cat === 'dizimo') return;
+    const jaExiste = categoriasRelatorioAtivas.includes(cat);
+    const novas = jaExiste
+      ? categoriasRelatorioAtivas.filter((c) => c !== cat)
+      : [...categoriasRelatorioAtivas, cat];
+    setFechamento((prev) => ({ ...prev, categoriasRelatorio: novas }));
+  };
+
+  const handleToggleOutras = () => {
+    const temOutras = categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao');
+    let novas: CategoriaEntrada[];
+    if (temOutras) {
+      novas = categoriasRelatorioAtivas.filter((c) => c !== 'outros' && c !== 'doacao');
+    } else {
+      novas = Array.from(new Set([...categoriasRelatorioAtivas, 'doacao' as CategoriaEntrada, 'outros' as CategoriaEntrada]));
+    }
+    setFechamento((prev) => ({ ...prev, categoriasRelatorio: novas }));
+  };
+
+  const handleResetCategorias = () => {
+    setFechamento((prev) => ({ ...prev, categoriasRelatorio: ['dizimo'] }));
+  };
+
+  const handleSelectTodas = () => {
+    setFechamento((prev) => ({ ...prev, categoriasRelatorio: [...ALL_ENTRADA_CATEGORIES] }));
   };
 
   const currentReportText = sanitizeReportText(fechamento.relatorioIA || '');
@@ -317,6 +403,154 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
           </button>
         </div>
       )}
+
+      {/* Seção de Seleção Dinâmica de Categorias (Checkboxes) */}
+      <div className="print:hidden bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl max-w-5xl mx-auto w-full space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-bold text-slate-100">
+                Controle de Categorias no Parecer de IA e ATA
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                {categoriasRelatorioAtivas.length === 1 && categoriasRelatorioAtivas[0] === 'dizimo'
+                  ? 'Apenas Dízimos e Saídas'
+                  : `${categoriasRelatorioAtivas.length} Categorias Ativas`}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Escolha quais entradas compõem o parecer e a auditoria da IA. Categorias desmarcadas são omitidas do cálculo e do texto.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleResetCategorias}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                categoriasRelatorioAtivas.length === 1 && categoriasRelatorioAtivas[0] === 'dizimo'
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Apenas Dízimos
+            </button>
+            <button
+              type="button"
+              onClick={handleSelectTodas}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                categoriasRelatorioAtivas.length >= 6
+                  ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Todas as Entradas
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-1 text-xs">
+          {/* 1. Dízimos (Fixo / Bloqueado) */}
+          <div className="flex items-center gap-2 p-2.5 rounded-xl border border-emerald-500/40 bg-slate-950/60 text-slate-300 select-none cursor-not-allowed">
+            <input
+              type="checkbox"
+              checked={true}
+              disabled={true}
+              className="rounded bg-emerald-500 border-emerald-400 text-emerald-600 focus:ring-0 w-3.5 h-3.5 cursor-not-allowed"
+            />
+            <div className="flex flex-col">
+              <span className="font-bold text-slate-100">Dízimos</span>
+              <span className="text-[9px] text-emerald-400 font-semibold">Fixo / Bloqueado</span>
+            </div>
+          </div>
+
+          {/* 2. Saídas / Despesas (Fixo / Bloqueado) */}
+          <div className="flex items-center gap-2 p-2.5 rounded-xl border border-rose-500/40 bg-slate-950/60 text-slate-300 select-none cursor-not-allowed">
+            <input
+              type="checkbox"
+              checked={true}
+              disabled={true}
+              className="rounded bg-rose-500 border-rose-400 text-rose-600 focus:ring-0 w-3.5 h-3.5 cursor-not-allowed"
+            />
+            <div className="flex flex-col">
+              <span className="font-bold text-slate-100">Saídas</span>
+              <span className="text-[9px] text-rose-400 font-semibold">Fixo / Bloqueado</span>
+            </div>
+          </div>
+
+          {/* 3. Ofertas de Culto */}
+          <label
+            onClick={() => handleToggleCat('oferta_culto')}
+            className={`flex items-center gap-2 p-2.5 rounded-xl border select-none cursor-pointer transition-all ${
+              categoriasRelatorioAtivas.includes('oferta_culto')
+                ? 'border-amber-500/50 bg-amber-500/10 text-amber-200 font-semibold'
+                : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={categoriasRelatorioAtivas.includes('oferta_culto')}
+              onChange={() => handleToggleCat('oferta_culto')}
+              className="rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0 w-3.5 h-3.5 pointer-events-none"
+            />
+            <span>Ofertas Culto</span>
+          </label>
+
+          {/* 4. Ofertas Especiais */}
+          <label
+            onClick={() => handleToggleCat('oferta_especial')}
+            className={`flex items-center gap-2 p-2.5 rounded-xl border select-none cursor-pointer transition-all ${
+              categoriasRelatorioAtivas.includes('oferta_especial')
+                ? 'border-purple-500/50 bg-purple-500/10 text-purple-200 font-semibold'
+                : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={categoriasRelatorioAtivas.includes('oferta_especial')}
+              onChange={() => handleToggleCat('oferta_especial')}
+              className="rounded bg-slate-800 border-slate-700 text-purple-500 focus:ring-0 w-3.5 h-3.5 pointer-events-none"
+            />
+            <span>Ofertas Especiais</span>
+          </label>
+
+          {/* 5. Ofertas de Missões */}
+          <label
+            onClick={() => handleToggleCat('oferta_missoes')}
+            className={`flex items-center gap-2 p-2.5 rounded-xl border select-none cursor-pointer transition-all ${
+              categoriasRelatorioAtivas.includes('oferta_missoes')
+                ? 'border-blue-500/50 bg-blue-500/10 text-blue-200 font-semibold'
+                : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={categoriasRelatorioAtivas.includes('oferta_missoes')}
+              onChange={() => handleToggleCat('oferta_missoes')}
+              className="rounded bg-slate-800 border-slate-700 text-blue-500 focus:ring-0 w-3.5 h-3.5 pointer-events-none"
+            />
+            <span>Missões</span>
+          </label>
+
+          {/* 6. Outras Arrecadações */}
+          <label
+            onClick={handleToggleOutras}
+            className={`flex items-center gap-2 p-2.5 rounded-xl border select-none cursor-pointer transition-all ${
+              categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao')
+                ? 'border-teal-500/50 bg-teal-500/10 text-teal-200 font-semibold'
+                : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao')}
+              onChange={handleToggleOutras}
+              className="rounded bg-slate-800 border-slate-700 text-teal-500 focus:ring-0 w-3.5 h-3.5 pointer-events-none"
+            />
+            <span>Outras Arrecadações</span>
+          </label>
+        </div>
+      </div>
 
       {/* Banner de Ação (Não impresso) */}
       <div className="print:hidden bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4 max-w-5xl mx-auto w-full">
@@ -433,45 +667,38 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
                 <ReactMarkdown>{currentReportText}</ReactMarkdown>
               </div>
 
-              {/* 3. ASSINATURAS EXCLUSIVAMENTE NO FINAL DO RELATÓRIO (RODAPÉ) */}
+              {/* 3. ASSINATURAS OBRIGATÓRIAS NO FINAL DO RELATÓRIO (RODAPÉ) */}
               <div className="pt-14 pb-2 border-t border-slate-300 print-avoid-break mt-8">
-                <div className={`grid gap-8 text-center text-[10px] ${
-                  pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro
-                    ? 'grid-cols-3'
-                    : 'grid-cols-2'
-                }`}>
-                  <div>
-                    <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                      {tesoureiroAssinatura || 'Tesoureiro'}
+                <div className="grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-6 sm:gap-8 text-center text-[10px]">
+                  {/* 1. Tesoureiro(a) Responsável */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-full max-w-[220px] border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs truncate">
+                      {tesoureiroAssinatura}
                     </div>
-                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Tesoureiro Responsável</p>
+                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                      Tesoureiro(a) Responsável
+                    </p>
                   </div>
 
-                  {pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro ? (
-                    <>
-                      <div>
-                        <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                          {pastorLocalGravado}
-                        </div>
-                        <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Local / Titular</p>
-                      </div>
-                      <div>
-                        <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                          {pastorPresidenteGravado}
-                        </div>
-                        <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Presidente</p>
-                      </div>
-                    </>
-                  ) : (
-                    <div>
-                      <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                        {pastorResponsavelHistorico || 'Pastor Responsável'}
-                      </div>
-                      <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
-                        Pastor Responsável
-                      </p>
+                  {/* 2. Pastor(a) Local */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-full max-w-[220px] border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs truncate">
+                      {pastorLocalAssinatura}
                     </div>
-                  )}
+                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                      Pastor(a) Local
+                    </p>
+                  </div>
+
+                  {/* 3. Pastor(a) Presidente */}
+                  <div className="flex flex-col items-center">
+                    <div className="w-full max-w-[220px] border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs truncate">
+                      {pastorPresidenteAssinatura}
+                    </div>
+                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                      Pastor(a) Presidente
+                    </p>
+                  </div>
                 </div>
               </div>
 

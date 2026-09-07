@@ -226,14 +226,14 @@ export function generateReceiptPdfDocument(options: GenerateReceiptPdfOptions): 
   doc.setFontSize(7.5);
   doc.setTextColor(30, 41, 59);
   
-  const pastorFinal = pastorName || config.pastorPresidente || 'Pastor Presidente';
-  const tesoureiroFinal = tesoureiroName || config.tesoureiroPadrao || 'Tesouraria';
+  const pastorFinal = pastorName || config.pastorPresidente || 'Pastor(a) Presidente';
+  const tesoureiroFinal = tesoureiroName || config.tesoureiroPadrao || 'Tesoureiro(a)';
 
   doc.text(pastorFinal, sig1X + sigBoxWidth / 2, lineY + 3.5, { align: 'center' });
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('Pastor Responsável', sig1X + sigBoxWidth / 2, lineY + 6.5, { align: 'center' });
+  doc.text('Pastor(a) Responsável', sig1X + sigBoxWidth / 2, lineY + 6.5, { align: 'center' });
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7.5);
@@ -242,7 +242,7 @@ export function generateReceiptPdfDocument(options: GenerateReceiptPdfOptions): 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(6.5);
   doc.setTextColor(100, 116, 139);
-  doc.text('Tesouraria Eclesiástica', sig2X + sigBoxWidth / 2, lineY + 6.5, { align: 'center' });
+  doc.text('Tesoureiro(a) Responsável', sig2X + sigBoxWidth / 2, lineY + 6.5, { align: 'center' });
 
   // 7. RODAPÉ DE AUTENTICIDADE
   const footerY = pageHeight - margin + 2;

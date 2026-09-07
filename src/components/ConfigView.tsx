@@ -720,12 +720,12 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] text-slate-300 font-medium mb-1">Nome do Solicitante / Pastor:</label>
+                      <label className="block text-[11px] text-slate-300 font-medium mb-1">Nome do(a) Solicitante / Pastor(a):</label>
                       <input
                         type="text"
                         value={novoContato.nome || ''}
                         onChange={(e) => setNovoContato({ ...novoContato, nome: e.target.value })}
-                        placeholder="Ex: Pr. João Silva"
+                        placeholder="Ex: Pr.(a) João Silva"
                         className="w-full bg-slate-900 border border-purple-500/30 rounded-lg p-2 text-xs text-slate-100"
                       />
                     </div>
@@ -1195,45 +1195,45 @@ export const ConfigView: React.FC<ConfigViewProps> = ({
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Pastor Presidente:</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Pastor(a) Presidente:</label>
               <input
                 type="text"
                 value={form.pastorPresidente}
                 onChange={(e) => setForm({ ...form, pastorPresidente: e.target.value })}
-                placeholder="Ex: Pastor Carlos Silva"
+                placeholder="Ex: Pastor(a) Carlos Silva"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Pastor Local:</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Pastor(a) Local:</label>
               <input
                 type="text"
                 value={form.pastorLocal || ''}
                 onChange={(e) => setForm({ ...form, pastorLocal: e.target.value })}
-                placeholder="Ex: Pastor Roberto Santos"
+                placeholder="Ex: Pastor(a) Roberto Santos"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Tesoureiro Padrão:</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">Tesoureiro(a) Padrão:</label>
               <input
                 type="text"
                 value={form.tesoureiroPadrao}
                 onChange={(e) => setForm({ ...form, tesoureiroPadrao: e.target.value })}
-                placeholder="Ex: Diácono Marcos"
+                placeholder="Ex: Diácono(a) Marcos"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">2º Tesoureiro / Conferente:</label>
+              <label className="block text-xs font-semibold text-slate-300 mb-1">2º(a) Tesoureiro(a) / Conferente:</label>
               <input
                 type="text"
                 value={form.segundoTesoureiroPadrao || ''}
                 onChange={(e) => setForm({ ...form, segundoTesoureiroPadrao: e.target.value })}
-                placeholder="Ex: Obreiro João"
+                placeholder="Ex: Obreiro(a) João"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
             </div>

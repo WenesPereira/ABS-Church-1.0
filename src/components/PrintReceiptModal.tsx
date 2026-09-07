@@ -10,15 +10,22 @@ import {
   calcularTotalContagem,
   ALL_ENTRADA_CATEGORIES,
   CATEGORIA_ENTRADA_LABELS,
+  getCategoriasRelatorioAtivas,
+  calcularResumoRelatorio,
+  DEFAULT_RELATORIO_CATEGORIAS,
 } from '../utils/calculations';
 
 interface PrintReceiptModalProps {
   fechamento: FechamentoCulto;
   config: ConfigIgreja;
   onClose: () => void;
+  onUpdateFechamento?: (updater: (prev: FechamentoCulto) => FechamentoCulto) => void;
 }
 
-export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento, config, onClose }) => {
+export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento, config, onClose, onUpdateFechamento }) => {
+  const [categoriasRelatorio, setCategoriasRelatorio] = React.useState<CategoriaEntrada[]>(
+    () => getCategoriasRelatorioAtivas(fechamento.categoriasRelatorio, config.categoriasRelatorioPadrao || DEFAULT_RELATORIO_CATEGORIAS)
+  );
   const [exibirDizimistas, setExibirDizimistas] = React.useState<boolean>(true);
   const [aplicarRepasse, setAplicarRepasse] = React.useState<boolean>(fechamento.aplicarRepasseMatriz ?? true);
   const [aplicarPrebenda, setAplicarPrebenda] = React.useState<boolean>(fechamento.aplicarPrebenda ?? false);
@@ -99,31 +106,26 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     return trimmed;
   };
 
-  // Preserva estritamente o histórico auditável da ata: utiliza o pastor_name gravado naquele registro específico
+  // Preserva estritamente o histórico auditável da ata: utiliza os nomes gravados naquele registro específico
   const pastorGravadoNoRegistro = getValidSignerName(fechamento.pastorName);
-  const pastorLocalGravado = getValidSignerName(fechamento.pastorLocal, 'Pastor Local');
-  const pastorPresidenteGravado = getValidSignerName(fechamento.pastorPresidente, 'Pastor Presidente');
-
-  // Para registros fechados ou com pastor gravado, NUNCA busca o perfil atual do usuário ou config atual
-  const pastorResponsavelHistorico =
-    pastorGravadoNoRegistro ||
-    pastorLocalGravado ||
-    pastorPresidenteGravado ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config.pastorLocal || config.pastorPresidente) : '');
+  const pastorLocalGravado = getValidSignerName(fechamento.pastorLocal, 'Pastor(a) Local');
+  const pastorPresidenteGravado = getValidSignerName(fechamento.pastorPresidente, 'Pastor(a) Presidente');
 
   const pastorPresidenteAssinatura =
-    pastorGravadoNoRegistro ||
     pastorPresidenteGravado ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config.pastorPresidente, 'Pastor Presidente') : '');
+    getValidSignerName(config.pastorPresidente, 'Pastor(a) Presidente') ||
+    'Pastor(a) Presidente';
 
   const pastorLocalAssinatura =
-    pastorGravadoNoRegistro ||
     pastorLocalGravado ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config.pastorLocal, 'Pastor Local') : '');
+    pastorGravadoNoRegistro ||
+    getValidSignerName(config.pastorLocal, 'Pastor(a) Local') ||
+    'Pastor(a) Local';
 
   const tesoureiroAssinatura =
-    getValidSignerName(fechamento.tesoureiro, 'Tesoureiro Principal') ||
-    (fechamento.status === 'aberto' ? getValidSignerName(config.tesoureiroPadrao, 'Tesoureiro Principal') : 'Tesoureiro Responsável');
+    getValidSignerName(fechamento.tesoureiro, 'Tesoureiro(a) Principal') ||
+    getValidSignerName(config.tesoureiroPadrao, 'Tesoureiro(a) Principal') ||
+    'Tesoureiro(a) Responsável';
 
   const saidaLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'saida');
   const dizimoLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'entrada' && l.categoria === 'dizimo');
@@ -131,6 +133,56 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
   const handlePrint = () => {
     window.print();
   };
+
+  const catsMatriz: CategoriaEntrada[] = resumo.aplicarRepasseMatriz
+    ? (tipoBase === 'todas' || !catsRepasse || catsRepasse.length === 0 ? ALL_ENTRADA_CATEGORIES : catsRepasse)
+    : [];
+
+  const catsPrebendaAtivas: CategoriaEntrada[] = resumo.aplicarPrebenda
+    ? (tipoBasePrebenda === 'todas' || !catsPrebenda || catsPrebenda.length === 0 ? ALL_ENTRADA_CATEGORIES : catsPrebenda)
+    : [];
+
+  const handleToggleCat = (cat: CategoriaEntrada) => {
+    if (cat === 'dizimo') return; // Fixo / Bloqueado para desmarcar - Sempre Incluído
+    const jaTem = categoriasRelatorio.includes(cat);
+    const novas = jaTem ? categoriasRelatorio.filter((c) => c !== cat) : [...categoriasRelatorio, cat];
+    setCategoriasRelatorio(novas);
+    onUpdateFechamento?.((prev) => ({ ...prev, categoriasRelatorio: novas }));
+  };
+
+  const handleToggleOutras = () => {
+    const jaTem = categoriasRelatorio.includes('outros') || categoriasRelatorio.includes('doacao');
+    let novas: CategoriaEntrada[];
+    if (jaTem) {
+      novas = categoriasRelatorio.filter((c) => c !== 'outros' && c !== 'doacao');
+    } else {
+      novas = Array.from(new Set([...categoriasRelatorio, 'doacao' as CategoriaEntrada, 'outros' as CategoriaEntrada]));
+    }
+    setCategoriasRelatorio(novas);
+    onUpdateFechamento?.((prev) => ({ ...prev, categoriasRelatorio: novas }));
+  };
+
+  const categoriasExibidas: CategoriaEntrada[] = categoriasRelatorio;
+
+  const resumoRelatorio = calcularResumoRelatorio(resumo, categoriasExibidas);
+
+  const getValorCategoria = (cat: CategoriaEntrada) => {
+    if (cat === 'dizimo') return resumo.totalDizimos;
+    if (cat === 'oferta_culto') return resumo.totalOfertasCulto;
+    if (cat === 'oferta_missoes') return resumo.totalOfertasMissoes;
+    if (cat === 'oferta_especial') return resumo.totalOfertasEspeciais;
+    if (cat === 'doacao') return resumo.totalDoacoes;
+    return resumo.totalOutrasEntradas;
+  };
+
+  const totalEntradasRelatorio = resumoRelatorio.totalEntradasRelatorio;
+  const saldoLiquidoRelatorio = resumoRelatorio.saldoLiquidoRelatorio;
+  const valorMatrizRelatorio = resumoRelatorio.valorMatrizRelatorio;
+  const baseMatrizRelatorio = resumoRelatorio.baseMatrizRelatorio;
+  const valorPrebendaRelatorio = resumoRelatorio.valorPrebendaRelatorio;
+  const basePrebendaRelatorio = resumoRelatorio.basePrebendaRelatorio;
+  const saldoDisponivelRelatorio = resumoRelatorio.saldoDisponivelRelatorio;
+  const temFiltroEstrito = categoriasRelatorio.length < ALL_ENTRADA_CATEGORIES.length;
 
   const handleDownloadPdf = async () => {
     const element = document.getElementById('printable-receipt');
@@ -261,10 +313,23 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
         fallbackPdf.setFont('helvetica', 'normal');
         fallbackPdf.setFontSize(10);
         fallbackPdf.text(`Culto: ${fechamento.tipoCulto || 'Culto Geral'}`, 20, 40);
-        fallbackPdf.text(`Total Entradas: R$ ${Number(resumo.totalEntradas || 0).toFixed(2)}`, 20, 48);
-        fallbackPdf.text(`Total Saídas: R$ ${Number(resumo.totalSaidas || 0).toFixed(2)}`, 20, 56);
-        fallbackPdf.text(`Saldo Líquido: R$ ${Number(resumo.saldoLiquido || 0).toFixed(2)}`, 20, 64);
-        fallbackPdf.text(`Saldo Disponível Caixa: R$ ${Number(resumo.saldoDisponivel || 0).toFixed(2)}`, 20, 72);
+        fallbackPdf.text(`Total Entradas: R$ ${Number(totalEntradasRelatorio || 0).toFixed(2)}`, 20, 48);
+        let currentY = 56;
+        if (resumo.aplicarRepasseMatriz) {
+          fallbackPdf.text(`Base de Cálculo Matriz (${resumo.rotuloBaseMatriz}): R$ ${Number(baseMatrizRelatorio || 0).toFixed(2)}`, 20, currentY);
+          currentY += 8;
+          fallbackPdf.text(`(-) Repasse Matriz (${resumo.porcentagemMatriz}%): R$ ${Number(valorMatrizRelatorio || 0).toFixed(2)}`, 20, currentY);
+          currentY += 8;
+        }
+        if (resumo.aplicarPrebenda) {
+          fallbackPdf.text(`(-) Prebenda Pastoral (${resumo.porcentagemPrebenda}%): R$ ${Number(valorPrebendaRelatorio || 0).toFixed(2)}`, 20, currentY);
+          currentY += 8;
+        }
+        fallbackPdf.text(`Total Saídas: R$ ${Number(resumo.totalSaidas || 0).toFixed(2)}`, 20, currentY);
+        currentY += 8;
+        fallbackPdf.text(`Saldo Líquido: R$ ${Number(saldoLiquidoRelatorio || 0).toFixed(2)}`, 20, currentY);
+        currentY += 8;
+        fallbackPdf.text(`Saldo Disponível Caixa: R$ ${Number(saldoDisponivelRelatorio || 0).toFixed(2)}`, 20, currentY);
         
         const fallbackBlob = fallbackPdf.output('blob');
         await saveOrShareReceiptFile({
@@ -319,7 +384,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
               <span>Prebenda Pastoral ({porcentagemPrebenda}%)</span>
             </label>
 
-            {dizimoLancamentos.length > 0 && (
+            {categoriasExibidas.includes('dizimo') && dizimoLancamentos.length > 0 && (
               <label className="flex items-center gap-2 text-xs text-slate-300 hover:text-white cursor-pointer bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700/80 transition-colors">
                 <input
                   type="checkbox"
@@ -362,6 +427,90 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
             >
               <X className="w-4 h-4" />
             </button>
+          </div>
+
+          {/* Barra de Seleção Dinâmica de Categorias no Relatório Oficial */}
+          <div className="w-full pt-3 border-t border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-300">
+              <span className="text-[11px] uppercase tracking-wider text-amber-400 font-bold">Filtro do Relatório:</span>
+              <span className="text-[10px] text-slate-400 font-normal">
+                ({categoriasRelatorio.length === 1 && categoriasRelatorio[0] === 'dizimo' ? 'Apenas Dízimos e Saídas' : `${categoriasRelatorio.length} Categorias Marcadas`})
+              </span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* Dízimos (Fixo) */}
+              <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/50 px-2 py-1 rounded-lg border border-emerald-500/40 select-none">
+                <Check className="w-3 h-3" />
+                <span>Dízimos (Fixo)</span>
+              </span>
+
+              {/* Saídas (Fixo) */}
+              <span className="flex items-center gap-1 text-[11px] font-bold text-rose-400 bg-rose-950/50 px-2 py-1 rounded-lg border border-rose-500/40 select-none">
+                <Check className="w-3 h-3" />
+                <span>Saídas (Fixo)</span>
+              </span>
+
+              {/* Ofertas de Culto */}
+              <label className={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border cursor-pointer select-none transition-all ${
+                categoriasRelatorio.includes('oferta_culto')
+                  ? 'text-amber-300 bg-amber-500/20 border-amber-500/40 font-semibold'
+                  : 'text-slate-400 bg-slate-800/80 border-slate-700 hover:border-slate-600'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={categoriasRelatorio.includes('oferta_culto')}
+                  onChange={() => handleToggleCat('oferta_culto')}
+                  className="rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-0 w-3 h-3"
+                />
+                <span>Ofertas de Culto</span>
+              </label>
+
+              {/* Ofertas Especiais */}
+              <label className={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border cursor-pointer select-none transition-all ${
+                categoriasRelatorio.includes('oferta_especial')
+                  ? 'text-purple-300 bg-purple-500/20 border-purple-500/40 font-semibold'
+                  : 'text-slate-400 bg-slate-800/80 border-slate-700 hover:border-slate-600'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={categoriasRelatorio.includes('oferta_especial')}
+                  onChange={() => handleToggleCat('oferta_especial')}
+                  className="rounded bg-slate-900 border-slate-700 text-purple-500 focus:ring-0 w-3 h-3"
+                />
+                <span>Ofertas Especiais</span>
+              </label>
+
+              {/* Ofertas de Missões */}
+              <label className={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border cursor-pointer select-none transition-all ${
+                categoriasRelatorio.includes('oferta_missoes')
+                  ? 'text-blue-300 bg-blue-500/20 border-blue-500/40 font-semibold'
+                  : 'text-slate-400 bg-slate-800/80 border-slate-700 hover:border-slate-600'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={categoriasRelatorio.includes('oferta_missoes')}
+                  onChange={() => handleToggleCat('oferta_missoes')}
+                  className="rounded bg-slate-900 border-slate-700 text-blue-500 focus:ring-0 w-3 h-3"
+                />
+                <span>Missões</span>
+              </label>
+
+              {/* Outras Arrecadações */}
+              <label className={`flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-lg border cursor-pointer select-none transition-all ${
+                categoriasRelatorio.includes('outros') || categoriasRelatorio.includes('doacao')
+                  ? 'text-teal-300 bg-teal-500/20 border-teal-500/40 font-semibold'
+                  : 'text-slate-400 bg-slate-800/80 border-slate-700 hover:border-slate-600'
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={categoriasRelatorio.includes('outros') || categoriasRelatorio.includes('doacao')}
+                  onChange={handleToggleOutras}
+                  className="rounded bg-slate-900 border-slate-700 text-teal-500 focus:ring-0 w-3 h-3"
+                />
+                <span>Outras Arrecadações</span>
+              </label>
+            </div>
           </div>
 
           {aplicarRepasse && (
@@ -429,58 +578,73 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
             </h3>
             <table className="w-full text-left border-collapse text-[11px]">
               <tbody>
-                <tr className="border-b border-slate-200">
-                  <td className="py-1 font-semibold">Total de Dízimos Arrecadados:</td>
-                  <td className="py-1 text-right font-mono font-bold text-emerald-700">{formatCurrency(resumo.totalDizimos)}</td>
+                {categoriasExibidas.map((cat) => {
+                  const valor = getValorCategoria(cat);
+                  if (cat === 'dizimo') {
+                    return (
+                      <React.Fragment key={cat}>
+                        <tr className="border-b border-slate-200">
+                          <td className="py-1 font-semibold">Total de Dízimos Arrecadados:</td>
+                          <td className="py-1 text-right font-mono font-bold text-emerald-700">{formatCurrency(resumo.totalDizimos)}</td>
+                        </tr>
+                        {exibirDizimistas && dizimoLancamentos.length > 0 && (
+                          <tr className="border-b border-slate-300 bg-emerald-50/70">
+                            <td colSpan={2} className="py-2 px-2">
+                              <p className="font-bold text-emerald-900 text-[10px] uppercase mb-1 flex items-center justify-between">
+                                <span>Relação e Nomes dos Dizimistas ({dizimoLancamentos.length}):</span>
+                                <span className="font-mono text-emerald-800 font-bold">Total: {formatCurrency(resumo.totalDizimos)}</span>
+                              </p>
+                              <div className="space-y-1 divide-y divide-emerald-200/60">
+                                {dizimoLancamentos.map((dizimo) => {
+                                  const nome = dizimo.contributorName || dizimo.nomePessoa || 'Dizimista Anônimo / Não Identificado';
+                                  const numRecibo = dizimo.receiptNumber ? `#${String(dizimo.receiptNumber).padStart(6, '0')}` : null;
+                                  return (
+                                    <div key={dizimo.id} className="pt-1 flex justify-between items-center text-[10px] text-emerald-950">
+                                      <span>
+                                        • <strong>{nome}</strong>
+                                        {numRecibo && (
+                                          <span className="text-[9px] text-amber-800 font-mono font-bold ml-1.5 bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-300">
+                                            {numRecibo}
+                                          </span>
+                                        )}
+                                        {dizimo.descricao && dizimo.descricao.toLowerCase() !== 'dízimo' && dizimo.descricao.toLowerCase() !== 'dizimo' ? ` (${dizimo.descricao})` : ''}
+                                        <span className="text-[9px] text-slate-500 ml-1 font-mono">[{dizimo.formaPagamento.toUpperCase()}]</span>
+                                      </span>
+                                      <span className="font-mono font-bold text-emerald-800 ml-2 shrink-0">{formatCurrency(dizimo.valor)}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  }
+
+                  if (valor === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <tr key={cat} className="border-b border-slate-200">
+                      <td className="py-1 font-semibold">Total de {CATEGORIA_ENTRADA_LABELS[cat]}:</td>
+                      <td className="py-1 text-right font-mono font-bold text-emerald-700">{formatCurrency(valor)}</td>
+                    </tr>
+                  );
+                })}
+
+                {/* TOTAL DE ENTRADAS */}
+                <tr className="border-b border-slate-200 bg-slate-50 font-bold">
+                  <td className="py-1.5">
+                    {temFiltroEstrito ? 'TOTAL DE ENTRADAS (Sujeitas a Repasse/Prebenda):' : 'TOTAL DE ENTRADAS:'}
+                  </td>
+                  <td className="py-1.5 text-right font-mono text-emerald-800 text-xs">
+                    {formatCurrency(totalEntradasRelatorio)}
+                  </td>
                 </tr>
 
-                {exibirDizimistas && dizimoLancamentos.length > 0 && (
-                  <tr className="border-b border-slate-300 bg-emerald-50/70">
-                    <td colSpan={2} className="py-2 px-2">
-                      <p className="font-bold text-emerald-900 text-[10px] uppercase mb-1 flex items-center justify-between">
-                        <span>Relação e Nomes dos Dizimistas ({dizimoLancamentos.length}):</span>
-                        <span className="font-mono text-emerald-800 font-bold">Total: {formatCurrency(resumo.totalDizimos)}</span>
-                      </p>
-                      <div className="space-y-1 divide-y divide-emerald-200/60">
-                        {dizimoLancamentos.map((dizimo) => {
-                          const nome = dizimo.contributorName || dizimo.nomePessoa || 'Dizimista Anônimo / Não Identificado';
-                          const numRecibo = dizimo.receiptNumber ? `#${String(dizimo.receiptNumber).padStart(6, '0')}` : null;
-                          return (
-                            <div key={dizimo.id} className="pt-1 flex justify-between items-center text-[10px] text-emerald-950">
-                              <span>
-                                • <strong>{nome}</strong>
-                                {numRecibo && (
-                                  <span className="text-[9px] text-amber-800 font-mono font-bold ml-1.5 bg-amber-100/90 px-1.5 py-0.5 rounded border border-amber-300">
-                                    {numRecibo}
-                                  </span>
-                                )}
-                                {dizimo.descricao && dizimo.descricao.toLowerCase() !== 'dízimo' && dizimo.descricao.toLowerCase() !== 'dizimo' ? ` (${dizimo.descricao})` : ''}
-                                <span className="text-[9px] text-slate-500 ml-1 font-mono">[{dizimo.formaPagamento.toUpperCase()}]</span>
-                              </span>
-                              <span className="font-mono font-bold text-emerald-800 ml-2 shrink-0">{formatCurrency(dizimo.valor)}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                <tr className="border-b border-slate-200">
-                  <td className="py-1">Total de Ofertas (Culto/Missões):</td>
-                  <td className="py-1 text-right font-mono font-bold text-blue-700">{formatCurrency(resumo.totalOfertasCulto + resumo.totalOfertasMissoes)}</td>
-                </tr>
-                <tr className="border-b border-slate-200">
-                  <td className="py-1">Total Entradas (PIX/Banco):</td>
-                  <td className="py-1 text-right font-mono text-slate-700">{formatCurrency(resumo.totalPix + resumo.totalTransferencia)}</td>
-                </tr>
-                <tr className="border-b border-slate-200">
-                  <td className="py-1">Total Entradas (Espécie/Dinheiro Físico):</td>
-                  <td className="py-1 text-right font-mono text-slate-700">{formatCurrency(resumo.totalDinheiro)}</td>
-                </tr>
-                <tr className="border-b border-slate-200 bg-slate-50 font-bold">
-                  <td className="py-1.5">TOTAL BRUTO DE ENTRADAS:</td>
-                  <td className="py-1.5 text-right font-mono text-emerald-800 text-xs">{formatCurrency(resumo.totalEntradas)}</td>
-                </tr>
+                {/* (-) Saídas / Despesas Efetivadas */}
                 <tr className="border-b border-slate-200">
                   <td className="py-1 text-rose-700 font-semibold">(-) Total de Saídas / Despesas Efetivadas:</td>
                   <td className="py-1 text-right font-mono font-bold text-rose-700">-{formatCurrency(resumo.totalSaidas)}</td>
@@ -509,43 +673,58 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                     </td>
                   </tr>
                 )}
+
+                {/* SALDO LÍQUIDO OPERACIONAL */}
                 <tr className="bg-slate-100 font-bold border-t-2 border-slate-900">
                   <td className="py-1.5 px-1">SALDO LÍQUIDO OPERACIONAL (Entradas - Saídas):</td>
-                  <td className="py-1.5 px-1 text-right font-mono text-sm text-slate-900">{formatCurrency(resumo.saldoLiquido)}</td>
+                  <td className="py-1.5 px-1 text-right font-mono text-sm text-slate-900">{formatCurrency(saldoLiquidoRelatorio)}</td>
                 </tr>
 
+                {/* Repasse para Matriz */}
                 {resumo.aplicarRepasseMatriz && (
-                  <tr className="border-t border-purple-200 bg-purple-50/70 font-semibold text-purple-950">
-                    <td className="py-1.5 px-1">
-                      <div>
-                        (-) Repasse para a Matriz / Sede ({resumo.porcentagemMatriz}%):
-                        <span className="block text-[9px] text-purple-800 font-normal">
-                          Base: {tipoBase === 'todas' || catsRepasse.length === ALL_ENTRADA_CATEGORIES.length ? 'Toda a Entrada' : catsRepasse.map(c => CATEGORIA_ENTRADA_LABELS[c]).join(' + ')} ({formatCurrency(resumo.baseCalculoMatriz)})
-                        </span>
-                      </div>
-                    </td>
-                    <td className="py-1.5 px-1 text-right font-mono font-bold text-purple-900">
-                      -{formatCurrency(resumo.valorMatriz)}
-                    </td>
-                  </tr>
+                  <>
+                    <tr className="border-t border-purple-200 bg-purple-50/70 font-semibold text-purple-950">
+                      <td className="py-1.5 px-1">
+                        Base de Cálculo Matriz ({resumo.rotuloBaseMatriz}):
+                      </td>
+                      <td className="py-1.5 px-1 text-right font-mono font-bold text-purple-950">
+                        {formatCurrency(baseMatrizRelatorio)}
+                      </td>
+                    </tr>
+                    <tr className="border-b border-purple-200 bg-purple-50/70 font-semibold text-purple-950">
+                      <td className="py-1.5 px-1 text-purple-900">
+                        <div>
+                          <span>(-) Repasse Matriz ({resumo.porcentagemMatriz}%):</span>
+                          <span className="block text-[9px] text-purple-700 font-normal">
+                            Incidência exclusiva de {resumo.porcentagemMatriz}% sobre {formatCurrency(baseMatrizRelatorio)} ({resumo.rotuloBaseMatriz})
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-1.5 px-1 text-right font-mono font-bold text-purple-900 text-xs">
+                        -{formatCurrency(valorMatrizRelatorio)}
+                      </td>
+                    </tr>
+                  </>
                 )}
 
+                {/* Prebenda Pastoral */}
                 {resumo.aplicarPrebenda && (
                   <tr className="border-t border-amber-200 bg-amber-50/70 font-semibold text-amber-950">
                     <td className="py-1.5 px-1">
                       <div>
                         (-) Prebenda Pastoral ({resumo.porcentagemPrebenda}%):
                         <span className="block text-[9px] text-amber-800 font-normal">
-                          Beneficiário: {fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'} (Base: {formatCurrency(resumo.baseCalculoPrebenda)}{deduzirMatrizBasePrebenda ? ' • Deduzida a Matriz' : ' • Cálculo Bruto'})
+                          Beneficiário: {fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'} (Base: {formatCurrency(basePrebendaRelatorio)}{deduzirMatrizBasePrebenda ? ' • Deduzida a Matriz' : ' • Cálculo Bruto'})
                         </span>
                       </div>
                     </td>
                     <td className="py-1.5 px-1 text-right font-mono font-bold text-amber-900">
-                      -{formatCurrency(resumo.valorPrebenda)}
+                      -{formatCurrency(valorPrebendaRelatorio)}
                     </td>
                   </tr>
                 )}
 
+                {/* SALDO FINAL */}
                 <tr className="bg-emerald-100 font-black border-t-2 border-slate-900 text-emerald-950">
                   <td className="py-2 px-1">
                     <div>
@@ -556,7 +735,7 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
                     </div>
                   </td>
                   <td className="py-2 px-1 text-right font-mono text-sm text-emerald-900">
-                    {formatCurrency(resumo.saldoDisponivel)}
+                    {formatCurrency(saldoDisponivelRelatorio)}
                   </td>
                 </tr>
               </tbody>
@@ -564,54 +743,49 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
           </div>
 
           {/* Physical Cash Verification */}
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-300 space-y-1 text-[10px] print-avoid-break">
-            <p className="font-bold uppercase text-slate-800">Conferência de Espécie na Mesa da Tesouraria:</p>
-            <div className="flex justify-between font-mono">
-              <span>Dinheiro Lançado: {formatCurrency(resumo.totalDinheiro)}</span>
-              <span>Dinheiro Contado: {formatCurrency(totalContagem)}</span>
-              <span>Diferença: {formatCurrency(diferenca)}</span>
+          {!temFiltroEstrito && (
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-300 space-y-1 text-[10px] print-avoid-break">
+              <p className="font-bold uppercase text-slate-800">Conferência de Espécie na Mesa da Tesouraria:</p>
+              <div className="flex justify-between font-mono">
+                <span>Dinheiro Lançado: {formatCurrency(resumo.totalDinheiro)}</span>
+                <span>Dinheiro Contado: {formatCurrency(totalContagem)}</span>
+                <span>Diferença: {formatCurrency(diferenca)}</span>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Signatures Line - Exclusivamente ao final do relatório (rodapé) */}
           <div className="pt-14 pb-2 border-t border-slate-300 print-avoid-break mt-6">
-            <div className={`grid gap-8 text-center text-[10px] ${
-              pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro
-                ? 'grid-cols-3'
-                : 'grid-cols-2'
-            }`}>
-              <div>
-                <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                  {tesoureiroAssinatura || 'Tesoureiro'}
+            <div className="grid grid-cols-1 sm:grid-cols-3 print:grid-cols-3 gap-6 sm:gap-8 text-center text-[10px]">
+              {/* 1. Tesoureiro(a) Responsável */}
+              <div className="flex flex-col items-center">
+                <div className="w-full max-w-[220px] border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs truncate">
+                  {tesoureiroAssinatura}
                 </div>
-                <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Tesoureiro Responsável</p>
+                <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                  Tesoureiro(a) Responsável
+                </p>
               </div>
 
-              {pastorPresidenteGravado && pastorLocalGravado && pastorPresidenteGravado !== pastorLocalGravado && !pastorGravadoNoRegistro ? (
-                <>
-                  <div>
-                    <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                      {pastorLocalGravado}
-                    </div>
-                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Local / Titular</p>
-                  </div>
-                  <div>
-                    <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                      {pastorPresidenteGravado}
-                    </div>
-                    <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">Pastor Presidente</p>
-                  </div>
-                </>
-              ) : (
-                <div>
-                  <div className="border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs">
-                    {pastorResponsavelHistorico || 'Pastor Responsável'}
-                  </div>
-                  <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
-                    Pastor Responsável
-                  </p>
+              {/* 2. Pastor(a) Local */}
+              <div className="flex flex-col items-center">
+                <div className="w-full max-w-[220px] border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs truncate">
+                  {pastorLocalAssinatura}
                 </div>
-              )}
+                <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                  Pastor(a) Local
+                </p>
+              </div>
+
+              {/* 3. Pastor(a) Presidente */}
+              <div className="flex flex-col items-center">
+                <div className="w-full max-w-[220px] border-t-2 border-slate-800 pt-1.5 font-bold min-h-[1.6rem] text-slate-900 text-xs truncate">
+                  {pastorPresidenteAssinatura}
+                </div>
+                <p className="text-slate-700 font-semibold uppercase tracking-wider text-[9px]">
+                  Pastor(a) Presidente
+                </p>
+              </div>
             </div>
           </div>
 

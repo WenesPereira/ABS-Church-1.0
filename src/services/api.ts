@@ -19,14 +19,32 @@ function sanitizeReport(text: string): string {
     .replace(/aplicarRepasseMatriz:\s*true/gi, 'Repasse à Matriz: Ativo')
     .replace(/aplicarRepasseMatriz:\s*false/gi, 'Repasse à Matriz: Isento')
     .replace(/aplicarPrebenda:\s*true/gi, 'Prebenda Pastoral: Ativa')
-    .replace(/aplicarPrebenda:\s*false/gi, 'Prebenda Pastoral: Não Aplicada');
+    .replace(/aplicarPrebenda:\s*false/gi, 'Prebenda Pastoral: Não Aplicada')
+    .replace(/\bTesoureiro Responsável\b/gi, 'Tesoureiro(a) Responsável')
+    .replace(/\bPastor Responsável\b/gi, 'Pastor(a) Responsável')
+    .replace(/\bPastor Local\b/gi, 'Pastor(a) Local')
+    .replace(/\bPastor Presidente\b/gi, 'Pastor(a) Presidente');
 }
 
 /**
  * Monta o prompt detalhado para a auditoria do caixa da igreja com IA.
  * Padrão visual: LIMPO, EXECUTIVO, DIRETO e SEM POLUIÇÃO.
  */
-function buildAuditPrompt(fechamentoData: FechamentoCulto): string {
+function buildAuditPrompt(fechamentoData: any): string {
+  const resumoCalc = fechamentoData.resumoCalculado;
+  const tipoBase = fechamentoData.tipoBaseRepasseMatriz || 'todas';
+  const catsRepasse = fechamentoData.categoriasRepasseMatriz || [];
+  const aplicarRepasse = fechamentoData.aplicarRepasseMatriz !== false;
+  const pctMatriz = fechamentoData.porcentagemMatriz ?? 20;
+
+  const rotuloBase = resumoCalc?.rotuloBaseMatriz || (
+    tipoBase === 'todas' || catsRepasse.length === 0 || catsRepasse.length >= 6
+      ? 'Toda a Entrada'
+      : catsRepasse.length === 1 && catsRepasse[0] === 'dizimo'
+      ? 'Somente Dízimos'
+      : catsRepasse.join(' + ')
+  );
+
   return `
 Você é um auditor fiscal de tesouraria de igrejas cristãs experiente, zeloso, ético e transparente.
 Elabore um **Relatório Oficial da Tesouraria da Igreja** com padrão visual LIMPO, EXECUTIVO, DIRETO e SEM POLUIÇÃO visual.
@@ -38,23 +56,40 @@ DIRETRIZES FUNDAMENTAIS DE FORMATAÇÃO E APRESENTAÇÃO (ESTRITAMENTE OBRIGATÓ
 1. **NUNCA EXIBA NOMES DE VARIÁVEIS DE CÓDIGO OU BOOLEANOS BRUTOS**:
    - NUNCA escreva expressões como 'aplicarRepasseMatriz: true', 'aplicarPrebenda: false', 'fechamentoData', 'null' ou 'undefined'.
    - Escreva sempre em linguagem formal e natural:
-     * Para repasse à sede: "Repasse à Matriz: Ativo (50%) - Valor: R$ X,XX" ou "Repasse à Matriz: Isento / Não Aplicável".
+     * Para repasse à sede: "Repasse à Matriz: Ativo (${pctMatriz}%) - Valor: R$ X,XX" ou "Repasse à Matriz: Isento / Não Aplicável".
      * Para prebenda pastoral: "Prebenda Pastoral: Ativa (X%) - Valor: R$ Y,YY" ou "Prebenda Pastoral: Não Aplicada".
 
-2. **NUNCA EXIBA FÓRMULAS MATEMÁTICAS EM CÓDIGO LATEX OU CONTAGEM UNITÁRIA DE NOTAS**:
+2. **EXCLUSÃO COMPLETA DE ENTRADAS ISENTAS / FILTRAGEM STRICT**:
+   - O relatório e a ATA devem incluir APENAS as categorias de entrada ativamente marcadas como base para 'Repasse à Matriz' ou 'Prebenda Pastoral' (ex: se apenas 'Dízimo' estiver marcado para repasse/prebenda, exiba exclusivamente os Dízimos e omita Ofertas, Doações e Outras Entradas do documento).
+   - REMOVA TOTALMENTE e NUNCA crie a seção 'Outras Arrecadações (Sem Repasse)' nem qualquer referência a entradas que não fazem parte do cálculo do repasse ou da prebenda.
+   - O valor de 'Total de Entradas' no relatório DEVE ser rigorosamente igual à soma das entradas sujeitas ao repasse/prebenda.
+
+3. **DETALHAMENTO CLARO DA FÓRMULA DO REPASSE E GARANTIA MATEMÁTICA**:
+   - Exiba a fórmula de forma explícita na síntese de fechamento:
+     * **Base de Cálculo Matriz (${rotuloBase}): R$ XXX,XX**
+     * **(-) Repasse Matriz (${pctMatriz}%): -R$ XXX,XX**
+   - GARANTIA MATEMÁTICA: O Repasse Matriz DEVE ser calculado aplicando a porcentagem (${pctMatriz}%) RIGOROSAMENTE sobre o valor da Base de Cálculo Matriz (${rotuloBase}).
+
+4. **NUNCA EXIBA FÓRMULAS MATEMÁTICAS EM CÓDIGO LATEX OU CONTAGEM UNITÁRIA DE NOTAS**:
    - NÃO utilize blocos LaTeX ($$...$$).
    - NUNCA detalhe nota por nota ou moeda por moeda de troco (ex: "10 x R$ 50 + 4 x R$ 20...").
    - Mostre apenas a síntese consolidada direta:
      "Total Físico Apurado: R$ 727,40 (Cédulas: R$ 724,00 | Moedas: R$ 3,40)".
 
-3. **TABELAS DE RECEITAS E DESPESAS ENXUTAS (FILTRO > R$ 0,00)**:
-   - Exiba nas tabelas EXCLUSIVAMENTE as categorias e itens que tiveram movimentação superior a R$ 0,00.
+5. **TABELAS DE RECEITAS E DESPESAS ENXUTAS (FILTRO > R$ 0,00)**:
+   - Exiba nas tabelas EXCLUSIVAMENTE as categorias e itens sujeitos a repasse/prebenda que tiveram movimentação superior a R$ 0,00.
    - OCULTE E NUNCA exiba linhas com valor zerado (R$ 0,00).
    - Se houver nomes de dizimistas informados, relacione-os sucintamente com nome, forma e valor.
    - Liste as despesas com sua respectiva categoria e descrição somente se valor > 0.
 
-4. **FORMAS DE PAGAMENTO AGRUPADAS**:
-   - Agrupe as formas de pagamento em um resumo direto (ex: Dinheiro/Espécie: R$ X,XX | Pix: R$ Y,YY | Cartão/Transferência: R$ Z,ZZ) em vez de criar tópicos extensos.
+6. **FLUXO LIMPO DE LEITURA**:
+   - Exiba apenas:
+     * Entradas Sujeitas a Repasse/Prebenda (Relação e Nomes)
+     * Total de Entradas (rigorosamente a soma das categorias sujeitas)
+     * (-) Saídas / Despesas Efetivadas (com discriminação)
+     * Saldo Líquido Operacional (Entradas Sujeitas - Saídas)
+     * (-) Repasse para Matriz / Prebenda Pastoral
+     * Saldo Final Disponível em Caixa Local
 
 ESTRUTURA DO RELATÓRIO (DIVIDIDO ESTRITAMENTE EM 4 BLOCOS OBJETIVOS):
 
@@ -62,15 +97,22 @@ ESTRUTURA DO RELATÓRIO (DIVIDIDO ESTRITAMENTE EM 4 BLOCOS OBJETIVOS):
 - Título: Relatório Oficial de Fechamento de Caixa
 - Igreja: ${fechamentoData.nomeIgreja || 'ABS CHURCH'}
 - Período: ${fechamentoData.dataInicio || fechamentoData.data || 'Data Inicial'} a ${fechamentoData.dataFim || fechamentoData.data || 'Data Final'}
-- Tabela enxuta de Entradas (apenas itens > R$ 0,00)
-- Tabela enxuta de Saídas / Despesas (apenas itens > R$ 0,00)
-- Resumo agrupado das Formas de Pagamento
-- Totais Consolidados:
-  * Total de Entradas
-  * Total de Saídas
-  * Repasse à Matriz (Percentual e Valor, ou "Isento")
-  * Prebenda Pastoral (Percentual e Valor, ou "Não Aplicada")
-  * **Saldo Final Disponível em Caixa Local**
+
+#### Entradas Sujeitas a Repasse/Prebenda (${rotuloBase})
+[Tabela com apenas as categorias ativamente sujeitas a repasse/prebenda. Se houver dizimistas identificados, listar sucintamente com nome e valor]
+- **Total de Entradas: R$ XXX,XX** (Soma estrita das categorias sujeitas a repasse/prebenda)
+
+#### Saídas / Despesas Efetivadas
+[Tabela enxuta de saídas > 0 com discriminação detalhada]
+- **Total de Saídas: -R$ XXX,XX**
+
+- Resumo agrupado das Formas de Pagamento (Dinheiro | Pix | Cartão/Transf.)
+
+#### Síntese e Fechamento de Caixa
+- Saldo Líquido Operacional (Entradas - Saídas): R$ XXX,XX
+${aplicarRepasse ? `- Base de Cálculo Matriz (${rotuloBase}): R$ XXX,XX\n- (-) Repasse Matriz (${pctMatriz}%): -R$ XXX,XX` : '- Repasse Matriz: Isento / Não Aplicável (R$ 0,00)'}
+- Prebenda Pastoral (se ativa, percentual e valor; se desativada, omitir ou informar não aplicada)
+- **Saldo Final Disponível em Caixa Local: R$ XXX,XX**
 
 ### 2. Apuração do Caixa Físico
 - Comparativo direto entre Lançado no Sistema x Contado na Tesouraria:
@@ -84,9 +126,25 @@ ESTRUTURA DO RELATÓRIO (DIVIDIDO ESTRITAMENTE EM 4 BLOCOS OBJETIVOS):
 - Conclusão com a expressão formal: "Expressamos nossa gratidão pela fidelidade dos membros e pelo zelo na administração dos recursos." (NUNCA utilize 'Exgressamos', 'Orientação Auditiva' ou 'inconsciência').
 
 ### 4. Assinaturas
-- Linhas de assinatura para:
-  * **Tesoureiro Responsável**: ${fechamentoData.tesoureiro || 'Tesoureiro'}
-  * **Pastor Responsável**: ${fechamentoData.pastorName || fechamentoData.pastorLocal || fechamentoData.pastorPresidente || 'Pastor Titular'}
+- Bloco de Assinaturas Obrigatório:
+  * Tesoureiro(a) Responsável: ${fechamentoData.tesoureiro || 'Tesoureiro(a) Responsável'}
+  * Pastor(a) Local: ${fechamentoData.pastorLocal || fechamentoData.pastorName || 'Pastor(a) Local'}
+  * Pastor(a) Presidente: ${fechamentoData.pastorPresidente || 'Pastor(a) Presidente'}
+
+Formatação do Bloco (exiba os campos organizados com linha de assinatura e nomes centralizados/alinhados exatamente assim ao final):
+
+__________________________________________
+${fechamentoData.tesoureiro || 'Tesoureiro(a) Responsável'}
+Tesoureiro(a) Responsável
+
+__________________________________________
+${fechamentoData.pastorLocal || fechamentoData.pastorName || 'Pastor(a) Local'}
+Pastor(a) Local
+
+__________________________________________
+${fechamentoData.pastorPresidente || 'Pastor(a) Presidente'}
+Pastor(a) Presidente
+
 (Sem repetição de cabeçalho ou dados redundantes).
 
 Responda em Português do Brasil com excelente clareza, rigor gramatical e formatação limpa e executiva em Markdown.
@@ -175,16 +233,22 @@ export async function generateChurchReport(fechamentoData: FechamentoCulto): Pro
         apiKey: clientApiKey,
       });
 
+      const clientEnvModel = (import.meta as any).env?.VITE_GEMINI_MODEL?.trim();
+      const validClientEnvModel =
+        clientEnvModel && !['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-8b', 'gemini-2.0-flash', 'gemini-2.0-pro', 'gemini-3.6-flash'].includes(clientEnvModel)
+          ? clientEnvModel
+          : null;
+
       const modelsToTry = [
-        'gemini-1.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-pro',
-        'gemini-1.5-flash-8b',
-      ];
+        validClientEnvModel,
+        'gemini-3.1-flash-lite',
+        'gemini-flash-latest',
+        'gemini-3.8-flash',
+      ].filter(Boolean) as string[];
       let clientLastError: any = null;
 
       for (const model of modelsToTry) {
-        const retries = 3;
+        const retries = 2;
         for (let i = 0; i < retries; i++) {
           try {
             console.log(`[Gemini Client] Tentando modelo ${model} (tentativa ${i + 1}/${retries})...`);
@@ -205,8 +269,17 @@ export async function generateChurchReport(fechamentoData: FechamentoCulto): Pro
           } catch (err: any) {
             clientLastError = err;
             const errMsg = String(err?.message || '');
+            const is404 =
+              err?.status === 404 ||
+              err?.statusCode === 404 ||
+              errMsg.includes('404') ||
+              errMsg.toLowerCase().includes('not found');
+            if (is404) {
+              console.warn(`[Gemini Client] Modelo '${model}' não encontrado (404). Alternando para próximo modelo.`);
+              break;
+            }
             if (i < retries - 1 && isHighDemandOrTransient(errMsg)) {
-              await new Promise((res) => setTimeout(res, 2000 * (i + 1)));
+              await new Promise((res) => setTimeout(res, 1500 * (i + 1)));
             } else {
               break; // Passa para o próximo modelo se esgotar ou não for transitório
             }

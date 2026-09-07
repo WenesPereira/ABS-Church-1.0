@@ -215,10 +215,10 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
 
                   <div className="flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-slate-800/80">
                     <div className="flex flex-col text-[11px] leading-tight">
-                      <span>Tesoureiro: <strong className="text-slate-300">{culto.tesoureiro}</strong></span>
+                      <span>Tesoureiro(a): <strong className="text-slate-300">{culto.tesoureiro}</strong></span>
                       {(culto.pastorName || culto.pastorLocal || culto.pastorPresidente) && (
                         <span className="text-[10px] text-slate-400">
-                          Pastor: <strong className="text-slate-300">{culto.pastorName || culto.pastorLocal || culto.pastorPresidente}</strong>
+                          Pastor(a): <strong className="text-slate-300">{culto.pastorName || culto.pastorLocal || culto.pastorPresidente}</strong>
                         </span>
                       )}
                     </div>

@@ -89,7 +89,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
   const [regNome, setRegNome] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regNomeIgreja, setRegNomeIgreja] = useState(configIgreja?.nomeIgreja || '');
-  const [regCargo, setRegCargo] = useState('Tesoureiro Principal');
+  const [regCargo, setRegCargo] = useState('Tesoureiro(a) Principal');
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
 
@@ -170,8 +170,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         const sessionUser: User = {
           id: data.user.id,
           email: data.user.email || emailTrimmed,
-          nome: userProfile?.nome || meta.nome || 'Tesoureiro',
-          cargo: userProfile?.cargo || meta.cargo || 'Tesoureiro Principal',
+          nome: userProfile?.nome || meta.nome || 'Tesoureiro(a)',
+          cargo: userProfile?.cargo || meta.cargo || 'Tesoureiro(a) Principal',
           nomeIgreja: userProfile?.nomeIgreja || meta.nome_igreja || configIgreja?.nomeIgreja || 'Igreja Evangélica',
           subscriptionStatus: userProfile?.subscriptionStatus || 'inactive',
           subscriptionPlan: userProfile?.subscriptionPlan || 'mensal',
@@ -239,7 +239,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
         options: {
           data: {
             nome: nomeTrimmed,
-            cargo: regCargo || 'Tesoureiro',
+            cargo: regCargo || 'Tesoureiro(a)',
             nome_igreja: igrejaTrimmed || 'Minha Igreja',
           },
         },
@@ -264,7 +264,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
           id: newUserId,
           email: emailTrimmed,
           nome: nomeTrimmed,
-          cargo: regCargo || 'Tesoureiro',
+          cargo: regCargo || 'Tesoureiro(a)',
           nomeIgreja: igrejaTrimmed || 'Minha Igreja',
           createdAt: new Date().toISOString(),
         };
@@ -276,7 +276,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
             user_id: newUserId,
             email: emailTrimmed,
             nome: nomeTrimmed,
-            cargo: regCargo || 'Tesoureiro',
+            cargo: regCargo || 'Tesoureiro(a)',
             nome_igreja: igrejaTrimmed || 'Minha Igreja',
             created_at: new Date().toISOString(),
           });
@@ -684,10 +684,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onLoginSuccess, configIgreja
                   onChange={(e) => setRegCargo(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-2xl px-3.5 py-2.5 text-sm text-slate-100 outline-none transition-all"
                 >
-                  <option value="Tesoureiro Principal">Tesoureiro Principal</option>
-                  <option value="Pastor Local">Pastor Local</option>
+                  <option value="Tesoureiro(a) Principal">Tesoureiro(a) Principal</option>
+                  <option value="Pastor(a) Local">Pastor(a) Local</option>
+                  <option value="Pastor(a) Presidente">Pastor(a) Presidente</option>
                   <option value="Auxiliar de Tesouraria">Auxiliar de Tesouraria</option>
-                  <option value="Secretário / Administração">Secretário / Administração</option>
+                  <option value="Secretário(a) / Administração">Secretário(a) / Administração</option>
                 </select>
               </div>
 

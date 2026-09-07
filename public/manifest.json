@@ -1,0 +1,105 @@
+{
+  "id": "/",
+  "name": "APP EKLESIA",
+  "short_name": "EKLESIA",
+  "description": "Sistema completo de Gestão Financeira e Fechamento de Caixa de Igreja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "categories": [
+    "finance",
+    "productivity",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Fechamento do Culto",
+      "short_name": "Fechamento",
+      "description": "Acessar fechamento do caixa do culto atual",
+      "url": "/?tab=fechamento",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Lançamentos de Caixa",
+      "short_name": "Lançamentos",
+      "description": "Registrar dízimos, ofertas ou despesas",
+      "url": "/?tab=lancamentos",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Contagem de Cédulas",
+      "short_name": "Contagem",
+      "description": "Contagem física de dinheiro e moedas",
+      "url": "/?tab=contagem",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Histórico de Fechamentos",
+      "short_name": "Histórico",
+      "description": "Consultar atas e relatórios de cultos anteriores",
+      "url": "/?tab=historico",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

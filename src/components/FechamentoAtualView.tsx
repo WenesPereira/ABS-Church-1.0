@@ -20,6 +20,9 @@ import {
   Loader2,
   Receipt,
   MessageCircle,
+  SlidersHorizontal,
+  CheckSquare,
+  Filter,
 } from 'lucide-react';
 
 import {
@@ -37,6 +40,9 @@ import {
   calcularTotalContagem,
   ALL_ENTRADA_CATEGORIES,
   CATEGORIA_ENTRADA_LABELS,
+  getCategoriasRelatorioAtivas,
+  calcularResumoRelatorio,
+  DEFAULT_RELATORIO_CATEGORIAS,
 } from '../utils/calculations';
 import { deleteLancamento, isSuperAdmin } from '../services/treasuryService';
 import {
@@ -142,6 +148,17 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
     totalContagemFisica - (resumo.totalDinheiro || 0);
 
   /*
+   * Controle Dinâmico de Categorias para o Relatório Oficial e ATA
+   * Dízimos e Saídas são sempre fixos/obrigatórios por especificação.
+   */
+  const categoriasRelatorioAtivas = getCategoriasRelatorioAtivas(
+    fechamento.categoriasRelatorio,
+    config?.categoriasRelatorioPadrao || DEFAULT_RELATORIO_CATEGORIAS
+  );
+
+  const resumoRelatorio = calcularResumoRelatorio(resumo, categoriasRelatorioAtivas);
+
+  /*
    * Atualiza qualquer campo do fechamento.
    */
   const handleUpdateMeta = <
@@ -238,6 +255,37 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   };
 
   /*
+   * Funções de Controle Dinâmico das Categorias do Relatório Oficial / ATA
+   */
+  const handleToggleCategoriaRelatorio = (cat: CategoriaEntrada) => {
+    if (cat === 'dizimo') return; // Bloqueado / Fixo
+    const jaExiste = categoriasRelatorioAtivas.includes(cat);
+    const novas = jaExiste
+      ? categoriasRelatorioAtivas.filter((c) => c !== cat)
+      : [...categoriasRelatorioAtivas, cat];
+    handleUpdateMeta('categoriasRelatorio', novas);
+  };
+
+  const handleToggleOutrasArrecadacoesRelatorio = () => {
+    const temOutras = categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao');
+    let novas: CategoriaEntrada[];
+    if (temOutras) {
+      novas = categoriasRelatorioAtivas.filter((c) => c !== 'outros' && c !== 'doacao');
+    } else {
+      novas = Array.from(new Set([...categoriasRelatorioAtivas, 'doacao' as CategoriaEntrada, 'outros' as CategoriaEntrada]));
+    }
+    handleUpdateMeta('categoriasRelatorio', novas);
+  };
+
+  const handleResetCategoriasRelatorio = () => {
+    handleUpdateMeta('categoriasRelatorio', ['dizimo']);
+  };
+
+  const handleSelectTodasCategoriasRelatorio = () => {
+    handleUpdateMeta('categoriasRelatorio', [...ALL_ENTRADA_CATEGORIES]);
+  };
+
+  /*
    * Abre/fecha o caixa.
    * Ao encerrar o caixa e gravar a Ata de Fechamento, salva o nome do pastor responsável
    * daquele momento no campo pastor_name do registro, preservando o histórico auditável.
@@ -256,7 +304,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
         config?.pastorLocal?.trim() ||
         config?.pastorPresidente?.trim() ||
         (currentUser?.cargo?.toLowerCase().includes('pastor') ? currentUser.nome?.trim() : undefined) ||
-        'Pastor Responsável';
+        'Pastor(a) Responsável';
 
       return {
         ...prev,
@@ -500,7 +548,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs font-semibold shadow-sm">
                 <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>
-                  Pastor da Ata: <strong className="text-emerald-200">{fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Não informado'}</strong>
+                  Pastor(a) da Ata: <strong className="text-emerald-200">{fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Não informado'}</strong>
                 </span>
               </div>
             )}
@@ -733,11 +781,11 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
           {/* LINHA 2: Responsáveis e Nomes Longos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 lg:gap-4 items-end pt-1">
-            {/* Pastor Responsável (Ata) */}
+            {/* Pastor(a) Responsável (Ata) */}
             <div className="flex flex-col justify-end">
               <div className="flex items-center mb-1.5 min-h-[1.25rem]">
                 <span className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider whitespace-nowrap">
-                  Pastor Responsável (Ata)
+                  Pastor(a) Responsável (Ata)
                 </span>
               </div>
 
@@ -756,11 +804,11 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               />
             </div>
 
-            {/* Pastor Local */}
+            {/* Pastor(a) Local */}
             <div className="flex flex-col justify-end">
               <div className="flex items-center mb-1.5 min-h-[1.25rem]">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                  Pastor Local
+                  Pastor(a) Local
                 </span>
               </div>
 
@@ -780,11 +828,11 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               />
             </div>
 
-            {/* Pastor Presidente */}
+            {/* Pastor(a) Presidente */}
             <div className="flex flex-col justify-end">
               <div className="flex items-center mb-1.5 min-h-[1.25rem]">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                  Pastor Presidente
+                  Pastor(a) Presidente
                 </span>
               </div>
 
@@ -804,11 +852,11 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               />
             </div>
 
-            {/* Tesoureiro Responsável */}
+            {/* Tesoureiro(a) Responsável */}
             <div className="flex flex-col justify-end">
               <div className="flex items-center mb-1.5 min-h-[1.25rem]">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">
-                  Tesoureiro Responsável
+                  Tesoureiro(a) Responsável
                 </span>
               </div>
 
@@ -821,7 +869,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                     e.target.value
                   )
                 }
-                placeholder="Nome do tesoureiro"
+                placeholder="Nome do(a) tesoureiro(a)"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
             </div>
@@ -1292,9 +1340,9 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           )}
 
           <div className="pt-2 border-t border-amber-500/20 text-xs text-slate-400 flex items-center justify-between">
-            <span>Pastor Beneficiário:</span>
+            <span>Pastor(a) Beneficiário(a):</span>
             <span className="font-bold text-slate-200">
-              {fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor Titular'}
+              {fechamento.pastorName || fechamento.pastorLocal || fechamento.pastorPresidente || 'Pastor(a) Titular'}
             </span>
           </div>
         </div>
@@ -1616,6 +1664,356 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
             </table>
           </div>
         )}
+      </div>
+
+      {/* =========================================================
+          CONTROLE DINÂMICO DE CATEGORIAS NO RELATÓRIO OFICIAL E ATA
+      ========================================================== */}
+      <div
+        id="section-controle-categorias-relatorio"
+        className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl relative overflow-hidden"
+      >
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div className="flex items-start gap-3">
+            <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 shrink-0 mt-0.5">
+              <SlidersHorizontal className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-bold text-slate-100">
+                  Controle Dinâmico de Categorias no Relatório Oficial e ATA
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  {categoriasRelatorioAtivas.length === 1 && categoriasRelatorioAtivas[0] === 'dizimo'
+                    ? 'Apenas Dízimos e Saídas (Estrito)'
+                    : `${categoriasRelatorioAtivas.length} Categorias de Entrada Selecionadas`}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
+                Escolha quais categorias de entrada compõem o documento oficial, a ATA e o parecer de IA.
+                Categorias desmarcadas são <strong>totalmente omitidas</strong> da visualização, das relações nominais, dos subtotais e da base de cálculo.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-start lg:self-center shrink-0">
+            <button
+              type="button"
+              id="btn-relatorio-apenas-dizimos"
+              onClick={handleResetCategoriasRelatorio}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                categoriasRelatorioAtivas.length === 1 && categoriasRelatorioAtivas[0] === 'dizimo'
+                  ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 shadow-sm'
+                  : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+              title="Restaurar filtro padrão: apenas Dízimos e Saídas"
+            >
+              Apenas Dízimos (Padrão)
+            </button>
+            <button
+              type="button"
+              id="btn-relatorio-todas-categorias"
+              onClick={handleSelectTodasCategoriasRelatorio}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
+                categoriasRelatorioAtivas.length >= 6
+                  ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 shadow-sm'
+                  : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700'
+              }`}
+              title="Marcar todas as ofertas e entradas"
+            >
+              Todas as Categorias
+            </button>
+          </div>
+        </div>
+
+        {/* Grade de 6 Checkboxes com visual refinado */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-5">
+          {/* 1. Dízimos (Fixo / Bloqueado) */}
+          <div
+            id="checkbox-relatorio-dizimos"
+            className="p-3.5 rounded-2xl bg-slate-950/60 border border-emerald-500/40 flex items-start justify-between gap-3 select-none"
+          >
+            <label className="flex items-start gap-3 cursor-not-allowed">
+              <input
+                type="checkbox"
+                checked={true}
+                disabled={true}
+                className="w-4 h-4 mt-1 rounded bg-emerald-500 border-emerald-400 text-emerald-600 focus:ring-0 cursor-not-allowed"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-100">Dízimos</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    Fixo / Bloqueado
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Dizimistas e dízimos avulsos
+                </p>
+              </div>
+            </label>
+            <span className="text-xs font-black text-emerald-400 tabular-nums shrink-0">
+              {formatCurrency(resumo.totalDizimos)}
+            </span>
+          </div>
+
+          {/* 2. Saídas / Despesas (Fixo / Bloqueado) */}
+          <div
+            id="checkbox-relatorio-saidas"
+            className="p-3.5 rounded-2xl bg-slate-950/60 border border-rose-500/40 flex items-start justify-between gap-3 select-none"
+          >
+            <label className="flex items-start gap-3 cursor-not-allowed">
+              <input
+                type="checkbox"
+                checked={true}
+                disabled={true}
+                className="w-4 h-4 mt-1 rounded bg-rose-500 border-rose-400 text-rose-600 focus:ring-0 cursor-not-allowed"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-100">Saídas / Despesas</span>
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    Fixo / Bloqueado
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Pagamentos e contas do culto
+                </p>
+              </div>
+            </label>
+            <span className="text-xs font-black text-rose-400 tabular-nums shrink-0">
+              -{formatCurrency(resumo.totalSaidas)}
+            </span>
+          </div>
+
+          {/* 3. Ofertas de Culto (Marcável) */}
+          <div
+            id="checkbox-relatorio-oferta-culto"
+            onClick={() => handleToggleCategoriaRelatorio('oferta_culto')}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-3 select-none ${
+              categoriasRelatorioAtivas.includes('oferta_culto')
+                ? 'bg-amber-500/10 border-amber-500/50 shadow-sm shadow-amber-500/10'
+                : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 opacity-60'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={categoriasRelatorioAtivas.includes('oferta_culto')}
+                onChange={() => {}}
+                className="w-4 h-4 mt-1 rounded bg-slate-800 border-slate-700 text-amber-500 focus:ring-0 cursor-pointer pointer-events-none"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-100">Ofertas de Culto</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    categoriasRelatorioAtivas.includes('oferta_culto')
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {categoriasRelatorioAtivas.includes('oferta_culto') ? 'Incluída' : 'Omitida'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Ofertas gerais congregacionais
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs font-black tabular-nums shrink-0 ${
+              categoriasRelatorioAtivas.includes('oferta_culto') ? 'text-amber-400' : 'text-slate-500'
+            }`}>
+              {formatCurrency(resumo.totalOfertasCulto)}
+            </span>
+          </div>
+
+          {/* 4. Ofertas Especiais (Marcável) */}
+          <div
+            id="checkbox-relatorio-oferta-especial"
+            onClick={() => handleToggleCategoriaRelatorio('oferta_especial')}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-3 select-none ${
+              categoriasRelatorioAtivas.includes('oferta_especial')
+                ? 'bg-purple-500/10 border-purple-500/50 shadow-sm shadow-purple-500/10'
+                : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 opacity-60'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={categoriasRelatorioAtivas.includes('oferta_especial')}
+                onChange={() => {}}
+                className="w-4 h-4 mt-1 rounded bg-slate-800 border-slate-700 text-purple-500 focus:ring-0 cursor-pointer pointer-events-none"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-100">Ofertas Especiais</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    categoriasRelatorioAtivas.includes('oferta_especial')
+                      ? 'bg-purple-500/20 text-purple-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {categoriasRelatorioAtivas.includes('oferta_especial') ? 'Incluída' : 'Omitida'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Campanhas, construção e eventos
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs font-black tabular-nums shrink-0 ${
+              categoriasRelatorioAtivas.includes('oferta_especial') ? 'text-purple-400' : 'text-slate-500'
+            }`}>
+              {formatCurrency(resumo.totalOfertasEspeciais)}
+            </span>
+          </div>
+
+          {/* 5. Ofertas de Missões (Marcável) */}
+          <div
+            id="checkbox-relatorio-oferta-missoes"
+            onClick={() => handleToggleCategoriaRelatorio('oferta_missoes')}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-3 select-none ${
+              categoriasRelatorioAtivas.includes('oferta_missoes')
+                ? 'bg-blue-500/10 border-blue-500/50 shadow-sm shadow-blue-500/10'
+                : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 opacity-60'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={categoriasRelatorioAtivas.includes('oferta_missoes')}
+                onChange={() => {}}
+                className="w-4 h-4 mt-1 rounded bg-slate-800 border-slate-700 text-blue-500 focus:ring-0 cursor-pointer pointer-events-none"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-100">Ofertas de Missões</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    categoriasRelatorioAtivas.includes('oferta_missoes')
+                      ? 'bg-blue-500/20 text-blue-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {categoriasRelatorioAtivas.includes('oferta_missoes') ? 'Incluída' : 'Omitida'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Destinadas à obra missionária
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs font-black tabular-nums shrink-0 ${
+              categoriasRelatorioAtivas.includes('oferta_missoes') ? 'text-blue-400' : 'text-slate-500'
+            }`}>
+              {formatCurrency(resumo.totalOfertasMissoes)}
+            </span>
+          </div>
+
+          {/* 6. Outras Arrecadações (Marcável) */}
+          <div
+            id="checkbox-relatorio-outras-arrecadacoes"
+            onClick={handleToggleOutrasArrecadacoesRelatorio}
+            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start justify-between gap-3 select-none ${
+              categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao')
+                ? 'bg-teal-500/10 border-teal-500/50 shadow-sm shadow-teal-500/10'
+                : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 opacity-60'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                checked={categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao')}
+                onChange={() => {}}
+                className="w-4 h-4 mt-1 rounded bg-slate-800 border-slate-700 text-teal-500 focus:ring-0 cursor-pointer pointer-events-none"
+              />
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-slate-100">Outras Arrecadações</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao')
+                      ? 'bg-teal-500/20 text-teal-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}>
+                    {categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao') ? 'Incluída' : 'Omitida'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Doações e entradas diversas
+                </p>
+              </div>
+            </div>
+            <span className={`text-xs font-black tabular-nums shrink-0 ${
+              categoriasRelatorioAtivas.includes('outros') || categoriasRelatorioAtivas.includes('doacao')
+                ? 'text-teal-400'
+                : 'text-slate-500'
+            }`}>
+              {formatCurrency((resumo.totalDoacoes || 0) + (resumo.totalOutrasEntradas || 0))}
+            </span>
+          </div>
+        </div>
+
+        {/* Painel de Totais Consolidados do Relatório (Recalculado Instantaneamente em Tempo Real) */}
+        <div
+          id="painel-totais-consolidados-relatorio"
+          className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 mt-3"
+        >
+          <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-800/80">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+              <Filter className="w-3.5 h-3.5 text-amber-400" />
+              Totais Recalculados em Tempo Real para o Documento Oficial / ATA
+            </span>
+            <span className="text-[11px] text-slate-400">
+              Base: {categoriasRelatorioAtivas.length === 1 && categoriasRelatorioAtivas[0] === 'dizimo' ? 'Exclusiva de Dízimos' : 'Categorias Selecionadas'}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <p className="text-[10px] uppercase font-bold text-slate-400">Entradas no Doc.</p>
+              <p className="text-sm font-black text-emerald-400 tabular-nums mt-0.5">
+                {formatCurrency(resumoRelatorio.totalEntradasRelatorio)}
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <p className="text-[10px] uppercase font-bold text-slate-400">(-) Total Saídas</p>
+              <p className="text-sm font-black text-rose-400 tabular-nums mt-0.5">
+                -{formatCurrency(resumoRelatorio.totalSaidasRelatorio)}
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <p className="text-[10px] uppercase font-bold text-slate-400">Saldo Líquido</p>
+              <p className={`text-sm font-black tabular-nums mt-0.5 ${
+                resumoRelatorio.saldoLiquidoRelatorio >= 0 ? 'text-slate-200' : 'text-rose-400'
+              }`}>
+                {formatCurrency(resumoRelatorio.saldoLiquidoRelatorio)}
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <p className="text-[10px] uppercase font-bold text-slate-400">
+                (-) Matriz {resumo.aplicarRepasseMatriz ? `(${porcentagemMatriz}%)` : '(Isento)'}
+              </p>
+              <p className="text-sm font-black text-amber-400 tabular-nums mt-0.5">
+                {resumo.aplicarRepasseMatriz ? `-${formatCurrency(resumoRelatorio.valorMatrizRelatorio)}` : 'R$ 0,00'}
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
+              <p className="text-[10px] uppercase font-bold text-slate-400">
+                (-) Prebenda {resumo.aplicarPrebenda ? `(${porcentagemPrebenda}%)` : '(Não apl.)'}
+              </p>
+              <p className="text-sm font-black text-purple-400 tabular-nums mt-0.5">
+                {resumo.aplicarPrebenda ? `-${formatCurrency(resumoRelatorio.valorPrebendaRelatorio)}` : 'R$ 0,00'}
+              </p>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-500/30">
+              <p className="text-[10px] uppercase font-bold text-emerald-300">Caixa Local Final</p>
+              <p className="text-sm font-black text-emerald-400 tabular-nums mt-0.5">
+                {formatCurrency(resumoRelatorio.saldoDisponivelRelatorio)}
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* =========================================================

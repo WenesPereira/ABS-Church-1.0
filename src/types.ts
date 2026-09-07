@@ -94,6 +94,7 @@ export interface FechamentoCulto {
   categoriasPrebenda?: CategoriaEntrada[]; // Lista de categorias que entram na base da prebenda
   deduzirMatrizBasePrebenda?: boolean; // Se deve deduzir o valor da matriz da base de cálculo da prebenda (Cálculo Líquido vs Bruto)
   observacoes?: string;
+  categoriasRelatorio?: CategoriaEntrada[]; // Categorias selecionadas ativamente para leitura e cálculo do relatório oficial e ATA
   lancamentos: Lancamento[];
   contagemDinheiro: ContagemDinheiro;
   status: 'aberto' | 'fechado';
@@ -119,6 +120,7 @@ export interface ConfigIgreja {
   tipoBasePrebenda?: 'todas' | 'selecionadas';
   categoriasPrebenda?: CategoriaEntrada[];
   deduzirMatrizBasePrebenda?: boolean;
+  categoriasRelatorioPadrao?: CategoriaEntrada[]; // Categorias padrão para exibição no relatório
   logoUrl?: string;
   whatsappSuporte?: string; // Número de WhatsApp para atendimento e suporte
   emailSuporte?: string; // E-mail para atendimento e suporte

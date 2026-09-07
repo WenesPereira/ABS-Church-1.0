@@ -343,14 +343,14 @@ export function SingleReceiptModal({
             <div className="pt-4 border-t border-dashed border-gray-400 grid grid-cols-2 gap-2 text-center text-[9px] text-gray-700">
               <div>
                 <div className="border-t border-gray-400 pt-1 mt-4">
-                  <p className="font-semibold truncate">{pastorName || config.pastorPresidente || 'Pastor Responsável'}</p>
-                  <p className="text-[8px] text-gray-500">Pastor</p>
+                  <p className="font-semibold truncate">{pastorName || config.pastorPresidente || 'Pastor(a) Responsável'}</p>
+                  <p className="text-[8px] text-gray-500">Pastor(a)</p>
                 </div>
               </div>
               <div>
                 <div className="border-t border-gray-400 pt-1 mt-4">
-                  <p className="font-semibold truncate">{tesoureiroName || config.tesoureiroPadrao || 'Tesouraria'}</p>
-                  <p className="text-[8px] text-gray-500">Tesouraria</p>
+                  <p className="font-semibold truncate">{tesoureiroName || config.tesoureiroPadrao || 'Tesoureiro(a)'}</p>
+                  <p className="text-[8px] text-gray-500">Tesoureiro(a)</p>
                 </div>
               </div>
             </div>

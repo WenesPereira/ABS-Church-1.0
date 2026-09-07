@@ -225,8 +225,8 @@ export function ReceiptSuccessModal({
     }
   };
 
-  const resolvedPastor = pastorName || config.pastorPresidente || 'Pastor Responsável';
-  const resolvedTesoureiro = tesoureiroName || config.tesoureiroPadrao || 'Tesouraria Oficial';
+  const resolvedPastor = pastorName || config.pastorPresidente || 'Pastor(a) Responsável';
+  const resolvedTesoureiro = tesoureiroName || config.tesoureiroPadrao || 'Tesoureiro(a) Responsável';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/90 backdrop-blur-sm animate-in fade-in duration-200">
@@ -348,13 +348,13 @@ export function ReceiptSuccessModal({
               <div>
                 <div className="border-t border-slate-700 pt-1 mt-2">
                   <p className="font-semibold text-slate-200 truncate">{resolvedPastor}</p>
-                  <p className="text-[8px] text-slate-500 uppercase">Pastor</p>
+                  <p className="text-[8px] text-slate-500 uppercase">Pastor(a)</p>
                 </div>
               </div>
               <div>
                 <div className="border-t border-slate-700 pt-1 mt-2">
                   <p className="font-semibold text-slate-200 truncate">{resolvedTesoureiro}</p>
-                  <p className="text-[8px] text-slate-500 uppercase">Tesouraria</p>
+                  <p className="text-[8px] text-slate-500 uppercase">Tesoureiro(a)</p>
                 </div>
               </div>
             </div>
