@@ -338,35 +338,39 @@ export function formatPhoneInput(value: string): string {
 }
 
 /**
- * Formata data no formato brasileiro seguro DD/MM/AAAA sem sofrer distorção de fuso horário
+ * Formata data no formato brasileiro seguro DD/MM/AAAA sem sofrer distorção de fuso horário (sem GMT zerado)
  */
 export function formatDateBR(rawDate?: string | null): string {
   if (!rawDate) return 'Hoje';
   const clean = String(rawDate).trim();
   if (!clean) return 'Hoje';
 
-  // Se já for DD/MM/AAAA
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(clean)) {
-    return clean;
+  // 1. Se já for DD/MM/AAAA ou DD/MM/AAAA HH:mm...
+  const brMatch = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, '0');
+    const month = brMatch[2].padStart(2, '0');
+    const year = brMatch[3];
+    return `${day}/${month}/${year}`;
   }
 
-  // Se contiver YYYY-MM-DD (com ou sem timestamp T...)
-  const datePart = clean.split('T')[0];
-  if (datePart.includes('-')) {
-    const parts = datePart.split('-');
-    if (parts.length === 3) {
-      const [year, month, day] = parts;
-      if (year.length === 4 && month.length === 2 && day.length === 2) {
-        return `${day}/${month}/${year}`;
-      }
-    }
+  // 2. Se contiver YYYY-MM-DD (independente de conter T, espaço, fuso ou hora)
+  const isoMatch = clean.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = isoMatch[2].padStart(2, '0');
+    const day = isoMatch[3].padStart(2, '0');
+    return `${day}/${month}/${year}`;
   }
 
-  // Fallback seguro via Date
+  // 3. Fallback seguro via Date local sem conversão GMT zerada
   try {
     const d = new Date(clean);
     if (!isNaN(d.getTime())) {
-      return d.toLocaleDateString('pt-BR');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month}/${year}`;
     }
   } catch {}
 
@@ -374,14 +378,70 @@ export function formatDateBR(rawDate?: string | null): string {
 }
 
 /**
- * Formata número de telefone brasileiro para exibição amigável: (11) 99999-9999
+ * Converte data para formato ISO YYYY-MM-DD local sem conversão GMT/UTC zerada
+ */
+export function toLocalYMD(val?: string | null): string {
+  if (!val || typeof val !== 'string' || !val.trim()) {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const d = String(now.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const trimmed = val.trim();
+  // Se for DD/MM/YYYY ou DD/MM/YYYY HH:mm...
+  const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, '0');
+    const month = brMatch[2].padStart(2, '0');
+    const year = brMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  // Se for YYYY-MM-DD ou YYYY-MM-DDTHH:mm...
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = isoMatch[2].padStart(2, '0');
+    const day = isoMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  // Fallback seguro via componentes locais
+  try {
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  } catch {}
+
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Sanitiza o nome do contribuinte removendo parênteses duplicados acidentais
+ */
+export function sanitizeContributorName(name?: string | null): string {
+  if (!name) return '';
+  return name.replace(/\(\(+/g, '(').replace(/\)\)+/g, ')').trim();
+}
+
+/**
+ * Formata número de telefone brasileiro para exibição amigável: (XX) XXXXX-XXXX
+ * Sanitize prévio com .replace(/\D/g, '') para evitar parênteses duplos como ((22) 99931-5270)
  */
 export function formatPhoneDisplay(rawPhone?: string): string {
   if (!rawPhone) return '';
-  const digits = rawPhone.replace(/\D/g, '');
-  
-  // Remove 55 se vier com DDI
-  const local = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits;
+  // Sanitize estrito de caracteres não numéricos
+  const digits = String(rawPhone).replace(/\D/g, '');
+  if (!digits) return '';
+
+  // Remove 55 se vier com DDI de 12 ou 13 dígitos
+  const local = (digits.startsWith('55') && (digits.length === 12 || digits.length === 13))
+    ? digits.slice(2)
+    : digits;
 
   if (local.length === 11) {
     return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
@@ -392,5 +452,7 @@ export function formatPhoneDisplay(rawPhone?: string): string {
   if (local.length >= 8) {
     return local;
   }
-  return rawPhone;
+  return digits;
 }
+
+export { compartilharRecibo } from '../services/receiptImageService';

@@ -97,9 +97,34 @@ export async function saveOrShareReceiptFile(options: {
   const cleanTitle = title || (mimeType === 'application/pdf' ? `Relatório #${rawNumber}` : `Recibo #${rawNumber}`);
   const cleanText = text || (mimeType === 'application/pdf' ? 'Relatório Oficial de Tesouraria - ABS Church' : `Comprovante de Contribuição #${rawNumber}`);
 
+  const file = new File([blob], fileName, { type: mimeType });
+
+  // 1. DISPARO NATIVO IMEDIATO COM ARQUIVO (preserva o gesto do usuário sem atrasos de rede)
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: cleanTitle,
+          text: cleanText,
+        });
+        // Dispara upload em background para backup no Supabase sem prender a UI
+        if (isSupabaseConfigured) {
+          uploadBlobToSupabase(blob, fileName, mimeType, bucket).catch(() => {});
+        }
+        return { success: true, method: 'share', blob };
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') {
+          return { success: true, method: 'share-abort', blob };
+        }
+        console.warn('Compartilhamento nativo de arquivo indisponível ou gesto expirado, acionando fallback:', shareErr?.message || shareErr);
+      }
+    }
+  }
+
   let publicUrl: string | undefined;
 
-  // 1. Upload do Blob para o Supabase Storage para obter URL pública HTTPS
+  // 2. Upload do Blob para o Supabase Storage para obter URL pública HTTPS (se nativo falhou ou não suportado)
   if (isSupabaseConfigured) {
     try {
       const uploadResult = await uploadBlobToSupabase(blob, fileName, mimeType, bucket);
@@ -111,44 +136,20 @@ export async function saveOrShareReceiptFile(options: {
     }
   }
 
-  // 2. DISPARO NATIVO: Web Share API com URL pública HTTPS ou Arquivo binário
-  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+  // 3. Segunda tentativa nativa com URL pública se disponível
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function' && publicUrl) {
     try {
-      if (publicUrl) {
-        // Compartilhamento via URL HTTPS pública (compatibilidade 100% Android WebView / iOS)
-        await navigator.share({
-          title: cleanTitle,
-          text: cleanText,
-          url: publicUrl,
-        });
-        return { success: true, method: 'share', blob, fileUrl: publicUrl };
-      } else {
-        // Se Supabase não estiver configurado, tenta compartilhar via File object
-        const file = new File([blob], fileName, { type: mimeType });
-        if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: cleanTitle,
-            text: cleanText,
-          });
-          return { success: true, method: 'share', blob };
-        } else {
-          await navigator.share({
-            title: cleanTitle,
-            text: cleanText,
-          });
-          return { success: true, method: 'share', blob };
-        }
-      }
-    } catch (shareErr: any) {
-      if (shareErr?.name === 'AbortError') {
+      await navigator.share({
+        title: cleanTitle,
+        text: cleanText,
+        url: publicUrl,
+      });
+      return { success: true, method: 'share', blob, fileUrl: publicUrl };
+    } catch (shareUrlErr: any) {
+      if (shareUrlErr?.name === 'AbortError') {
         return { success: true, method: 'share-abort', blob, fileUrl: publicUrl };
       }
-      console.warn('Web Share API não completado, tentando abertura:', shareErr);
-      if (publicUrl) {
-        window.open(publicUrl, '_blank');
-        return { success: true, method: 'new-window', fileUrl: publicUrl, blob };
-      }
+      console.warn('Web Share API com URL pública falhou:', shareUrlErr?.message || shareUrlErr);
     }
   }
 
@@ -238,4 +239,91 @@ export async function generateAndShareReceipt(
     throw err;
   }
 }
+
+/**
+ * Compartilha o recibo com o membro:
+ * 1. Usa o Blob já gerado ou baixa a imagem do Supabase como arquivo
+ * 2. Verifica se o navegador/celular suporta compartilhar arquivos (navigator.canShare com files)
+ *    e dispara o compartilhamento nativo com o arquivo PNG anexo (WhatsApp, Telegram, etc.)
+ * 3. Se o compartilhamento nativo falhar (ex: gesto expirado, contexto restrito), executa
+ *    automaticamente o fallback para WhatsApp com mensagem formatada e link direto da imagem
+ */
+export async function compartilharRecibo(
+  urlImagem: string,
+  numeroRecibo: string | number,
+  nomeMembro: string,
+  telefone?: string,
+  existingBlob?: Blob
+): Promise<void> {
+  try {
+    let blob: Blob;
+    if (existingBlob) {
+      blob = existingBlob;
+    } else if (urlImagem) {
+      // 1. Baixa a imagem do Supabase como arquivo
+      const response = await fetch(urlImagem);
+      blob = await response.blob();
+    } else {
+      console.warn("Nenhuma imagem ou blob fornecido para compartilhar.");
+      return;
+    }
+
+    const file = new File([blob], `Recibo_${numeroRecibo}.png`, { type: 'image/png' });
+
+    let shared = false;
+
+    // 2. Verifica se o navegador/celular suporta compartilhar arquivos
+    if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          title: `Comprovante #${numeroRecibo}`,
+          text: `Comprovante de Contribuição #${numeroRecibo} - ${nomeMembro}`,
+          files: [file],
+        });
+        shared = true;
+        return;
+      } catch (shareErr: any) {
+        if (shareErr?.name === 'AbortError') {
+          return; // Usuário cancelou o modal nativo
+        }
+        // Gesto do usuário expirou ou compartilhamento de arquivo não permitido:
+        // Aciona o fallback para WhatsApp
+        console.warn("Compartilhamento nativo não permitido ou gesto expirado, acionando fallback WhatsApp:", shareErr?.message || shareErr);
+      }
+    }
+
+    if (!shared) {
+      // Fallback para WhatsApp com mensagem formatada
+      const textoMensagem = encodeURIComponent(
+        `*Comprovante de Contribuição #${numeroRecibo}*\n` +
+        `👤 *Membro:* ${nomeMembro}\n\n` +
+        (urlImagem ? `📄 *Visualizar Recibo:* ${urlImagem}` : '')
+      );
+
+      const cleanPhone = telefone ? telefone.replace(/\D/g, '') : '';
+      const waUrl = cleanPhone
+        ? `https://api.whatsapp.com/send?phone=${cleanPhone.length === 10 || cleanPhone.length === 11 ? '55' + cleanPhone : cleanPhone}&text=${textoMensagem}`
+        : `https://api.whatsapp.com/send?text=${textoMensagem}`;
+
+      const opened = window.open(waUrl, '_blank');
+      if (!opened && urlImagem) {
+        window.location.href = waUrl;
+      }
+    }
+  } catch (error: any) {
+    if (error?.name === 'AbortError') {
+      return;
+    }
+    console.warn("Aviso ao compartilhar recibo, tentando envio WhatsApp:", error);
+    if (urlImagem) {
+      const textoMensagem = encodeURIComponent(
+        `*Comprovante de Contribuição #${numeroRecibo}*\n` +
+        `👤 *Membro:* ${nomeMembro}\n\n` +
+        `📄 *Visualizar Recibo:* ${urlImagem}`
+      );
+      window.open(`https://api.whatsapp.com/send?text=${textoMensagem}`, '_blank');
+    }
+  }
+}
+
 

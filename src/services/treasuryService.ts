@@ -21,6 +21,7 @@ import {
   insertLancamentoResilient,
   getOrderedTipoStrategies,
   setCachedTipoStrategy,
+  toLocalYMD,
 } from '../utils/receiptHelper';
 import { DEMO_CONTRIBUTORS } from '../data/mockData';
 
@@ -521,30 +522,9 @@ export const DEFAULT_CONFIG: ConfigIgreja = {
 
 export function toSqlDate(val?: string | null): string {
   if (!val || typeof val !== 'string' || !val.trim()) {
-    return new Date().toISOString().split('T')[0];
+    return toLocalYMD();
   }
-  const trimmed = val.trim();
-  // Formato YYYY-MM-DD
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return trimmed;
-  }
-  // Formato YYYY-MM-DDTHH:mm:ss...
-  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
-    return trimmed.split('T')[0];
-  }
-  // Formato DD/MM/YYYY ou DD/MM/YYYY HH:mm...
-  const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (brMatch) {
-    const day = brMatch[1].padStart(2, '0');
-    const month = brMatch[2].padStart(2, '0');
-    const year = brMatch[3];
-    return `${year}-${month}-${day}`;
-  }
-  const parsed = new Date(trimmed);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.toISOString().split('T')[0];
-  }
-  return new Date().toISOString().split('T')[0];
+  return toLocalYMD(val);
 }
 
 export function toSqlTimestamp(val?: string | null): string | null {
@@ -672,7 +652,7 @@ function mapRowToLancamento(row: SupabaseLancamentoRow): Lancamento {
     valor: Number(row.valor),
     formaPagamento: row.forma_pagamento,
     nomePessoa: row.nome_pessoa || row.contributor_name || undefined,
-    data: row.data,
+    data: toLocalYMD(row.data),
     contributorId: row.contributor_id || undefined,
     contributorName: row.contributor_name || row.nome_pessoa || undefined,
     contributorPhone: row.contributor_phone || undefined,
@@ -684,12 +664,13 @@ function mapRowToFechamento(
   row: SupabaseFechamentoCultoRow,
   lancamentosRows: SupabaseLancamentoRow[] = []
 ): FechamentoCulto {
+  const parsedData = toLocalYMD(row.data);
   return {
     id: row.id,
     nomeIgreja: row.nome_igreja,
-    data: row.data,
-    dataInicio: row.data_inicio || undefined,
-    dataFim: row.data_fim || undefined,
+    data: parsedData,
+    dataInicio: row.data_inicio ? toLocalYMD(row.data_inicio) : parsedData,
+    dataFim: row.data_fim ? toLocalYMD(row.data_fim) : parsedData,
     hora: row.hora,
     tipoCulto: row.tipo_culto,
     pregador: row.pregador || undefined,

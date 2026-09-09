@@ -42,14 +42,17 @@ import { SubscriptionGateView } from './components/SubscriptionGateView';
 import { ChangelogModal, APP_VERSION, APP_VERSION_STORAGE_KEY } from './components/ChangelogModal';
 import { Crown, Sparkles, CheckCircle2, X, AlertTriangle } from 'lucide-react';
 import { DEMO_USER, DEMO_CONFIG, DEMO_FECHAMENTOS } from './data/mockData';
+import { toLocalYMD } from './utils/receiptHelper';
 
 function createEmptyFechamento(config: ConfigIgreja, user?: User | null): FechamentoCulto {
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalYMD();
   const pastorPadrao = config.pastorLocal || config.pastorPresidente || undefined;
   return {
     id: `culto-${Date.now()}`,
     nomeIgreja: config.nomeIgreja || 'Minha Igreja',
     data: today,
+    dataInicio: today,
+    dataFim: today,
     hora: '19:00',
     tipoCulto: 'Fechamento de Caixa',
     pastorLocal: config.pastorLocal || undefined,

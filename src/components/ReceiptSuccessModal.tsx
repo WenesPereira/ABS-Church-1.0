@@ -8,6 +8,7 @@ import {
   formatPhoneDisplay,
   formatDateBR,
   buildOfficialWhatsAppReceiptMessage,
+  compartilharRecibo,
 } from '../utils/receiptHelper';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
 import {
@@ -119,7 +120,36 @@ export function ReceiptSuccessModal({
             const fileName = `recibo_${receiptNumber}_${Date.now()}.png`;
             let publicUrl: string | undefined;
 
-            // 1. Upload do Blob para o Supabase Storage
+            const contributorName = lancamento.contributorName || lancamento.nomePessoa || 'Membro';
+            const file = new File([blob], `Recibo_${receiptNumber}.png`, { type: 'image/png' });
+
+            // 1. Tenta compartilhamento nativo de arquivo IMEDIATAMENTE para aproveitar o gesto ativo do usuário
+            if (typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
+              try {
+                await navigator.share({
+                  title: `Comprovante #${receiptNumber}`,
+                  text: `Comprovante de Contribuição #${receiptNumber} - ${contributorName}`,
+                  files: [file],
+                });
+                // Backup assíncrono no Supabase em segundo plano
+                if (isSupabaseConfigured) {
+                  supabase.storage.from('recibos').upload(fileName, blob, {
+                    contentType: 'image/png',
+                    upsert: true,
+                  }).catch(() => {});
+                }
+                resolve();
+                return;
+              } catch (shareErr: any) {
+                if (shareErr?.name === 'AbortError') {
+                  resolve();
+                  return; // Usuário cancelou intencionalmente
+                }
+                console.warn('Compartilhamento nativo imediato não concluído, acionando upload e fallback WhatsApp:', shareErr?.message || shareErr);
+              }
+            }
+
+            // 2. Se o compartilhamento nativo imediato não for suportado ou o gesto tiver expirado, faz upload para o Supabase
             if (isSupabaseConfigured) {
               try {
                 let activeBucket = 'recibos';
@@ -149,59 +179,25 @@ export function ReceiptSuccessModal({
               }
             }
 
-            // 2. Disparo da Web Share API nativa com URL HTTPS
-            if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-              try {
-                if (publicUrl) {
-                  await navigator.share({
-                    title: `Recibo #${receiptNumber}`,
-                    text: `Comprovante de Contribuição #${receiptNumber} - ${churchName}`,
-                    url: publicUrl,
-                  });
-                  resolve();
-                  return;
-                } else {
-                  const file = new File([blob], `Recibo_${receiptNumber}.png`, { type: 'image/png' });
-                  if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                      files: [file],
-                      title: `Recibo #${receiptNumber}`,
-                      text: `Comprovante de Contribuição #${receiptNumber} - ${churchName}`,
-                    });
-                    resolve();
-                    return;
-                  }
-                }
-              } catch (err: any) {
-                if (err?.name === 'AbortError') {
-                  resolve();
-                  return;
-                }
-                if (publicUrl) {
-                  window.open(publicUrl, '_blank');
-                  resolve();
-                  return;
-                }
-              }
+            // 3. Disparo via função compartilharRecibo com fallback WhatsApp e passando o blob já em memória
+            if (publicUrl) {
+              await compartilharRecibo(publicUrl, receiptNumber, contributorName, lancamento.contributorPhone, blob);
+              resolve();
+              return;
             }
 
-            // 3. Fallback: abre a URL pública HTTPS ou cria link de download Blob (nunca Base64)
-            if (publicUrl) {
-              window.open(publicUrl, '_blank');
-              resolve();
-            } else {
-              const blobUrl = URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.download = `Recibo_${receiptNumber}.png`;
-              link.href = blobUrl;
-              document.body.appendChild(link);
-              link.click();
-              setTimeout(() => {
-                if (document.body.contains(link)) document.body.removeChild(link);
-                URL.revokeObjectURL(blobUrl);
-              }, 2000);
-              resolve();
-            }
+            // 4. Fallback final para download local caso não haja URL pública
+            const blobUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = `Recibo_${receiptNumber}.png`;
+            link.href = blobUrl;
+            document.body.appendChild(link);
+            link.click();
+            setTimeout(() => {
+              if (document.body.contains(link)) document.body.removeChild(link);
+              URL.revokeObjectURL(blobUrl);
+            }, 2000);
+            resolve();
           } catch (blobErr) {
             reject(blobErr);
           }

@@ -49,6 +49,10 @@ import {
   formatReceiptDisplay,
   buildWhatsAppReceiptMessage,
   getWhatsAppShareUrl,
+  formatDateBR,
+  toLocalYMD,
+  formatPhoneDisplay,
+  sanitizeContributorName,
 } from '../utils/receiptHelper';
 import { ReceiptsSearchModal } from './ReceiptsSearchModal';
 import { SingleReceiptModal } from './SingleReceiptModal';
@@ -384,27 +388,19 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   };
 
   /*
-   * Formatação segura de datas.
+   * Formatação segura de datas (sem distorção de fuso horário / GMT zerado).
    */
   const formatDate = (value?: string) => {
-    if (!value) {
-      return '';
-    }
-
-    const date = new Date(`${value}T00:00:00`);
-
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-
-    return date.toLocaleDateString('pt-BR');
+    return formatDateBR(value);
   };
 
-  const dataInicio =
-    fechamento.dataInicio || fechamento.data || '';
+  const dataInicio = fechamento.dataInicio
+    ? toLocalYMD(fechamento.dataInicio)
+    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
 
-  const dataFim =
-    fechamento.dataFim || fechamento.data || '';
+  const dataFim = fechamento.dataFim
+    ? toLocalYMD(fechamento.dataFim)
+    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
 
   /*
    * Lógica de cálculo e badge da Assinatura no Header
@@ -597,7 +593,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
               <input
                 type="date"
-                value={fechamento.dataInicio || fechamento.data || ''}
+                value={toLocalYMD(fechamento.dataInicio || fechamento.data)}
                 onChange={(e) => {
                   const value = e.target.value;
 
@@ -623,7 +619,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
               <input
                 type="date"
-                value={fechamento.dataFim || fechamento.data || ''}
+                value={toLocalYMD(fechamento.dataFim || fechamento.data)}
                 onChange={(e) => {
                   const value = e.target.value;
 
@@ -1586,8 +1582,13 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
                       <td className="p-3">
                         {contributorName && (
-                          <div className="text-xs text-amber-400 font-bold">
-                            {contributorName}
+                          <div className="text-xs text-amber-400 font-bold flex items-center gap-1.5 flex-wrap">
+                            <span>{sanitizeContributorName(contributorName)}</span>
+                            {l.contributorPhone && (
+                              <span className="text-[10px] text-emerald-400 font-mono font-normal">
+                                {formatPhoneDisplay(l.contributorPhone)}
+                              </span>
+                            )}
                           </div>
                         )}
                         <div className="text-slate-300 text-xs mt-0.5">

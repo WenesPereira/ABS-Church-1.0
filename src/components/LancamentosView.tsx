@@ -58,6 +58,9 @@ import {
   sanitizeContributorId,
   isValidUUID,
   insertLancamentoResilient,
+  formatDateBR,
+  toLocalYMD,
+  sanitizeContributorName,
 } from '../utils/receiptHelper';
 import { ReceiptSuccessModal } from './ReceiptSuccessModal';
 import { SingleReceiptModal } from './SingleReceiptModal';
@@ -102,6 +105,7 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
   const [descricao, setDescricao] = useState('');
   const [valorStr, setValorStr] = useState('');
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento>('dinheiro');
+  const [dataLancamentoInput, setDataLancamentoInput] = useState<string>(() => toLocalYMD());
 
   // Contribuintes / Dizimistas
   const [contributors, setContributors] = useState<Contributor[]>([]);
@@ -235,16 +239,63 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
 
   const extractDateOnly = (dateStr?: string): string => {
     if (!dateStr) return '';
-    const trimmed = dateStr.trim();
-    const ptMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (ptMatch) {
-      return `${ptMatch[3]}-${ptMatch[2].padStart(2, '0')}-${ptMatch[1].padStart(2, '0')}`;
-    }
-    const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
-    if (isoMatch) {
-      return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
-    }
-    return trimmed.split(' ')[0] || '';
+    return toLocalYMD(dateStr);
+  };
+
+  const dataInicioPeriodo = fechamento.dataInicio
+    ? toLocalYMD(fechamento.dataInicio)
+    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+
+  const dataFimPeriodo = fechamento.dataFim
+    ? toLocalYMD(fechamento.dataFim)
+    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+
+  const handleDataInicioChange = (val: string) => {
+    setFechamento((prev) => ({
+      ...prev,
+      dataInicio: val,
+    }));
+  };
+
+  const handleDataFimChange = (val: string) => {
+    setFechamento((prev) => ({
+      ...prev,
+      dataFim: val,
+      data: val,
+    }));
+  };
+
+  const handleSetPeriodoHoje = () => {
+    const today = toLocalYMD();
+    setFechamento((prev) => ({
+      ...prev,
+      dataInicio: today,
+      dataFim: today,
+      data: today,
+    }));
+  };
+
+  const handleSetPeriodoMesAtual = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const firstDay = `${year}-${month}-01`;
+    const lastDayNum = new Date(year, now.getMonth() + 1, 0).getDate();
+    const lastDay = `${year}-${month}-${String(lastDayNum).padStart(2, '0')}`;
+    setFechamento((prev) => ({
+      ...prev,
+      dataInicio: firstDay,
+      dataFim: lastDay,
+      data: lastDay,
+    }));
+  };
+
+  const handleLimparPeriodo = () => {
+    setFechamento((prev) => ({
+      ...prev,
+      dataInicio: '',
+      dataFim: '',
+    }));
   };
 
   const handleSelectContributor = (c: Contributor) => {
@@ -414,11 +465,13 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
       return;
     }
 
+    const resolvedDate = dataLancamentoInput || toLocalYMD();
     const now = new Date();
-    const formattedDate = `${now.toLocaleDateString('pt-BR')} ${now.toLocaleTimeString('pt-BR', {
+    const timeStr = now.toLocaleTimeString('pt-BR', {
       hour: '2-digit',
       minute: '2-digit',
-    })}`;
+    });
+    const formattedDate = `${resolvedDate} ${timeStr}`;
 
     const categoriaFinal =
       tipo === 'entrada'
@@ -613,7 +666,12 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
           l.categoria === 'oferta_missoes' ||
           l.categoria === 'oferta_especial'));
 
-    return matchesSearch && matchesFilter;
+    const lDateKey = extractDateOnly(l.data);
+    const matchesPeriodo =
+      (!dataInicioPeriodo || !lDateKey || lDateKey >= dataInicioPeriodo) &&
+      (!dataFimPeriodo || !lDateKey || lDateKey <= dataFimPeriodo);
+
+    return matchesSearch && matchesFilter && matchesPeriodo;
   });
 
   return (
@@ -678,12 +736,24 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
         </div>
 
         {/* Data e Recibo */}
-        <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-amber-400" />
-            <span>
-              Registro da Transação: <strong className="text-slate-100">{new Date().toLocaleDateString('pt-BR')} (Hoje)</strong>
-            </span>
+        <div className="bg-slate-950 border border-slate-800/80 rounded-2xl p-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
+            <label htmlFor="data-registro-input" className="text-slate-300 font-semibold">
+              Data do Lançamento:
+            </label>
+            <input
+              id="data-registro-input"
+              type="date"
+              value={dataLancamentoInput}
+              onChange={(e) => setDataLancamentoInput(e.target.value)}
+              className="bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-1 text-xs text-amber-300 font-mono font-bold focus:outline-none focus:ring-1 focus:ring-amber-500"
+            />
+            {dataLancamentoInput === toLocalYMD() && (
+              <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+                Hoje
+              </span>
+            )}
           </div>
 
           {tipo === 'entrada' && (
@@ -956,6 +1026,77 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
           FILTROS E LISTA DE LANÇAMENTOS
       ========================================================== */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 md:p-6 shadow-xl space-y-4 max-w-5xl mx-auto w-full">
+        {/* BARRA DE FILTRO DE PERÍODO SINCRONIZADA COM O FECHAMENTO */}
+        <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-1.5 text-amber-400 font-semibold uppercase text-[11px] tracking-wider">
+              <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <span>Período da Ata / Fechamento:</span>
+            </div>
+            <span className="font-mono text-amber-300 font-bold bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-lg text-xs">
+              {dataInicioPeriodo ? formatDateBR(dataInicioPeriodo) : 'Início'}
+              {' até '}
+              {dataFimPeriodo ? formatDateBR(dataFimPeriodo) : 'Hoje'}
+            </span>
+            <span className="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded-md border border-slate-800">
+              {filteredLancamentos.length}{filteredLancamentos.length !== lancamentos.length ? ` de ${lancamentos.length}` : ''} lançamento{filteredLancamentos.length === 1 ? '' : 's'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1">
+              <label htmlFor="filtro-data-inicio" className="text-[10px] text-slate-400 font-bold uppercase cursor-pointer">De:</label>
+              <input
+                id="filtro-data-inicio"
+                type="date"
+                value={dataInicioPeriodo}
+                onChange={(e) => handleDataInicioChange(e.target.value)}
+                className="bg-transparent text-slate-200 font-mono text-xs focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1">
+              <label htmlFor="filtro-data-fim" className="text-[10px] text-slate-400 font-bold uppercase cursor-pointer">Até:</label>
+              <input
+                id="filtro-data-fim"
+                type="date"
+                value={dataFimPeriodo}
+                onChange={(e) => handleDataFimChange(e.target.value)}
+                className="bg-transparent text-slate-200 font-mono text-xs focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleSetPeriodoHoje}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                title="Filtrar lançamentos de hoje"
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                onClick={handleSetPeriodoMesAtual}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold transition-colors cursor-pointer"
+                title="Filtrar mês atual"
+              >
+                Mês
+              </button>
+              {(dataInicioPeriodo || dataFimPeriodo) && (
+                <button
+                  type="button"
+                  onClick={handleLimparPeriodo}
+                  className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-[11px] font-medium transition-colors border border-slate-800 cursor-pointer"
+                  title="Ver todos os lançamentos sem restrição de data"
+                >
+                  Ver Todos
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-4">
           {/* Campo de Busca */}
           <div className="relative flex-1 max-w-md">
@@ -1057,12 +1198,12 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
                   {l.descricao && <p className="text-xs text-slate-300">{l.descricao}</p>}
 
                   {contributorName && (
-                    <div className="text-xs text-amber-400/90 font-semibold flex items-center gap-1.5">
+                    <div className="text-xs text-amber-400/90 font-semibold flex items-center gap-1.5 flex-wrap">
                       <User className="w-3.5 h-3.5 shrink-0" />
-                      <span>{contributorName}</span>
+                      <span>{sanitizeContributorName(contributorName)}</span>
                       {l.contributorPhone && (
                         <span className="text-[11px] text-emerald-400 font-mono">
-                          ({formatPhoneDisplay(l.contributorPhone)})
+                          {formatPhoneDisplay(l.contributorPhone)}
                         </span>
                       )}
                     </div>
@@ -1070,7 +1211,7 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
 
                   <div className="flex items-center justify-between pt-2 border-t border-slate-900 text-[11px] text-slate-400">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono">{l.data || 'Hoje'}</span>
+                      <span className="font-mono">{formatDateBR(l.data)}</span>
                       <span>•</span>
                       <span className="capitalize font-mono text-slate-400">
                         {String(forma).replace(/_/g, ' ')}
@@ -1195,7 +1336,7 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
 
                       {/* Data */}
                       <td className="p-3 text-[11px] font-mono text-slate-400 whitespace-nowrap">
-                        {l.data || 'Hoje'}
+                        {formatDateBR(l.data)}
                       </td>
 
                       {/* Categoria */}
@@ -1206,12 +1347,12 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
                       {/* Descrição e Pessoa */}
                       <td className="p-3">
                         {contributorName && (
-                          <div className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
+                          <div className="text-xs text-amber-400 font-bold flex items-center gap-1.5 flex-wrap">
                             <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            <span>{contributorName}</span>
+                            <span>{sanitizeContributorName(contributorName)}</span>
                             {l.contributorPhone && (
                               <span className="text-[10px] text-emerald-400 font-mono font-normal">
-                                ({formatPhoneDisplay(l.contributorPhone)})
+                                {formatPhoneDisplay(l.contributorPhone)}
                               </span>
                             )}
                           </div>

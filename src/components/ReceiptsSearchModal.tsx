@@ -7,6 +7,7 @@ import {
   formatReceiptNumberDigits,
   formatPhoneDisplay,
   formatDateBR,
+  sanitizeContributorName,
 } from '../utils/receiptHelper';
 import {
   Search,
@@ -195,10 +196,10 @@ export function ReceiptsSearchModal({
 
                         <div className="flex items-center gap-2 pt-0.5">
                           <User className="w-3.5 h-3.5 text-amber-400" />
-                          <span className="font-bold text-slate-100 text-sm">{contributor}</span>
+                          <span className="font-bold text-slate-100 text-sm">{sanitizeContributorName(contributor)}</span>
                           {l.contributorPhone && (
                             <span className="text-xs text-emerald-400 font-mono">
-                              ({formatPhoneDisplay(l.contributorPhone)})
+                              {formatPhoneDisplay(l.contributorPhone)}
                             </span>
                           )}
                         </div>
