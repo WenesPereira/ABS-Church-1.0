@@ -44,6 +44,7 @@ import {
   deleteLancamento,
   fetchContributors,
   saveContributor,
+  searchDizimistasOrMembers,
   calculateNextReceiptNumber,
   getNextReceiptNumber,
   toSqlDate,
@@ -113,6 +114,9 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
   const [contributorNameInput, setContributorNameInput] = useState('');
   const [contributorPhoneInput, setContributorPhoneInput] = useState('');
   const [showContributorDropdown, setShowContributorDropdown] = useState(false);
+  const [suggestedContributors, setSuggestedContributors] = useState<Contributor[]>([]);
+  const [isSearchingContributors, setIsSearchingContributors] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTipo, setFilterTipo] = useState<string>('todos');
@@ -140,6 +144,7 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
   });
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const contributorInputRef = useRef<HTMLInputElement>(null);
 
   // Carrega lista de dizimistas/contribuintes cadastrados
   useEffect(() => {
@@ -147,6 +152,7 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
     fetchContributors(currentUser?.id).then((res) => {
       if (isMounted && res.data) {
         setContributors(res.data);
+        setSuggestedContributors(res.data);
       }
     });
 
@@ -154,6 +160,63 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
       isMounted = false;
     };
   }, [currentUser?.id]);
+
+  // Busca dinâmica e reativa de membros e dízimistas com Debounce inteligente
+  useEffect(() => {
+    const term = contributorNameInput.trim();
+
+    if (!term) {
+      setSuggestedContributors(contributors);
+      setIsSearchingContributors(false);
+      setHighlightedIndex(-1);
+      return;
+    }
+
+    // Se tiver apenas 1 caractere, filtra apenas em memória local
+    if (term.length < 2) {
+      const lower = term.toLowerCase();
+      const localMatches = contributors.filter(
+        (c) => c.name.toLowerCase().includes(lower) || (c.phone && c.phone.includes(lower))
+      );
+      setSuggestedContributors(localMatches);
+      setIsSearchingContributors(false);
+      setHighlightedIndex(-1);
+      return;
+    }
+
+    // A partir de 2 caracteres: filtra imediatamente no cache local e dispara busca no Supabase
+    const lower = term.toLowerCase();
+    const localMatches = contributors.filter(
+      (c) => c.name.toLowerCase().includes(lower) || (c.phone && c.phone.includes(lower))
+    );
+    setSuggestedContributors(localMatches);
+    setIsSearchingContributors(true);
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchDizimistasOrMembers(
+          term,
+          currentUser?.id,
+          fechamento.lancamentos
+        );
+        if (active) {
+          setSuggestedContributors(results);
+        }
+      } catch (err) {
+        console.warn('Erro na busca de membros:', err);
+      } finally {
+        if (active) {
+          setIsSearchingContributors(false);
+        }
+      }
+    }, 220);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [contributorNameInput, contributors, currentUser?.id, fechamento.lancamentos]);
 
   // Fecha dropdown de autocomplete se clicar fora
   useEffect(() => {
@@ -303,19 +366,61 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
     setContributorNameInput(c.name);
     setContributorPhoneInput(c.phone ? formatPhoneDisplay(c.phone) : '');
     setShowContributorDropdown(false);
+    setHighlightedIndex(-1);
   };
 
   const handleNameInputChange = (val: string) => {
     setContributorNameInput(val);
     setSelectedContributor(null);
+    setHighlightedIndex(-1);
     setShowContributorDropdown(val.trim().length > 0);
   };
 
-  const filteredContributors = contributors.filter((c) => {
-    const term = contributorNameInput.trim().toLowerCase();
-    if (!term) return false;
-    return c.name.toLowerCase().includes(term) || (c.phone && c.phone.includes(term));
-  });
+  const handleClearContributor = () => {
+    setContributorNameInput('');
+    setContributorPhoneInput('');
+    setSelectedContributor(null);
+    setShowContributorDropdown(false);
+    setHighlightedIndex(-1);
+    if (contributorInputRef.current) {
+      contributorInputRef.current.focus();
+    }
+  };
+
+  const handleNameInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (tipo !== 'entrada') return;
+
+    if (!showContributorDropdown) {
+      if (e.key === 'ArrowDown') {
+        setShowContributorDropdown(true);
+      }
+      return;
+    }
+
+    if (suggestedContributors.length === 0) {
+      if (e.key === 'Escape') {
+        setShowContributorDropdown(false);
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev + 1 < suggestedContributors.length ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex((prev) => (prev - 1 >= 0 ? prev - 1 : suggestedContributors.length - 1));
+    } else if (e.key === 'Enter') {
+      if (highlightedIndex >= 0 && highlightedIndex < suggestedContributors.length) {
+        e.preventDefault();
+        handleSelectContributor(suggestedContributors[highlightedIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowContributorDropdown(false);
+      setHighlightedIndex(-1);
+    }
+  };
 
   const salvarLancamentoFinal = async (
     lancamentoToSave: Lancamento,
@@ -878,11 +983,13 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
 
               <div className="relative">
                 <input
+                  ref={contributorInputRef}
                   type="text"
                   value={contributorNameInput}
                   onChange={(e) => handleNameInputChange(e.target.value)}
+                  onKeyDown={handleNameInputKeyDown}
                   onFocus={() => {
-                    if (tipo === 'entrada' && contributorNameInput.trim().length > 0) {
+                    if (tipo === 'entrada' && (contributorNameInput.trim().length > 0 || contributors.length > 0)) {
                       setShowContributorDropdown(true);
                     }
                   }}
@@ -891,46 +998,133 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
                       ? 'Buscar ou digitar nome do membro...'
                       : 'Ex: Companhia de Energia / Pr. Marcos'
                   }
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-3 pr-16 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 />
 
-                {tipo === 'entrada' && contributors.length > 0 && !contributorNameInput && (
-                  <button
-                    type="button"
-                    onClick={() => setShowContributorDropdown(!showContributorDropdown)}
-                    className="absolute right-2 top-2 text-[10px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer px-1.5 py-0.5 bg-slate-900 rounded border border-slate-800"
-                  >
-                    Lista ({contributors.length})
-                  </button>
-                )}
+                <div className="absolute right-2 top-2 flex items-center gap-1">
+                  {isSearchingContributors && (
+                    <Loader2 className="w-3.5 h-3.5 text-amber-400 animate-spin mr-1" />
+                  )}
+
+                  {contributorNameInput && (
+                    <button
+                      type="button"
+                      onClick={handleClearContributor}
+                      title="Limpar campo"
+                      className="text-slate-500 hover:text-slate-300 p-0.5 rounded cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
+                  {tipo === 'entrada' && contributors.length > 0 && !contributorNameInput && (
+                    <button
+                      type="button"
+                      onClick={() => setShowContributorDropdown(!showContributorDropdown)}
+                      className="text-[10px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer px-1.5 py-0.5 bg-slate-900 rounded border border-slate-800"
+                    >
+                      Lista ({contributors.length})
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Dropdown de Sugestões e Autocomplete */}
               {showContributorDropdown && tipo === 'entrada' && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-amber-500/40 rounded-2xl shadow-2xl z-40 max-h-52 overflow-y-auto divide-y divide-slate-900">
-                  {(contributorNameInput.trim() ? filteredContributors : contributors).length === 0 ? (
-                    <div className="p-3 text-center text-slate-400 text-xs">
-                      Nenhum membro encontrado com este nome. Será registrado como novo!
+                <div className="absolute left-0 right-0 top-full mt-1 bg-slate-950 border border-amber-500/40 rounded-2xl shadow-2xl z-40 max-h-64 overflow-y-auto divide-y divide-slate-900">
+                  {/* Cabeçalho de Status do Autocomplete */}
+                  <div className="p-2 bg-slate-900/90 text-[10px] text-slate-400 flex items-center justify-between font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <User className="w-3 h-3 text-amber-400" />
+                      {contributorNameInput.trim().length >= 2
+                        ? 'Sugestões de Membros / Dízimistas'
+                        : 'Membros Cadastrados'}
+                    </span>
+                    {isSearchingContributors ? (
+                      <span className="text-amber-400 flex items-center gap-1">
+                        <Loader2 className="w-2.5 h-2.5 animate-spin" /> Buscando no banco...
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 font-mono">
+                        {suggestedContributors.length} encontrado{suggestedContributors.length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </div>
+
+                  {suggestedContributors.length === 0 ? (
+                    <div className="p-3 text-left">
+                      {contributorNameInput.trim().length >= 2 ? (
+                        <div className="flex items-start gap-2.5">
+                          <UserPlus className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs text-slate-200 font-medium">
+                              Nenhum membro encontrado com este nome.
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-0.5">
+                              Será registrado como novo dízimista:{' '}
+                              <span className="text-amber-300 font-semibold">
+                                "{contributorNameInput}"
+                              </span>
+                              . Você pode preencher o WhatsApp abaixo para enviar o recibo!
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-center text-slate-400 text-xs py-1">
+                          Digite pelo menos 2 caracteres para pesquisar dízimistas e lançamentos anteriores.
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    (contributorNameInput.trim() ? filteredContributors : contributors).map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => handleSelectContributor(c)}
-                        className="w-full p-2.5 text-left hover:bg-slate-900 text-xs flex items-center justify-between text-slate-200 hover:text-amber-300 transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2">
-                          <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span className="font-semibold">{c.name}</span>
-                        </div>
-                        {c.phone && (
-                          <span className="text-[11px] text-slate-400 font-mono">
-                            {formatPhoneDisplay(c.phone)}
-                          </span>
-                        )}
-                      </button>
-                    ))
+                    <div className="divide-y divide-slate-900/60">
+                      {suggestedContributors.map((c, idx) => {
+                        const isHighlighted = highlightedIndex === idx;
+                        const initial = (c.name || 'M').charAt(0).toUpperCase();
+
+                        return (
+                          <button
+                            key={c.id || `contrib-${idx}`}
+                            type="button"
+                            onClick={() => handleSelectContributor(c)}
+                            onMouseEnter={() => setHighlightedIndex(idx)}
+                            className={`w-full p-2.5 text-left text-xs flex items-center justify-between transition-colors cursor-pointer group ${
+                              isHighlighted
+                                ? 'bg-amber-500/20 text-amber-200'
+                                : 'hover:bg-slate-900 text-slate-200 hover:text-amber-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                              <div className="w-6 h-6 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center text-[10px] shrink-0 border border-amber-500/30">
+                                {initial}
+                              </div>
+                              <div className="truncate">
+                                <span className="font-semibold block truncate">
+                                  {c.name}
+                                </span>
+                              </div>
+                            </div>
+
+                            {c.phone ? (
+                              <span className="text-[11px] text-emerald-400 font-mono shrink-0 flex items-center gap-1 bg-emerald-950/60 border border-emerald-800/60 rounded px-1.5 py-0.5">
+                                <MessageCircle className="w-3 h-3 text-emerald-400" />
+                                {formatPhoneDisplay(c.phone)}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-500 italic shrink-0">
+                                Sem WhatsApp
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Dica de Teclado */}
+                  {suggestedContributors.length > 0 && (
+                    <div className="p-1.5 bg-slate-900/60 text-[10px] text-slate-500 text-center">
+                      Navegue com as setas <span className="text-slate-400">↑</span> <span className="text-slate-400">↓</span> e pressione <span className="text-slate-400 font-semibold">Enter</span> para selecionar
+                    </div>
                   )}
                 </div>
               )}

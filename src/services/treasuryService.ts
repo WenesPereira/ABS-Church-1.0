@@ -1298,6 +1298,148 @@ export async function fetchContributors(userId?: string): Promise<{ data: Contri
   }
 }
 
+/**
+ * Busca dinâmica e inteligente de dízimistas e membros:
+ * - Filtra em memória (cache local e lançamentos da sessão atual) com latência 0
+ * - Se Supabase configurado, consulta concorrentemente:
+ *   1) Tabela contributors (dízimistas salvos)
+ *   2) Tabela lancamentos (lançamentos anteriores com contributor_name / nome_pessoa)
+ *   3) Tabelas members / membros caso existam no banco
+ * - Agrupa por nome de forma insensível a maiúsculas/minúsculas
+ * - Preserva e associa o telefone/WhatsApp encontrado
+ */
+export async function searchDizimistasOrMembers(
+  query: string,
+  userId?: string,
+  currentLocalLancamentos?: Lancamento[]
+): Promise<Contributor[]> {
+  const cleanTerm = (query || '').trim().toLowerCase();
+  if (!cleanTerm || cleanTerm.length < 2) {
+    return [];
+  }
+
+  const safeTerm = cleanTerm.replace(/[,()%'"]/g, '');
+  const resultsMap = new Map<string, Contributor>();
+
+  const addOrUpdate = (name?: string | null, phone?: string | null, id?: string | null) => {
+    if (!name) return;
+    const trimmedName = name.trim();
+    if (!trimmedName || trimmedName.length < 2) return;
+    const lowerKey = trimmedName.toLowerCase();
+
+    // Filtra pelo termo (no nome ou nos dígitos do telefone)
+    const phoneDigits = phone ? phone.replace(/\D/g, '') : '';
+    if (!lowerKey.includes(cleanTerm) && (!phoneDigits || !phoneDigits.includes(cleanTerm))) {
+      return;
+    }
+
+    const existing = resultsMap.get(lowerKey);
+    if (!existing) {
+      resultsMap.set(lowerKey, {
+        id: id || `c-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        name: trimmedName,
+        phone: phone ? phone.trim() : undefined,
+      });
+    } else {
+      // Se já existia sem telefone ou com telefone incompleto, atualiza
+      if (!existing.phone && phone && phone.trim()) {
+        existing.phone = phone.trim();
+      }
+      if (id && (!existing.id || existing.id.startsWith('c-'))) {
+        existing.id = id;
+      }
+    }
+  };
+
+  // 1. Busca no cache local de contribuintes
+  const localList = getLocalContributors(userId);
+  localList.forEach((c) => addOrUpdate(c.name, c.phone, c.id));
+
+  // 2. Busca nos lançamentos locais da sessão atual
+  if (Array.isArray(currentLocalLancamentos)) {
+    currentLocalLancamentos.forEach((l) => {
+      addOrUpdate(l.contributorName || l.nomePessoa, l.contributorPhone, l.contributorId);
+    });
+  }
+
+  // 3. Se Supabase configurado, consulta no banco remoto
+  if (isSupabaseConfigured && userId && userId !== 'demo-user-session' && safeTerm.length >= 2) {
+    try {
+      const uid = await getCurrentUserId(userId);
+      if (uid) {
+        const queries = [
+          // A: Tabela contributors (dizimistas registrados)
+          supabase
+            .from('contributors')
+            .select('id, name, phone')
+            .eq('user_id', uid)
+            .ilike('name', `%${safeTerm}%`)
+            .limit(15),
+
+          // B: Tabela lancamentos por contributor_name
+          supabase
+            .from('lancamentos')
+            .select('contributor_name, nome_pessoa, contributor_phone, contributor_id')
+            .or(`user_id.eq.${uid},church_id.eq.${uid}`)
+            .ilike('contributor_name', `%${safeTerm}%`)
+            .limit(20),
+
+          // C: Tabela lancamentos por nome_pessoa
+          supabase
+            .from('lancamentos')
+            .select('contributor_name, nome_pessoa, contributor_phone, contributor_id')
+            .or(`user_id.eq.${uid},church_id.eq.${uid}`)
+            .ilike('nome_pessoa', `%${safeTerm}%`)
+            .limit(20),
+
+          // D: Tabela opcional 'members'
+          supabase
+            .from('members')
+            .select('id, name, phone')
+            .ilike('name', `%${safeTerm}%`)
+            .limit(10),
+
+          // E: Tabela opcional 'membros'
+          supabase
+            .from('membros')
+            .select('id, nome, telefone')
+            .ilike('nome', `%${safeTerm}%`)
+            .limit(10),
+        ];
+
+        const settled = await Promise.allSettled(queries);
+
+        settled.forEach((res) => {
+          if (res.status === 'fulfilled' && Array.isArray(res.value?.data)) {
+            res.value.data.forEach((row: any) => {
+              const name = row.name || row.nome || row.contributor_name || row.nome_pessoa;
+              const phone = row.phone || row.telefone || row.contributor_phone;
+              const id = row.id || row.contributor_id;
+              addOrUpdate(name, phone, id);
+            });
+          }
+        });
+      }
+    } catch (remoteErr) {
+      console.warn('Aviso na busca remota de dízimistas:', remoteErr);
+    }
+  }
+
+  // Ordenação prioritária:
+  // 1. Nomes que começam com o termo pesquisado
+  // 2. Ordem alfabética
+  return Array.from(resultsMap.values()).sort((a, b) => {
+    const aLower = a.name.toLowerCase();
+    const bLower = b.name.toLowerCase();
+    const aStarts = aLower.startsWith(cleanTerm);
+    const bStarts = bLower.startsWith(cleanTerm);
+
+    if (aStarts && !bStarts) return -1;
+    if (!aStarts && bStarts) return 1;
+    return aLower.localeCompare(bLower);
+  });
+}
+
 export async function saveContributor(
   contributor: Partial<Contributor>,
   userId?: string
