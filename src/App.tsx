@@ -744,6 +744,7 @@ export default function App() {
               <LancamentosView
                 fechamento={fechamentoAtual}
                 setFechamento={handleSetFechamentoAtual}
+                historico={historico}
                 onNavigate={setActiveTab}
                 currentUser={currentUser}
                 syncStatus={syncStatus}

@@ -924,6 +924,18 @@ export async function fetchFechamentos(userId?: string): Promise<{ data: Fechame
       return mapRowToFechamento(fRow, fLancamentos);
     });
 
+    // Sincroniza recibos carregados do banco com o cache local para integridade global
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem(`eklesia_fechamentos_${uid}`, JSON.stringify(fechamentosCompleto));
+        for (const lanc of allLancamentos) {
+          if (lanc.receipt_number) {
+            registerReceiptInLocalStorage(uid, lanc.receipt_number, lanc);
+          }
+        }
+      }
+    } catch {}
+
     return { data: fechamentosCompleto, isSupabase: true };
   } catch (err) {
     console.error('Erro Supabase inesperado ao carregar fechamentos:', err);
@@ -1549,68 +1561,275 @@ export async function deleteContributor(
 }
 
 /**
- * LÓGICA DE NUMERAÇÃO SEQUENCIAL ISOLADA POR IGREJA (user_id / church_id):
- * Obtém o próximo número de recibo inteiro (ex: 104) calculado no instante da gravação (MAX(receipt_number) + 1).
+ * Chave de armazenamento no localStorage para manter a lista persistente e histórico
+ * de todos os recibos / códigos emitidos, garantindo integridade mesmo offline ou entre datas diferentes.
  */
-export async function calculateNextReceiptNumber(userId?: string): Promise<number> {
-  const uid = await getCurrentUserId(userId);
-  const seqKey = `${LOCAL_RECEIPT_SEQ_PREFIX}${uid || 'default'}`;
+export const LOCAL_ALL_RECEIPTS_PREFIX = 'eklesia_all_receipts_';
 
-  let maxNum = 0;
+/**
+ * Extrai o número do recibo de qualquer registro de lançamento,
+ * compatível com formatos: numeroRecibo, receipt_number, receiptNumber, id (numérico ou recibo-X), ou descrição.
+ */
+export function extractReceiptNumberFromItem(item: any): number {
+  if (!item) return 0;
 
-  // 1. Lê contador local salvo
-  try {
-    const savedSeq = localStorage.getItem(seqKey);
-    if (savedSeq) {
-      const parsed = parseInt(savedSeq, 10);
-      if (!Number.isNaN(parsed) && parsed > maxNum) {
-        maxNum = parsed;
-      }
+  // 1. Campo explícito conforme exemplo da especificação do usuário (item.numeroRecibo) ou receipt_number / receiptNumber
+  const directValue = item.numeroRecibo ?? item.receipt_number ?? item.receiptNumber;
+  if (directValue !== undefined && directValue !== null && String(directValue).trim() !== '') {
+    const cleanDigits = String(directValue).replace(/\D/g, '');
+    const parsed = parseInt(cleanDigits, 10);
+    if (!Number.isNaN(parsed) && parsed > 0) {
+      return parsed;
     }
-  } catch {}
-
-  // 2. Se for conta demo, define base inicial para exemplos se ainda estiver no 0
-  if (uid === 'demo-user-session' && maxNum < 103) {
-    maxNum = 103;
   }
 
-  // 3. Consulta no Supabase o maior receipt_number registrado para este user_id / church_id
+  // 2. Extrai de id se for numérico ou contiver número de recibo (exemplo da especificação: parseInt(item.numeroRecibo || item.id, 10))
+  if (item.id !== undefined && item.id !== null) {
+    const strId = String(item.id).trim();
+    // Se id for numérico direto (ex: "1", "2", "42", mas descarta timestamps > 1 bilhão)
+    if (/^\d+$/.test(strId)) {
+      const parsed = parseInt(strId, 10);
+      if (!Number.isNaN(parsed) && parsed > 0 && parsed < 1000000000) {
+        return parsed;
+      }
+    }
+    // Se contiver recibo-000042 ou #42
+    const match = strId.match(/(?:recibo|receipt)[-_]?(\d+)/i);
+    if (match && match[1]) {
+      const parsed = parseInt(match[1], 10);
+      if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+    }
+  }
+
+  // 3. Fallback: extrai de descricao se contiver hashtag de recibo (ex: "#000003")
+  if (item.descricao && typeof item.descricao === 'string') {
+    const match = item.descricao.match(/#\s*(\d{1,8})\b/);
+    if (match && match[1]) {
+      const parsed = parseInt(match[1], 10);
+      if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+    }
+  }
+
+  return 0;
+}
+
+/**
+ * Registra o número de recibo emitido no localStorage para histórico permanente.
+ */
+export function registerReceiptInLocalStorage(
+  userId: string | undefined,
+  receiptNum: number | string,
+  item?: any
+): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const effectiveId = userId || 'default';
+    const seqKey = `${LOCAL_RECEIPT_SEQ_PREFIX}${effectiveId}`;
+    const allReceiptsKey = `${LOCAL_ALL_RECEIPTS_PREFIX}${effectiveId}`;
+
+    const num = typeof receiptNum === 'number'
+      ? receiptNum
+      : parseInt(String(receiptNum).replace(/\D/g, ''), 10);
+    if (Number.isNaN(num) || num <= 0) return;
+
+    // Atualiza maior sequência conhecida
+    const currentSeq = parseInt(localStorage.getItem(seqKey) || '0', 10);
+    if (num > currentSeq) {
+      localStorage.setItem(seqKey, num.toString());
+    }
+
+    // Salva na lista de recibos
+    let list: any[] = [];
+    try {
+      const raw = localStorage.getItem(allReceiptsKey);
+      if (raw) list = JSON.parse(raw);
+    } catch {}
+    if (!Array.isArray(list)) list = [];
+
+    const alreadyExists = list.some((r) => extractReceiptNumberFromItem(r) === num);
+    if (!alreadyExists) {
+      list.push({
+        id: item?.id || `recibo-${num}`,
+        numeroRecibo: num,
+        receipt_number: num,
+        receiptNumber: num.toString().padStart(6, '0'),
+        contributor_name: item?.contributorName || item?.nomePessoa || null,
+        data: item?.data || new Date().toISOString(),
+        valor: item?.valor || 0,
+      });
+      localStorage.setItem(allReceiptsKey, JSON.stringify(list));
+    }
+  } catch (e) {
+    console.warn('Aviso ao registrar recibo no localStorage:', e);
+  }
+}
+
+/**
+ * LÓGICA DE NUMERAÇÃO SEQUENCIAL ISOLADA POR IGREJA (user_id / church_id):
+ * 1. Busca SEMPRE no banco de dados e localStorage completo (sem aplicar filtros de mês, ano ou categoria).
+ * 2. Extrai o MAIOR número de recibo existente e soma +1:
+ *    const maiorNumero = registros.reduce((max, item) => {
+ *      const num = parseInt(item.numeroRecibo || item.id, 10);
+ *      return num > max ? num : max;
+ *    }, 0);
+ *    const novoNumeroRecibo = (maiorNumero + 1).toString().padStart(6, '0');
+ * 3. Garante atribuição no momento do salvamento do registro.
+ */
+export async function calculateNextReceiptNumber(
+  userId?: string,
+  extraRegistros?: any[]
+): Promise<number> {
+  const uid = await getCurrentUserId(userId);
+  const effectiveId = uid || 'default';
+  const seqKey = `${LOCAL_RECEIPT_SEQ_PREFIX}${effectiveId}`;
+  const allReceiptsKey = `${LOCAL_ALL_RECEIPTS_PREFIX}${effectiveId}`;
+
+  // Coletor universal de todos os registros encontrados (sem filtros de data, mês, ano ou categoria)
+  const todosOsRegistros: any[] = [];
+
+  // -----------------------------------------------------------------
+  // 1. BUSCA NO LOCALSTORAGE COMPLETO (SEM FILTROS DE DATA/MÊS/ANO)
+  // -----------------------------------------------------------------
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      // 1.a) Contador salvo na chave de sequência
+      const savedSeq = localStorage.getItem(seqKey);
+      if (savedSeq) {
+        const parsed = parseInt(savedSeq, 10);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          todosOsRegistros.push({ numeroRecibo: parsed });
+        }
+      }
+
+      // 1.b) Histórico persistente de todos os recibos emitidos localmente
+      const savedAll = localStorage.getItem(allReceiptsKey);
+      if (savedAll) {
+        try {
+          const parsedList = JSON.parse(savedAll);
+          if (Array.isArray(parsedList)) {
+            todosOsRegistros.push(...parsedList);
+          }
+        } catch {}
+      }
+
+      // 1.c) Varredura completa em todas as chaves do localStorage em busca de lançamentos
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+
+        const lowerKey = key.toLowerCase();
+        if (
+          lowerKey.includes('fechamento') ||
+          lowerKey.includes('lancamento') ||
+          lowerKey.includes('culto') ||
+          lowerKey.includes('recibo') ||
+          lowerKey.includes('historico') ||
+          lowerKey.includes('history')
+        ) {
+          try {
+            const rawVal = localStorage.getItem(key);
+            if (rawVal && (rawVal.startsWith('{') || rawVal.startsWith('['))) {
+              const parsed = JSON.parse(rawVal);
+              if (Array.isArray(parsed)) {
+                for (const item of parsed) {
+                  if (item && typeof item === 'object') {
+                    if (Array.isArray(item.lancamentos)) {
+                      todosOsRegistros.push(...item.lancamentos);
+                    } else {
+                      todosOsRegistros.push(item);
+                    }
+                  }
+                }
+              } else if (parsed && typeof parsed === 'object') {
+                if (Array.isArray(parsed.lancamentos)) {
+                  todosOsRegistros.push(...parsed.lancamentos);
+                } else {
+                  todosOsRegistros.push(parsed);
+                }
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Aviso ao consultar localStorage completo para recibos:', err);
+  }
+
+  // -----------------------------------------------------------------
+  // 2. REGISTROS EXTRAS PASSADOS EM MEMÓRIA (Sessão / Histórico)
+  // -----------------------------------------------------------------
+  if (Array.isArray(extraRegistros) && extraRegistros.length > 0) {
+    todosOsRegistros.push(...extraRegistros);
+  }
+
+  // -----------------------------------------------------------------
+  // 3. BUSCA NO BANCO DE DADOS SUPABASE COMPLETO (SEM FILTROS)
+  // -----------------------------------------------------------------
   if (isSupabaseConfigured && uid && uid !== 'demo-user-session') {
     try {
-      const { data, error } = await supabase
+      // Busca TODOS os lançamentos registrados para esta igreja/usuário
+      // SEM NENHUM filtro de data, mês, ano ou categoria!
+      const { data: dbLancamentos, error: dbError } = await supabase
         .from('lancamentos')
-        .select('receipt_number')
-        .or(`user_id.eq.${uid},church_id.eq.${uid}`)
-        .not('receipt_number', 'is', null);
+        .select('id, receipt_number, descricao, data, categoria, tipo')
+        .or(`user_id.eq.${uid},church_id.eq.${uid}`);
 
-      if (!error && data && data.length > 0) {
-        for (const row of data) {
-          if (row.receipt_number !== null && row.receipt_number !== undefined) {
-            const cleanDigits = String(row.receipt_number).replace(/\D/g, '');
-            const parsed = parseInt(cleanDigits, 10);
-            if (!Number.isNaN(parsed) && parsed > maxNum) {
-              maxNum = parsed;
-            }
-          }
+      if (!dbError && dbLancamentos && dbLancamentos.length > 0) {
+        todosOsRegistros.push(...dbLancamentos);
+      } else if (dbError) {
+        // Fallback resiliente: tenta consulta simples por user_id
+        const { data: fallbackData } = await supabase
+          .from('lancamentos')
+          .select('id, receipt_number, descricao, data, categoria, tipo')
+          .eq('user_id', uid);
+
+        if (fallbackData && fallbackData.length > 0) {
+          todosOsRegistros.push(...fallbackData);
         }
       }
     } catch (err) {
-      console.warn('Aviso ao consultar maior recibo no Supabase:', err);
+      console.warn('Aviso ao consultar lançamentos completos no Supabase para recibo:', err);
     }
   }
 
-  const nextNum = maxNum + 1;
+  // -----------------------------------------------------------------
+  // 4. EXTRAI O MAIOR NÚMERO DE RECIBO EXISTENTE E SOMA +1
+  //    Exatamente conforme especificação da lógica:
+  //    const maiorNumero = registros.reduce((max, item) => {
+  //      const num = parseInt(item.numeroRecibo || item.id, 10);
+  //      return num > max ? num : max;
+  //    }, 0);
+  //    const novoNumeroRecibo = (maiorNumero + 1).toString().padStart(6, '0');
+  // -----------------------------------------------------------------
+  const maiorNumero = todosOsRegistros.reduce((max: number, item: any) => {
+    const num = extractReceiptNumberFromItem(item);
+    return num > max ? num : max;
+  }, 0);
 
-  // Atualiza cache de sequência
+  // Se for conta demo e ainda não houver nenhum registro, parte de 103 para exemplos elegantes
+  let baseNumero = maiorNumero;
+  if (uid === 'demo-user-session' && baseNumero < 103) {
+    baseNumero = 103;
+  }
+
+  const proximoNumero = baseNumero + 1;
+
+  // Atualiza cache de sequência imediatamente
   try {
-    localStorage.setItem(seqKey, nextNum.toString());
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.setItem(seqKey, proximoNumero.toString());
+    }
   } catch {}
 
-  return nextNum;
+  return proximoNumero;
 }
 
-export async function getNextReceiptNumber(userId?: string): Promise<string> {
-  const nextNum = await calculateNextReceiptNumber(userId);
+export async function getNextReceiptNumber(
+  userId?: string,
+  extraRegistros?: any[]
+): Promise<string> {
+  const nextNum = await calculateNextReceiptNumber(userId, extraRegistros);
   return String(nextNum).padStart(6, '0');
 }
 
@@ -1646,6 +1865,7 @@ export async function insertLancamentoSupabase(
     if (lancamento.tipo === 'entrada') {
       nextReceiptInt = await calculateNextReceiptNumber(effectiveChurchId);
       formattedReceipt = String(nextReceiptInt).padStart(6, '0');
+      registerReceiptInLocalStorage(effectiveChurchId, nextReceiptInt, lancamento);
     }
 
     // 2. Mapeamento limpo e rigoroso de dados

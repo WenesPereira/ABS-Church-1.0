@@ -47,6 +47,7 @@ import {
   searchDizimistasOrMembers,
   calculateNextReceiptNumber,
   getNextReceiptNumber,
+  registerReceiptInLocalStorage,
   toSqlDate,
 } from '../services/treasuryService';
 import { supabase, isSupabaseConfigured } from '../services/supabase';
@@ -69,6 +70,7 @@ import { SingleReceiptModal } from './SingleReceiptModal';
 interface LancamentosViewProps {
   fechamento: FechamentoCulto;
   setFechamento: React.Dispatch<React.SetStateAction<FechamentoCulto>> | ((updater: (prev: FechamentoCulto) => FechamentoCulto) => void);
+  historico?: FechamentoCulto[];
   onNavigate?: (tab: ActiveTab) => void;
   currentUser?: UserType | null;
   config?: ConfigIgreja;
@@ -79,6 +81,7 @@ interface LancamentosViewProps {
 export const LancamentosView: React.FC<LancamentosViewProps> = ({
   fechamento,
   setFechamento,
+  historico = [],
   onNavigate,
   currentUser,
   syncStatus,
@@ -428,6 +431,31 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
   ) => {
     setIsSubmitting(true);
 
+    const rawTipo = String(lancamentoToSave.tipo || '').toLowerCase().trim();
+    const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
+    const finalTipo = isSaida ? 'saida' : 'entrada';
+    const finalCategoria = lancamentoToSave.categoria || (isSaida ? 'outros' : 'oferta_culto');
+
+    // 3. Garantir que o número do recibo seja atribuído NO MOMENTO DO SALVAMENTO DO REGISTRO:
+    // Busca SEMPRE no banco de dados e localStorage completo (sem aplicar filtros de mês, ano ou categoria)
+    // e extrai o MAIOR número existente somando +1.
+    let calculatedNumericReceipt: number | null = null;
+    if (finalTipo === 'entrada') {
+      const todosEmMemoria = [
+        ...(Array.isArray(fechamento.lancamentos) ? fechamento.lancamentos : []),
+        ...(Array.isArray(historico) ? historico.flatMap((h) => h.lancamentos || []) : []),
+      ];
+
+      const proximoNumero = await calculateNextReceiptNumber(currentUser?.id, todosEmMemoria);
+      calculatedNumericReceipt = proximoNumero;
+      const novoNumeroRecibo = proximoNumero.toString().padStart(6, '0');
+
+      lancamentoToSave.receiptNumber = novoNumeroRecibo;
+
+      // Registra imediatamente no histórico do localStorage para garantir sincronismo
+      registerReceiptInLocalStorage(currentUser?.id, proximoNumero, lancamentoToSave);
+    }
+
     // Caso de conta Demonstração
     if (currentUser?.isDemo) {
       setHasSaveError(false);
@@ -465,21 +493,6 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
       : null;
     // Garante que contributor_id seja exclusivamente um UUID válido ou null (NUNCA string vazia "" ou undefined)
     const contributorIdClean = sanitizeContributorId(lancamentoToSave.contributorId);
-
-    const rawTipo = String(lancamentoToSave.tipo || '').toLowerCase().trim();
-    const isSaida = rawTipo === 'saida' || rawTipo === 'saída' || rawTipo.includes('said') || rawTipo.includes('desp');
-    const finalTipo = isSaida ? 'saida' : 'entrada';
-    const finalCategoria = lancamentoToSave.categoria || (isSaida ? 'outros' : 'oferta_culto');
-
-    let calculatedNumericReceipt: number | null = null;
-    if (finalTipo === 'entrada') {
-      if (options?.numericReceiptNumber !== undefined) {
-        calculatedNumericReceipt = options.numericReceiptNumber;
-      } else if (lancamentoToSave.receiptNumber) {
-        const parsed = parseInt(String(lancamentoToSave.receiptNumber).replace(/\D/g, ''), 10);
-        calculatedNumericReceipt = Number.isNaN(parsed) ? null : parsed;
-      }
-    }
 
     // 1. Mapeamento Exato da Tabela 'lancamentos' sem qualquer propriedade undefined
     const payload: Record<string, any> = {
