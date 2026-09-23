@@ -13,7 +13,9 @@ import {
   getCategoriasRelatorioAtivas,
   calcularResumoRelatorio,
   DEFAULT_RELATORIO_CATEGORIAS,
+  filterLancamentosByPeriodo,
 } from '../utils/calculations';
+import { toLocalYMD } from '../utils/receiptHelper';
 
 interface PrintReceiptModalProps {
   fechamento: FechamentoCulto;
@@ -42,8 +44,14 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
   const catsPrebenda = fechamento.categoriasPrebenda || ALL_ENTRADA_CATEGORIES;
   const deduzirMatrizBasePrebenda = fechamento.deduzirMatrizBasePrebenda ?? false;
 
+  const dataInicioPeriodo = fechamento.dataInicio ? toLocalYMD(fechamento.dataInicio) : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+  const dataFimPeriodo = fechamento.dataFim ? toLocalYMD(fechamento.dataFim) : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+  const lancamentosFiltrados = React.useMemo(() => {
+    return filterLancamentosByPeriodo(fechamento.lancamentos || [], dataInicioPeriodo, dataFimPeriodo);
+  }, [fechamento.lancamentos, dataInicioPeriodo, dataFimPeriodo]);
+
   const resumo = calcularResumoLancamentos(
-    fechamento.lancamentos, 
+    lancamentosFiltrados, 
     porcentagemMatriz,
     aplicarRepasse,
     tipoBase,
@@ -127,8 +135,8 @@ export const PrintReceiptModal: React.FC<PrintReceiptModalProps> = ({ fechamento
     getValidSignerName(config.tesoureiroPadrao, 'Tesoureiro(a) Principal') ||
     'Tesoureiro(a) Responsável';
 
-  const saidaLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'saida');
-  const dizimoLancamentos = fechamento.lancamentos.filter((l) => l.tipo === 'entrada' && l.categoria === 'dizimo');
+  const saidaLancamentos = lancamentosFiltrados.filter((l) => l.tipo === 'saida');
+  const dizimoLancamentos = lancamentosFiltrados.filter((l) => l.tipo === 'entrada' && l.categoria === 'dizimo');
 
   const handlePrint = () => {
     window.print();

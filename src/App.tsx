@@ -730,6 +730,8 @@ export default function App() {
               <FechamentoAtualView
                 fechamento={fechamentoAtual}
                 setFechamento={handleSetFechamentoAtual}
+                historico={historico}
+                setHistorico={setHistorico}
                 onGoToLancamentos={() => setActiveTab('lancamentos')}
                 onGoToContagem={() => setActiveTab('contagem')}
                 onGoToRelatorioIA={() => setActiveTab('relatorio_ia')}

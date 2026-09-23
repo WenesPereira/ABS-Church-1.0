@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Church,
   Coins,
@@ -23,6 +23,7 @@ import {
   SlidersHorizontal,
   CheckSquare,
   Filter,
+  Calendar,
 } from 'lucide-react';
 
 import {
@@ -43,6 +44,8 @@ import {
   getCategoriasRelatorioAtivas,
   calcularResumoRelatorio,
   DEFAULT_RELATORIO_CATEGORIAS,
+  filterLancamentosByPeriodo,
+  extractLancamentoDate,
 } from '../utils/calculations';
 import { deleteLancamento, isSuperAdmin } from '../services/treasuryService';
 import {
@@ -59,7 +62,9 @@ import { SingleReceiptModal } from './SingleReceiptModal';
 
 interface FechamentoAtualViewProps {
   fechamento: FechamentoCulto;
-  setFechamento: React.Dispatch<React.SetStateAction<FechamentoCulto>>;
+  setFechamento: React.Dispatch<React.SetStateAction<FechamentoCulto>> | ((updater: (prev: FechamentoCulto) => FechamentoCulto) => void);
+  historico?: FechamentoCulto[];
+  setHistorico?: React.Dispatch<React.SetStateAction<FechamentoCulto[]>>;
   onGoToLancamentos: () => void;
   onGoToContagem: () => void;
   onGoToRelatorioIA: () => void;
@@ -72,6 +77,8 @@ interface FechamentoAtualViewProps {
 export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   fechamento,
   setFechamento,
+  historico = [],
+  setHistorico,
   onGoToLancamentos,
   onGoToContagem,
   onGoToRelatorioIA,
@@ -81,12 +88,52 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   config,
 }) => {
   /*
-   * Proteções para dados antigos/incompletos.
-   * Isso evita erros caso algum campo esteja ausente no localStorage.
+   * 1. Extração padronizada do período de início e término selecionado pelo usuário.
    */
-  const lancamentos = Array.isArray(fechamento.lancamentos)
-    ? fechamento.lancamentos
-    : [];
+  const dataInicio = fechamento.dataInicio
+    ? toLocalYMD(fechamento.dataInicio)
+    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+
+  const dataFim = fechamento.dataFim
+    ? toLocalYMD(fechamento.dataFim)
+    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+
+  /*
+   * 2. Reunião de todos os registros de lançamentos disponíveis (fechamento atual e histórico),
+   * eliminando registros duplicados por ID.
+   */
+  const todosLancamentos = useMemo<Lancamento[]>(() => {
+    const map = new Map<string, Lancamento>();
+
+    if (Array.isArray(fechamento.lancamentos)) {
+      for (const l of fechamento.lancamentos) {
+        if (l && l.id) map.set(l.id, l);
+      }
+    }
+
+    if (Array.isArray(historico)) {
+      for (const h of historico) {
+        if (Array.isArray(h.lancamentos)) {
+          for (const l of h.lancamentos) {
+            if (l && l.id && !map.has(l.id)) {
+              map.set(l.id, l);
+            }
+          }
+        }
+      }
+    }
+
+    return Array.from(map.values());
+  }, [fechamento.lancamentos, historico]);
+
+  /*
+   * 3. FILTRO DE DATA EXCLUSIVO DO PERÍODO SELECIONADO:
+   * Aplica a condição estrita: registro.data >= dataInicio && registro.data <= dataFinal
+   * suportando tanto 'data', 'data_lancamento' quanto 'created_at'.
+   */
+  const lancamentosFiltrados = useMemo<Lancamento[]>(() => {
+    return filterLancamentosByPeriodo(todosLancamentos, dataInicio, dataFim);
+  }, [todosLancamentos, dataInicio, dataFim]);
 
   const contagemDinheiro: ContagemDinheiro =
     fechamento.contagemDinheiro && typeof fechamento.contagemDinheiro === 'object' && !Array.isArray(fechamento.contagemDinheiro)
@@ -133,8 +180,25 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   const [isReceiptsSearchOpen, setIsReceiptsSearchOpen] = useState(false);
   const [selectedReceiptForPrint, setSelectedReceiptForPrint] = useState<Lancamento | null>(null);
 
-  const resumo = calcularResumoLancamentos(
-    lancamentos,
+  /*
+   * 4. CÁLCULO DOS CARDS CONSIDERANDO EXCLUSIVAMENTE OS REGISTROS DO INTERVALO:
+   * Total Entradas, Dízimos, Ofertas, Saídas/Despesas, Base de Cálculo do Repasse e Prebenda
+   */
+  const resumo = useMemo(() => {
+    return calcularResumoLancamentos(
+      lancamentosFiltrados,
+      porcentagemMatriz,
+      aplicarRepasseMatriz,
+      tipoBase,
+      catsRepasse,
+      porcentagemPrebenda,
+      aplicarPrebenda,
+      tipoBasePrebenda,
+      catsPrebenda,
+      deduzirMatrizBasePrebenda
+    );
+  }, [
+    lancamentosFiltrados,
     porcentagemMatriz,
     aplicarRepasseMatriz,
     tipoBase,
@@ -143,8 +207,8 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
     aplicarPrebenda,
     tipoBasePrebenda,
     catsPrebenda,
-    deduzirMatrizBasePrebenda
-  );
+    deduzirMatrizBasePrebenda,
+  ]);
 
   const totalContagemFisica = calcularTotalContagem(contagemDinheiro);
 
@@ -160,7 +224,9 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
     config?.categoriasRelatorioPadrao || DEFAULT_RELATORIO_CATEGORIAS
   );
 
-  const resumoRelatorio = calcularResumoRelatorio(resumo, categoriasRelatorioAtivas);
+  const resumoRelatorio = useMemo(() => {
+    return calcularResumoRelatorio(resumo, categoriasRelatorioAtivas);
+  }, [resumo, categoriasRelatorioAtivas]);
 
   /*
    * Atualiza qualquer campo do fechamento.
@@ -174,6 +240,42 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
     setFechamento((prev) => ({
       ...prev,
       [field]: value,
+    }));
+  };
+
+  /*
+   * Funções rápidas para manipulação do período
+   */
+  const handleSetPeriodoHoje = () => {
+    const today = toLocalYMD();
+    setFechamento((prev) => ({
+      ...prev,
+      dataInicio: today,
+      dataFim: today,
+      data: today,
+    }));
+  };
+
+  const handleSetPeriodoMesAtual = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const firstDay = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const lastDate = new Date(year, month + 1, 0).getDate();
+    const lastDay = `${year}-${String(month + 1).padStart(2, '0')}-${String(lastDate).padStart(2, '0')}`;
+    setFechamento((prev) => ({
+      ...prev,
+      dataInicio: firstDay,
+      dataFim: lastDay,
+      data: lastDay,
+    }));
+  };
+
+  const handleLimparPeriodo = () => {
+    setFechamento((prev) => ({
+      ...prev,
+      dataInicio: '',
+      dataFim: '',
     }));
   };
 
@@ -350,6 +452,17 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           ? prev.lancamentos.filter((l) => l.id !== id)
           : [],
       }));
+
+      if (setHistorico) {
+        setHistorico((prev) =>
+          prev.map((h) => ({
+            ...h,
+            lancamentos: Array.isArray(h.lancamentos)
+              ? h.lancamentos.filter((l) => l.id !== id)
+              : [],
+          }))
+        );
+      }
     } catch (err: any) {
       console.error('Erro ao excluir lançamento:', err);
       const errMsg = err?.message || 'Falha inesperada ao tentar excluir o lançamento.';
@@ -393,14 +506,6 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
   const formatDate = (value?: string) => {
     return formatDateBR(value);
   };
-
-  const dataInicio = fechamento.dataInicio
-    ? toLocalYMD(fechamento.dataInicio)
-    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
-
-  const dataFim = fechamento.dataFim
-    ? toLocalYMD(fechamento.dataFim)
-    : (fechamento.data ? toLocalYMD(fechamento.data) : '');
 
   /*
    * Lógica de cálculo e badge da Assinatura no Header
@@ -593,7 +698,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
               <input
                 type="date"
-                value={toLocalYMD(fechamento.dataInicio || fechamento.data)}
+                value={dataInicio}
                 onChange={(e) => {
                   const value = e.target.value;
 
@@ -619,7 +724,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 
               <input
                 type="date"
-                value={toLocalYMD(fechamento.dataFim || fechamento.data)}
+                value={dataFim}
                 onChange={(e) => {
                   const value = e.target.value;
 
@@ -868,6 +973,53 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
                 placeholder="Nome do(a) tesoureiro(a)"
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
               />
+            </div>
+          </div>
+
+          {/* BARRA DE CONTROLE DO PERÍODO DA ATA / CÁLCULOS */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-slate-800/60">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                Cálculos e Ata filtrados por:{' '}
+                <strong className="text-amber-300 font-mono">
+                  {dataInicio ? formatDate(dataInicio) : 'Início'}
+                  {' até '}
+                  {dataFim ? formatDate(dataFim) : 'Hoje'}
+                </strong>
+              </span>
+              <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-full font-mono border border-slate-700">
+                {lancamentosFiltrados.length} {lancamentosFiltrados.length === 1 ? 'registro' : 'registros'}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1.5 self-end sm:self-auto">
+              <button
+                type="button"
+                onClick={handleSetPeriodoHoje}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer border border-slate-700"
+                title="Filtrar lançamentos de hoje"
+              >
+                Hoje
+              </button>
+              <button
+                type="button"
+                onClick={handleSetPeriodoMesAtual}
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition-colors cursor-pointer border border-slate-700"
+                title="Filtrar mês atual completo"
+              >
+                Mês Atual
+              </button>
+              {(dataInicio || dataFim) && (
+                <button
+                  type="button"
+                  onClick={handleLimparPeriodo}
+                  className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-medium transition-colors border border-slate-800 cursor-pointer"
+                  title="Limpar restrição de datas e ver todos os lançamentos"
+                >
+                  Ver Todos
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -1454,12 +1606,12 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
             <h3 className="text-sm font-bold text-slate-100 flex items-center gap-2">
               <FileText className="w-4 h-4 text-amber-400" />
               <span>
-                Dízimos, Ofertas e Despesas Registradas ({lancamentos.length})
+                Dízimos, Ofertas e Despesas Registradas ({lancamentosFiltrados.length})
               </span>
             </h3>
 
             <p className="text-xs text-slate-400">
-              Detalhamento individual das entradas com emissão de recibos e saídas.
+              Detalhamento individual das entradas com emissão de recibos e saídas do período selecionado.
             </p>
           </div>
 
@@ -1485,12 +1637,12 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
           </div>
         </div>
 
-        {lancamentos.length === 0 ? (
+        {lancamentosFiltrados.length === 0 ? (
           <div className="text-center py-10 bg-slate-950/60 border border-dashed border-slate-800 rounded-2xl p-6">
             <DollarSign className="w-10 h-10 text-slate-600 mx-auto mb-2" />
 
             <p className="text-slate-400 text-xs font-medium">
-              Nenhum lançamento registrado neste período.
+              Nenhum lançamento registrado no período de {dataInicio ? formatDate(dataInicio) : 'início'} a {dataFim ? formatDate(dataFim) : 'hoje'}.
             </p>
 
             <button
@@ -1516,7 +1668,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
               </thead>
 
               <tbody className="divide-y divide-slate-800/60">
-                {lancamentos.map((l) => {
+                {lancamentosFiltrados.map((l) => {
                   const tipoLancamento =
                     l.tipo === 'saida'
                       ? 'saida'
@@ -2070,7 +2222,7 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
       <ReceiptsSearchModal
         isOpen={isReceiptsSearchOpen}
         onClose={() => setIsReceiptsSearchOpen(false)}
-        lancamentos={lancamentos}
+        lancamentos={lancamentosFiltrados}
         config={
           config || {
             nomeIgreja: 'ABS CHURCH',

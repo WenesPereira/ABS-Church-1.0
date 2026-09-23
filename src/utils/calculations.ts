@@ -1,4 +1,5 @@
 import { Lancamento, ContagemDinheiro, CategoriaEntrada } from '../types';
+import { toLocalYMD } from './receiptHelper';
 
 export const ALL_ENTRADA_CATEGORIES: CategoriaEntrada[] = [
   'dizimo',
@@ -8,6 +9,87 @@ export const ALL_ENTRADA_CATEGORIES: CategoriaEntrada[] = [
   'doacao',
   'outros',
 ];
+
+/**
+ * Extrai a data no formato normalizado ISO YYYY-MM-DD a partir de qualquer registro de lançamento.
+ * Verifica estritamente: registro.data, data_lancamento, created_at e criado_em.
+ */
+export function extractLancamentoDate(item: any): string {
+  if (!item) return '';
+  const raw = item.data || item.data_lancamento || item.created_at || item.criado_em;
+  if (!raw || typeof raw !== 'string' || !raw.trim()) return '';
+
+  const trimmed = raw.trim();
+
+  // Formato brasileiro: DD/MM/YYYY ou DD/MM/YYYY HH:mm...
+  const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (brMatch) {
+    const day = brMatch[1].padStart(2, '0');
+    const month = brMatch[2].padStart(2, '0');
+    const year = brMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  // Formato ISO: YYYY-MM-DD ou YYYY-MM-DDTHH:mm...
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = isoMatch[2].padStart(2, '0');
+    const day = isoMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  try {
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  } catch {}
+
+  return '';
+}
+
+/**
+ * Filtra lançamentos considerando EXCLUSIVAMENTE os registros cuja data
+ * esteja DENTRO do intervalo selecionado:
+ * Condição: registro.data >= dataInicio && registro.data <= dataFinal
+ */
+export function filterLancamentosByPeriodo<T extends { data?: string }>(
+  lancamentos: T[],
+  dataInicio?: string | null,
+  dataFim?: string | null
+): T[] {
+  if (!Array.isArray(lancamentos)) return [];
+
+  const start = dataInicio ? toLocalYMD(dataInicio) : '';
+  const end = dataFim ? toLocalYMD(dataFim) : '';
+
+  // Se nenhum limite for informado, retorna todos os lançamentos
+  if (!start && !end) {
+    return lancamentos;
+  }
+
+  return lancamentos.filter((registro) => {
+    const regDate = extractLancamentoDate(registro);
+    if (!regDate) {
+      return false;
+    }
+
+    if (start && end) {
+      return regDate >= start && regDate <= end;
+    }
+    if (start) {
+      return regDate >= start;
+    }
+    if (end) {
+      return regDate <= end;
+    }
+    return true;
+  });
+}
 
 export const CATEGORIA_ENTRADA_LABELS: Record<CategoriaEntrada, string> = {
   dizimo: 'Dízimos',
@@ -72,8 +154,15 @@ export function calcularResumoLancamentos(
   aplicarPrebenda: boolean = false,
   tipoBasePrebenda: 'todas' | 'selecionadas' = 'todas',
   categoriasPrebenda: CategoriaEntrada[] = ALL_ENTRADA_CATEGORIES,
-  deduzirMatrizBasePrebenda: boolean = false
+  deduzirMatrizBasePrebenda: boolean = false,
+  dataInicio?: string | null,
+  dataFim?: string | null
 ) {
+  // Se filtros de período forem informados, aplica a filtragem estrita
+  const listaLancamentos = (dataInicio || dataFim)
+    ? filterLancamentosByPeriodo(lancamentos, dataInicio, dataFim)
+    : (Array.isArray(lancamentos) ? lancamentos : []);
+
   let totalEntradas = 0;
   let totalSaidas = 0;
 
@@ -101,7 +190,7 @@ export function calcularResumoLancamentos(
     ? ALL_ENTRADA_CATEGORIES
     : categoriasPrebenda;
 
-  lancamentos.forEach((l) => {
+  listaLancamentos.forEach((l) => {
     const val = l.valor || 0;
     if (l.tipo === 'entrada') {
       totalEntradas += val;

@@ -15,7 +15,9 @@ import {
   DEFAULT_RELATORIO_CATEGORIAS,
   CATEGORIA_ENTRADA_LABELS,
   formatCurrency,
+  filterLancamentosByPeriodo,
 } from '../utils/calculations';
+import { toLocalYMD } from '../utils/receiptHelper';
 
 interface RelatorioIAViewProps {
   fechamento: FechamentoCulto;
@@ -239,14 +241,18 @@ export const RelatorioIAView: React.FC<RelatorioIAViewProps> = ({
         config?.categoriasRelatorioPadrao || DEFAULT_RELATORIO_CATEGORIAS
       );
 
+      const dataInicioPeriodo = fechamento.dataInicio ? toLocalYMD(fechamento.dataInicio) : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+      const dataFimPeriodo = fechamento.dataFim ? toLocalYMD(fechamento.dataFim) : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+      const lancamentosDoPeriodo = filterLancamentosByPeriodo(fechamento.lancamentos || [], dataInicioPeriodo, dataFimPeriodo);
+
       // Filtra lançamentos de entrada: apenas categorias ativamente marcadas
-      const lancamentosFiltrados = fechamento.lancamentos.filter((l) => {
+      const lancamentosFiltrados = lancamentosDoPeriodo.filter((l) => {
         if (l.tipo === 'saida') return true;
         return categoriasRelatorioAtivas.includes(l.categoria as CategoriaEntrada);
       });
 
       const resumoCalculado = calcularResumoLancamentos(
-        fechamento.lancamentos,
+        lancamentosDoPeriodo,
         porcentagemMatriz,
         aplicarRepasse,
         tipoBase,

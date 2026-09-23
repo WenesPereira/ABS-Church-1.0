@@ -1,7 +1,8 @@
 import React from 'react';
 import { Coins, CheckCircle, AlertCircle, RefreshCw, DollarSign, Calculator, ArrowLeft, PlusCircle } from 'lucide-react';
 import { FechamentoCulto, ContagemDinheiro, ActiveTab } from '../types';
-import { formatCurrency, calcularTotalContagem, calcularResumoLancamentos } from '../utils/calculations';
+import { formatCurrency, calcularTotalContagem, calcularResumoLancamentos, filterLancamentosByPeriodo } from '../utils/calculations';
+import { toLocalYMD } from '../utils/receiptHelper';
 
 interface ContagemDinheiroViewProps {
   fechamento: FechamentoCulto;
@@ -11,7 +12,10 @@ interface ContagemDinheiroViewProps {
 
 export const ContagemDinheiroView: React.FC<ContagemDinheiroViewProps> = ({ fechamento, setFechamento, onNavigate }) => {
   const c = fechamento.contagemDinheiro;
-  const resumo = calcularResumoLancamentos(fechamento.lancamentos);
+  const dataInicio = fechamento.dataInicio ? toLocalYMD(fechamento.dataInicio) : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+  const dataFim = fechamento.dataFim ? toLocalYMD(fechamento.dataFim) : (fechamento.data ? toLocalYMD(fechamento.data) : '');
+  const lancamentosPeriodo = filterLancamentosByPeriodo(fechamento.lancamentos || [], dataInicio, dataFim);
+  const resumo = calcularResumoLancamentos(lancamentosPeriodo);
   const totalContagem = calcularTotalContagem(c);
   const totalLancadoDinheiro = resumo.totalDinheiro;
   const diferenca = totalContagem - totalLancadoDinheiro;

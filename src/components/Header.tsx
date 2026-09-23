@@ -25,7 +25,8 @@ import {
   Bell,
 } from 'lucide-react';
 import { ActiveTab, FechamentoCulto, ConfigIgreja, User } from '../types';
-import { formatCurrency, calcularResumoLancamentos } from '../utils/calculations';
+import { formatCurrency, calcularResumoLancamentos, filterLancamentosByPeriodo } from '../utils/calculations';
+import { toLocalYMD } from '../utils/receiptHelper';
 import { isSubscriptionActive } from '../services/treasuryService';
 
 interface HeaderProps {
@@ -70,8 +71,12 @@ export const Header: React.FC<HeaderProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMobileMenuOpen]);
 
+  const dataInicio = fechamentoAtual.dataInicio ? toLocalYMD(fechamentoAtual.dataInicio) : (fechamentoAtual.data ? toLocalYMD(fechamentoAtual.data) : '');
+  const dataFim = fechamentoAtual.dataFim ? toLocalYMD(fechamentoAtual.dataFim) : (fechamentoAtual.data ? toLocalYMD(fechamentoAtual.data) : '');
+  const lancamentosPeriodo = filterLancamentosByPeriodo(fechamentoAtual.lancamentos || [], dataInicio, dataFim);
+
   const resumo = calcularResumoLancamentos(
-    fechamentoAtual.lancamentos,
+    lancamentosPeriodo,
     fechamentoAtual.porcentagemMatriz ?? 20,
     fechamentoAtual.aplicarRepasseMatriz ?? true,
     fechamentoAtual.tipoBaseRepasseMatriz || 'todas',
@@ -83,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
     : new Date().toLocaleDateString('pt-BR');
 
   const isClosed = fechamentoAtual.status === 'fechado';
-  const qtdLancamentos = fechamentoAtual.lancamentos ? fechamentoAtual.lancamentos.length : 0;
+  const qtdLancamentos = lancamentosPeriodo.length;
 
   const navItems: {
     id: ActiveTab;
