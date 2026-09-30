@@ -18,6 +18,7 @@ import {
   fetchUserProfile,
   updateUserSubscriptionStatus,
   isSubscriptionActive,
+  isSubscriptionExpired,
   isSuperAdmin,
   fetchGlobalAdminConfig,
   getLocalSupportConfig,
@@ -284,6 +285,7 @@ export default function App() {
           nome: profile?.nome || meta.nome || (isSuper ? 'Super Administrador' : 'Tesoureiro'),
           cargo: profile?.cargo || meta.cargo || (isSuper ? 'Administrador do Sistema' : 'Tesoureiro Principal'),
           nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || 'Minha Igreja',
+          statusAssinatura: isSuper ? 'ativo' : (profile?.statusAssinatura || 'pendente'),
           subscriptionStatus: isSuper ? 'active' : (profile?.subscriptionStatus || 'inactive'),
           subscriptionPlan: isSuper ? 'pro_isento' : (profile?.subscriptionPlan || 'mensal'),
           subscriptionExpiresAt: isSuper ? 'Vitalício / Isento' : profile?.subscriptionExpiresAt,
@@ -327,6 +329,7 @@ export default function App() {
           nome: profile?.nome || meta.nome || (isSuper ? 'Super Administrador' : 'Tesoureiro'),
           cargo: profile?.cargo || meta.cargo || (isSuper ? 'Administrador do Sistema' : 'Tesoureiro Principal'),
           nomeIgreja: profile?.nomeIgreja || meta.nome_igreja || 'Minha Igreja',
+          statusAssinatura: isSuper ? 'ativo' : (profile?.statusAssinatura || 'pendente'),
           subscriptionStatus: isSuper ? 'active' : (profile?.subscriptionStatus || 'inactive'),
           subscriptionPlan: isSuper ? 'pro_isento' : (profile?.subscriptionPlan || 'mensal'),
           subscriptionExpiresAt: isSuper ? 'Vitalício / Isento' : profile?.subscriptionExpiresAt,
@@ -351,6 +354,53 @@ export default function App() {
       subscription?.unsubscribe();
     };
   }, [loadUserDataFromSupabase]);
+
+  /* =========================================================
+     VERIFICAÇÃO PERIÓDICA DE ASSINATURA EXPIRADA
+     ========================================================= */
+  useEffect(() => {
+    if (!currentUser?.id || isSuperAdmin(currentUser) || currentUser.isDemo) return;
+
+    // Checagem imediata se a data local já ultrapassou o vencimento
+    if (isSubscriptionExpired(currentUser)) {
+      fetchUserProfile(currentUser.id).then((fresh) => {
+        if (fresh) setCurrentUser(fresh);
+      });
+    }
+
+    const interval = setInterval(async () => {
+      if (currentUser?.id) {
+        const fresh = await fetchUserProfile(currentUser.id);
+        if (fresh) {
+          const freshExpired = isSubscriptionExpired(fresh);
+          const currentExpired = isSubscriptionExpired(currentUser);
+          if (
+            freshExpired !== currentExpired ||
+            fresh.subscriptionStatus !== currentUser.subscriptionStatus ||
+            fresh.statusAssinatura !== currentUser.statusAssinatura ||
+            fresh.subscriptionExpiresAt !== currentUser.subscriptionExpiresAt
+          ) {
+            setCurrentUser(fresh);
+          }
+        }
+      }
+    }, 45000);
+
+    // Também verifica quando o usuário retorna à aba (focus/visibilitychange)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && currentUser?.id) {
+        fetchUserProfile(currentUser.id).then((fresh) => {
+          if (fresh) setCurrentUser(fresh);
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [currentUser?.id, currentUser?.subscriptionStatus, currentUser?.statusAssinatura, currentUser?.subscriptionExpiresAt]);
 
   /* =========================================================
      AUTH HANDLERS
@@ -387,6 +437,7 @@ export default function App() {
     const resolvedUser: User = dbProfile
       ? {
           ...user,
+          statusAssinatura: dbProfile.statusAssinatura,
           subscriptionStatus: dbProfile.subscriptionStatus || 'inactive',
           subscriptionPlan: dbProfile.subscriptionPlan || 'mensal',
           subscriptionExpiresAt: dbProfile.subscriptionExpiresAt,
@@ -447,6 +498,11 @@ export default function App() {
       return;
     }
 
+    if (!isSubscriptionActive(currentUser)) {
+      showDemoAlert('Sua assinatura do Tesouraria Pro está expirada. Renove seu plano para continuar.');
+      return;
+    }
+
     setFechamentoAtual((prev) => {
       const updated = typeof updater === 'function' ? updater(prev) : updater;
 
@@ -491,6 +547,11 @@ export default function App() {
       return;
     }
 
+    if (!isSubscriptionActive(currentUser)) {
+      showDemoAlert('Sua assinatura do Tesouraria Pro está expirada. Renove seu plano para continuar.');
+      return;
+    }
+
     setConfigIgreja((prev) => {
       const updated = typeof updater === 'function' ? updater(prev) : updater;
       if (currentUser?.id) {
@@ -516,6 +577,11 @@ export default function App() {
   const handleManualSave = async () => {
     if (currentUser?.isDemo) {
       showDemoAlert('Esta é uma conta de demonstração. Recursos de edição estão disponíveis apenas na versão completa.');
+      return;
+    }
+
+    if (!isSubscriptionActive(currentUser)) {
+      showDemoAlert('Sua assinatura do Tesouraria Pro está expirada. Renove seu plano para continuar.');
       return;
     }
 
@@ -650,12 +716,13 @@ export default function App() {
     );
   }
 
-  // BLOQUEIO TOTAL PARA USUÁRIOS NÃO-PRO:
-  // Se subscription_status !== 'active', exibe apenas a tela de assinatura e benefícios
+  // BLOQUEIO TOTAL POR ASSINATURA EXPIRADA OU NÃO ATIVA:
+  // Se dataAtual > dataExpiracaoAssinatura (ou status !== 'ativo'), redireciona automaticamente para tela de renovação
   if (!isSubscriptionActive(currentUser)) {
     return (
       <SubscriptionGateView
         currentUser={currentUser}
+        globalConfig={globalConfig}
         onLogout={handleLogout}
         onStatusUpdated={(updated) => {
           setCurrentUser(updated);

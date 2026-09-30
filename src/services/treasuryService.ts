@@ -45,6 +45,131 @@ export function isSuperAdmin(target?: User | { email?: string } | string | null)
   return SUPER_ADMIN_EMAILS.some((adm) => adm.toLowerCase() === clean);
 }
 
+/**
+ * Verifica se a assinatura de um usuário está expirada ou inativa.
+ * REGRA EXCLUSIVA: O Super Admin (wenes13@hotmail.com e autorizados) e Modo Demo possuem isenção vitalícia automática.
+ * 
+ * Para os demais usuários:
+ * 1. Se dataAtual > dataExpiracaoAssinatura (subscription_expires_at) -> EXPIRADA!
+ * 2. Se status !== 'ativo' (ou explicitamente expirada/cancelada/inativa/bloqueada) -> EXPIRADA!
+ */
+export function isSubscriptionExpired(
+  user?: User | {
+    email?: string;
+    subscriptionStatus?: string;
+    statusAssinatura?: string;
+    subscriptionExpiresAt?: string;
+    isDemo?: boolean;
+  } | null
+): boolean {
+  if (!user) return true;
+
+  // 1. Isenção vitalícia automática para Super Admin ou Modo Demonstração
+  if (isSuperAdmin(user) || (user as User).isDemo === true) {
+    return false;
+  }
+
+  // 2. Extração dos status de assinatura
+  const rawStatusAssinatura = (
+    (user as any).statusAssinatura ||
+    (user as any).status_assinatura ||
+    ''
+  ).toLowerCase().trim();
+
+  const rawSubStatus = (
+    user.subscriptionStatus ||
+    (user as any).subscription_status ||
+    ''
+  ).toLowerCase().trim();
+
+  // Se qualquer status explicitamente indicar expiração ou cancelamento
+  if (
+    rawStatusAssinatura.includes('expirad') ||
+    rawSubStatus.includes('expirad') ||
+    rawStatusAssinatura.includes('cancelad') ||
+    rawSubStatus.includes('cancelad') ||
+    rawStatusAssinatura === 'inativo' ||
+    rawStatusAssinatura === 'inativa' ||
+    rawSubStatus === 'inactive' ||
+    rawStatusAssinatura.includes('bloquead') ||
+    rawSubStatus.includes('bloquead')
+  ) {
+    return true;
+  }
+
+  // 3. Verificação por Data de Expiração (dataAtual > dataExpiracaoAssinatura)
+  const rawExpiresAt = (
+    user.subscriptionExpiresAt ||
+    (user as any).subscription_expires_at ||
+    (user as any).dataExpiracaoAssinatura ||
+    (user as any).data_expiracao_assinatura ||
+    ''
+  ).toString().trim();
+
+  if (rawExpiresAt) {
+    const lowerExpires = rawExpiresAt.toLowerCase();
+    const isVitalicio =
+      lowerExpires.includes('vitalício') ||
+      lowerExpires.includes('vitalicio') ||
+      lowerExpires.includes('isento') ||
+      lowerExpires.includes('demonstração') ||
+      lowerExpires.includes('demonstracao');
+
+    if (!isVitalicio) {
+      let expTimestamp: number | null = null;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(rawExpiresAt)) {
+        const [y, m, d] = rawExpiresAt.split('-').map(Number);
+        // Expira às 23:59:59.999 do dia determinado no fuso horário local
+        expTimestamp = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+      } else {
+        const parsed = new Date(rawExpiresAt).getTime();
+        if (!isNaN(parsed)) {
+          expTimestamp = parsed;
+        }
+      }
+
+      if (expTimestamp !== null && Date.now() > expTimestamp) {
+        return true; // Expirou pela data de vencimento
+      }
+    }
+  }
+
+  // 4. Verificação de status !== 'ativo'
+  const isStatusAtivo =
+    rawStatusAssinatura === 'ativo' ||
+    rawStatusAssinatura === 'active' ||
+    rawStatusAssinatura === 'pago' ||
+    rawStatusAssinatura === 'aprovado' ||
+    (rawStatusAssinatura === '' && (
+      rawSubStatus === 'active' ||
+      rawSubStatus === 'ativo' ||
+      rawSubStatus === 'trialing' ||
+      rawSubStatus === 'pago'
+    ));
+
+  if (!isStatusAtivo) {
+    return true; // Status diferente de ativo
+  }
+
+  return false;
+}
+
+/**
+ * Verifica se o usuário tem assinatura ativa (válida e não expirada).
+ */
+export function isSubscriptionActive(
+  user?: User | {
+    email?: string;
+    subscriptionStatus?: string;
+    statusAssinatura?: string;
+    subscriptionExpiresAt?: string;
+    isDemo?: boolean;
+  } | null
+): boolean {
+  if (!user) return false;
+  return !isSubscriptionExpired(user);
+}
+
 export interface ContatoRegistro {
   id: string;
   data: string;
@@ -812,8 +937,80 @@ const OPTIONAL_FECHAMENTO_COLS_ORDER = [
   'porcentagem_matriz',
 ];
 
+/**
+ * Cache temporário em memória para validação de permissão de escrita, evitando roundtrips desnecessários
+ */
+const writePermissionCache = new Map<string, { allowed: boolean; reason?: string; timestamp: number }>();
+
+export function invalidateWritePermissionCache(userId?: string): void {
+  if (userId) {
+    writePermissionCache.delete(userId);
+  } else {
+    writePermissionCache.clear();
+  }
+}
+
+/**
+ * Validação de segurança no nível do banco de dados:
+ * Impede requisições de criação, atualização e exclusão caso a assinatura esteja expirada ou inativa.
+ */
+export async function canUserWriteToDatabase(userId?: string): Promise<{ allowed: boolean; reason?: string }> {
+  if (!isSupabaseConfigured) {
+    return { allowed: true };
+  }
+
+  const uid = await getCurrentUserId(userId);
+  if (!uid) {
+    return { allowed: false, reason: 'Usuário não autenticado.' };
+  }
+
+  // Verifica cache recente de 5 segundos
+  const cached = writePermissionCache.get(uid);
+  if (cached && Date.now() - cached.timestamp < 5000) {
+    return { allowed: cached.allowed, reason: cached.reason };
+  }
+
+  try {
+    const user = await fetchUserProfile(uid);
+    if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user?.email && isSuperAdmin(session.user.email)) {
+        writePermissionCache.set(uid, { allowed: true, timestamp: Date.now() });
+        return { allowed: true };
+      }
+      const res = { allowed: false, reason: 'Perfil do usuário não encontrado no Supabase.' };
+      writePermissionCache.set(uid, { ...res, timestamp: Date.now() });
+      return res;
+    }
+
+    if (isSuperAdmin(user) || user.isDemo === true) {
+      writePermissionCache.set(uid, { allowed: true, timestamp: Date.now() });
+      return { allowed: true };
+    }
+
+    if (isSubscriptionExpired(user)) {
+      const reason = 'Assinatura expirada ou inativa. Operações de criação e edição no banco de dados estão bloqueadas. Renove o plano para continuar.';
+      console.warn(`[ACESSO BLOQUEADO] Requisição de escrita rejeitada: Assinatura expirada para usuário ${uid}.`);
+      writePermissionCache.set(uid, { allowed: false, reason, timestamp: Date.now() });
+      return { allowed: false, reason };
+    }
+
+    writePermissionCache.set(uid, { allowed: true, timestamp: Date.now() });
+    return { allowed: true };
+  } catch (err: any) {
+    console.error('Erro ao verificar permissão de escrita do usuário:', err);
+    return { allowed: false, reason: 'Erro ao validar status da assinatura.' };
+  }
+}
+
 export async function saveConfiguracaoIgreja(config: ConfigIgreja, userId?: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
+
+  const writeCheck = await canUserWriteToDatabase(userId);
+  if (!writeCheck.allowed) {
+    console.warn('[BLOQUEIO ASSINATURA EXPIRADA] saveConfiguracaoIgreja bloqueado:', writeCheck.reason);
+    return false;
+  }
 
   try {
     const uid = await getCurrentUserId(userId);
@@ -945,6 +1142,12 @@ export async function fetchFechamentos(userId?: string): Promise<{ data: Fechame
 
 export async function saveFechamento(fechamento: FechamentoCulto, userId?: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
+
+  const writeCheck = await canUserWriteToDatabase(userId);
+  if (!writeCheck.allowed) {
+    console.warn('[BLOQUEIO ASSINATURA EXPIRADA] saveFechamento bloqueado:', writeCheck.reason);
+    return false;
+  }
 
   try {
     const uid = await getCurrentUserId(userId);
@@ -1204,6 +1407,12 @@ export async function saveFechamento(fechamento: FechamentoCulto, userId?: strin
 export async function deleteFechamento(fechamentoId: string, userId?: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
+  const writeCheck = await canUserWriteToDatabase(userId);
+  if (!writeCheck.allowed) {
+    console.warn('[BLOQUEIO ASSINATURA EXPIRADA] deleteFechamento bloqueado:', writeCheck.reason);
+    return false;
+  }
+
   try {
     const uid = await getCurrentUserId(userId);
     if (!uid) {
@@ -1456,6 +1665,12 @@ export async function saveContributor(
   contributor: Partial<Contributor>,
   userId?: string
 ): Promise<{ success: boolean; data?: Contributor; error?: string }> {
+  const writeCheck = await canUserWriteToDatabase(userId);
+  if (!writeCheck.allowed) {
+    console.warn('[BLOQUEIO ASSINATURA EXPIRADA] saveContributor bloqueado:', writeCheck.reason);
+    return { success: false, error: writeCheck.reason || 'Assinatura expirada. Operação bloqueada.' };
+  }
+
   const uid = await getCurrentUserId(userId);
   const nowIso = new Date().toISOString();
   const id = contributor.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `contrib-${Date.now()}`);
@@ -1530,6 +1745,12 @@ export async function deleteContributor(
   contributorId: string,
   userId?: string
 ): Promise<{ success: boolean; error?: string }> {
+  const writeCheck = await canUserWriteToDatabase(userId);
+  if (!writeCheck.allowed) {
+    console.warn('[BLOQUEIO ASSINATURA EXPIRADA] deleteContributor bloqueado:', writeCheck.reason);
+    return { success: false, error: writeCheck.reason || 'Assinatura expirada. Operação bloqueada.' };
+  }
+
   const uid = await getCurrentUserId(userId);
 
   // Remove do local
@@ -1854,6 +2075,17 @@ export async function insertLancamentoSupabase(
     return { success: true, receiptNumber: null, formattedReceiptNumber: null };
   }
 
+  const writeCheck = await canUserWriteToDatabase(churchId);
+  if (!writeCheck.allowed) {
+    console.warn('[BLOQUEIO ASSINATURA EXPIRADA] insertLancamentoSupabase bloqueado:', writeCheck.reason);
+    return {
+      success: false,
+      receiptNumber: null,
+      formattedReceiptNumber: null,
+      error: writeCheck.reason || 'Assinatura expirada. Operação de lançamento bloqueada.',
+    };
+  }
+
   try {
     const uid = await getCurrentUserId(churchId);
     const effectiveChurchId = uid || churchId || 'default-church';
@@ -1937,6 +2169,15 @@ export async function deleteLancamento(
 ): Promise<{ success: boolean; error?: string }> {
   if (!isSupabaseConfigured) {
     return { success: true };
+  }
+
+  const writeCheck = await canUserWriteToDatabase(userId);
+  if (!writeCheck.allowed) {
+    console.warn('[BLOQUEIO ASSINATURA EXPIRADA] deleteLancamento bloqueado:', writeCheck.reason);
+    return {
+      success: false,
+      error: writeCheck.reason || 'Assinatura expirada. Operação de exclusão bloqueada.',
+    };
   }
 
   try {
@@ -2030,34 +2271,6 @@ export function getMercadoPagoSubscriptionUrl(userId?: string): string {
   return `${MERCADO_PAGO_PLAN_BASE_URL}?external_reference=${encodeURIComponent(userId)}`;
 }
 
-/**
- * Verifica se o usuário tem assinatura ativa (ou em período de teste válido).
- * REGRA EXCLUSIVA: O Super Admin (wenes13@hotmail.com) possui isenção permanente e status PRO vitalício automático.
- */
-export function isSubscriptionActive(user?: User | { email?: string; subscriptionStatus?: string; statusAssinatura?: string; isDemo?: boolean } | null): boolean {
-  if (!user) return false;
-
-  // 1. Liberação automática e isenção vitalícia para o Super Admin ou Modo Demo
-  if (isSuperAdmin(user) || (user as User).isDemo === true) {
-    return true;
-  }
-
-  // 2. Verificação padrão para status_assinatura ou subscriptionStatus
-  const statusAssinatura = ((user as any).statusAssinatura || (user as any).status_assinatura || '').toLowerCase().trim();
-  const subStatus = (user.subscriptionStatus || (user as any).subscription_status || '').toLowerCase().trim();
-
-  return (
-    statusAssinatura === 'ativo' ||
-    statusAssinatura === 'active' ||
-    statusAssinatura === 'pago' ||
-    statusAssinatura === 'aprovado' ||
-    subStatus === 'active' ||
-    subStatus === 'ativo' ||
-    subStatus === 'trialing' ||
-    subStatus === 'pago'
-  );
-}
-
 export async function syncUserProfile(user: User): Promise<boolean> {
   if (!isSupabaseConfigured || !user.id) return false;
 
@@ -2149,27 +2362,63 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
 
     if (data) {
       const isSuper = isSuperAdmin(data.email);
-      // Lê o valor da coluna subscription_status diretamente da tabela profiles do Supabase
+      // Lê o valor das colunas de assinatura diretamente da tabela profiles do Supabase
       const rawSubStatus = typeof data.subscription_status === 'string' ? data.subscription_status.trim().toLowerCase() : '';
       const rawStatusAssinatura = typeof data.status_assinatura === 'string' ? data.status_assinatura.trim().toLowerCase() : '';
-      const rawGenericStatus = typeof data.status === 'string' ? data.status.trim().toLowerCase() : '';
 
-      // Liberação se subscription_status for 'active' (ou 'ativo' / 'trialing' / 'pago')
+      // 1. Verificação da data de expiração (dataAtual > dataExpiracaoAssinatura)
+      const rawExpiresAt = data.subscription_expires_at;
+      let isExpiredByDate = false;
+      if (rawExpiresAt && !isSuper) {
+        const strExp = String(rawExpiresAt).trim();
+        const lowExp = strExp.toLowerCase();
+        if (!lowExp.includes('vitalício') && !lowExp.includes('vitalicio') && !lowExp.includes('isento')) {
+          let expTime: number | null = null;
+          if (/^\d{4}-\d{2}-\d{2}$/.test(strExp)) {
+            const [y, m, d] = strExp.split('-').map(Number);
+            expTime = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
+          } else {
+            const parsed = new Date(strExp).getTime();
+            if (!isNaN(parsed)) expTime = parsed;
+          }
+          if (expTime !== null && Date.now() > expTime) {
+            isExpiredByDate = true;
+          }
+        }
+      }
+
+      // 2. Status explícito de expiração/cancelamento/inativação
+      const isExplicitlyExpired =
+        rawStatusAssinatura.includes('expirad') ||
+        rawSubStatus.includes('expirad') ||
+        rawStatusAssinatura.includes('cancelad') ||
+        rawSubStatus.includes('cancelad') ||
+        rawStatusAssinatura === 'inativo' ||
+        rawStatusAssinatura === 'inativa' ||
+        rawSubStatus === 'inactive' ||
+        rawStatusAssinatura.includes('bloquead') ||
+        rawSubStatus.includes('bloquead');
+
+      // 3. Liberação de acesso APENAS se NÃO expirado por data, nem com status de expirado/cancelado
       const isStatusActive =
         isSuper ||
-        rawSubStatus === 'active' ||
-        rawSubStatus === 'ativo' ||
-        rawSubStatus === 'trialing' ||
-        rawSubStatus === 'pago' ||
-        rawStatusAssinatura === 'ativo' ||
-        rawStatusAssinatura === 'active' ||
-        rawStatusAssinatura === 'pago' ||
-        rawStatusAssinatura === 'aprovado' ||
-        rawGenericStatus === 'ativo' ||
-        rawGenericStatus === 'active';
+        (!isExpiredByDate && !isExplicitlyExpired && (
+          rawStatusAssinatura === 'ativo' ||
+          rawStatusAssinatura === 'active' ||
+          rawStatusAssinatura === 'pago' ||
+          rawStatusAssinatura === 'aprovado' ||
+          rawSubStatus === 'active' ||
+          rawSubStatus === 'ativo' ||
+          rawSubStatus === 'trialing' ||
+          rawSubStatus === 'pago'
+        ));
 
       const subscriptionStatus = isStatusActive ? 'active' : 'inactive';
-      const statusAssinatura = isStatusActive ? 'ativo' : (rawStatusAssinatura || 'pendente');
+      const statusAssinatura = isStatusActive
+        ? 'ativo'
+        : (isExplicitlyExpired || isExpiredByDate
+          ? (data.status_assinatura && data.status_assinatura.trim() ? data.status_assinatura.trim() : 'Assinatura Expirada')
+          : (rawStatusAssinatura || 'pendente'));
 
       return {
         id: data.id || data.user_id || userId,
@@ -2177,7 +2426,7 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         nome: data.nome,
         cargo: data.cargo || undefined,
         nomeIgreja: data.nome_igreja || undefined,
-        hasPaid: Boolean(data.has_paid || isStatusActive || isSuper),
+        hasPaid: Boolean(data.has_paid || (isStatusActive && !isExpiredByDate) || isSuper),
         statusAssinatura,
         subscriptionStatus,
         subscriptionPlan: isSuper ? 'pro_isento' : (data.subscription_plan || 'mensal'),
@@ -2238,6 +2487,9 @@ export async function adminSetUserSubscriptionStatus(
         message: data.error || data.message || 'Falha ao atualizar status do usuário.',
       };
     }
+
+    invalidateWritePermissionCache(identifier);
+    if (data.user?.id) invalidateWritePermissionCache(data.user.id);
 
     return {
       success: true,
