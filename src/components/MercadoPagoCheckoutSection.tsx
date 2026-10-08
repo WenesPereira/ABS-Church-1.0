@@ -167,7 +167,20 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
 
         const checkRes = await checkMercadoPagoPayment(pixData.paymentId, currentUser?.id);
 
-        if (checkRes.approved || checkRes.status === 'approved') {
+        let freshUser = null;
+        if (currentUser?.id) {
+          freshUser = await fetchUserProfile(currentUser.id);
+        }
+
+        const isApprovedByMp = checkRes.approved || checkRes.status === 'approved' || checkRes.status === 'active';
+        const isUserActiveInDb = freshUser && (
+          freshUser.subscriptionStatus === 'active' ||
+          (freshUser as any).status === 'active' ||
+          freshUser.statusAssinatura === 'ativo' ||
+          isSubscriptionActive(freshUser)
+        );
+
+        if (isApprovedByMp || isUserActiveInDb) {
           if (pollingTimerRef.current) {
             clearInterval(pollingTimerRef.current);
             pollingTimerRef.current = null;
@@ -179,14 +192,12 @@ export const MercadoPagoCheckoutSection: React.FC<MercadoPagoCheckoutSectionProp
 
           setVerificationFeedback({
             type: 'success',
-            message: 'Pagamento aprovado pelo Mercado Pago! Assinatura confirmada com sucesso.',
+            message: 'Pagamento confirmado! Assinatura ativa com sucesso. Redirecionando para o painel...',
           });
 
-          if (currentUser?.id) {
-            const freshUser = await fetchUserProfile(currentUser.id);
-            if (freshUser) {
-              if (onStatusUpdated) onStatusUpdated(freshUser);
-            }
+          const userToPass = freshUser || (currentUser?.id ? await fetchUserProfile(currentUser.id) : null);
+          if (userToPass && onStatusUpdated) {
+            onStatusUpdated(userToPass);
           }
           if (onSuccess) onSuccess();
           return;

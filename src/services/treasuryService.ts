@@ -56,6 +56,7 @@ export function isSuperAdmin(target?: User | { email?: string } | string | null)
 export function isSubscriptionExpired(
   user?: User | {
     email?: string;
+    status?: string;
     subscriptionStatus?: string;
     statusAssinatura?: string;
     subscriptionExpiresAt?: string;
@@ -70,6 +71,11 @@ export function isSubscriptionExpired(
   }
 
   // 2. Extração dos status de assinatura
+  const rawStatus = (
+    (user as any).status ||
+    ''
+  ).toLowerCase().trim();
+
   const rawStatusAssinatura = (
     (user as any).statusAssinatura ||
     (user as any).status_assinatura ||
@@ -84,6 +90,11 @@ export function isSubscriptionExpired(
 
   // Se qualquer status explicitamente indicar expiração ou cancelamento
   if (
+    rawStatus.includes('expirad') ||
+    rawStatus.includes('cancelad') ||
+    rawStatus.includes('bloquead') ||
+    rawStatus === 'inativo' ||
+    rawStatus === 'inactive' ||
     rawStatusAssinatura.includes('expirad') ||
     rawSubStatus.includes('expirad') ||
     rawStatusAssinatura.includes('cancelad') ||
@@ -97,7 +108,7 @@ export function isSubscriptionExpired(
     return true;
   }
 
-  // 3. Verificação por Data de Expiração (dataAtual > dataExpiracaoAssinatura)
+  // 3. Verificação por Data de Expiração (subscription_expires_at < NOW())
   const rawExpiresAt = (
     user.subscriptionExpiresAt ||
     (user as any).subscription_expires_at ||
@@ -134,9 +145,10 @@ export function isSubscriptionExpired(
     }
   }
 
-  // 4. Verificação de status !== 'ativo'
+  // 4. Verificação de status !== 'active' / 'ativo'
   const isStatusAtivo =
-    rawStatusAssinatura === 'ativo' ||
+    (rawStatus === 'active' || rawStatus === 'ativo' || rawStatus === '') &&
+    (rawStatusAssinatura === 'ativo' ||
     rawStatusAssinatura === 'active' ||
     rawStatusAssinatura === 'pago' ||
     rawStatusAssinatura === 'aprovado' ||
@@ -145,7 +157,7 @@ export function isSubscriptionExpired(
       rawSubStatus === 'ativo' ||
       rawSubStatus === 'trialing' ||
       rawSubStatus === 'pago'
-    ));
+    )));
 
   if (!isStatusAtivo) {
     return true; // Status diferente de ativo
@@ -1905,6 +1917,23 @@ export async function calculateNextReceiptNumber(
   const seqKey = `${LOCAL_RECEIPT_SEQ_PREFIX}${effectiveId}`;
   const allReceiptsKey = `${LOCAL_ALL_RECEIPTS_PREFIX}${effectiveId}`;
 
+  // 1. TENTA PRIMEIRO A FUNÇÃO ATÔMICA RPC DO BANCO DE DADOS (SEQUÊNCIA GLOBAL AUTO-INCREMENTADA #000001)
+  if (isSupabaseConfigured && uid && uid !== 'demo-user-session') {
+    try {
+      const { data: rpcNum, error: rpcErr } = await supabase.rpc('get_next_receipt_number', {
+        p_user_id: uid,
+      });
+      if (!rpcErr && typeof rpcNum === 'number' && rpcNum > 0) {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem(seqKey, rpcNum.toString());
+        }
+        return rpcNum;
+      }
+    } catch (rpcEx) {
+      console.warn('Aviso ao consultar RPC get_next_receipt_number:', rpcEx);
+    }
+  }
+
   // Coletor universal de todos os registros encontrados (sem filtros de data, mês, ano ou categoria)
   const todosOsRegistros: any[] = [];
 
@@ -1989,8 +2018,20 @@ export async function calculateNextReceiptNumber(
   // -----------------------------------------------------------------
   if (isSupabaseConfigured && uid && uid !== 'demo-user-session') {
     try {
-      // Busca TODOS os lançamentos registrados para esta igreja/usuário
-      // SEM NENHUM filtro de data, mês, ano ou categoria!
+      // 3.a) Tenta obter diretamente o maior receipt_number registrado
+      const { data: topRow } = await supabase
+        .from('lancamentos')
+        .select('receipt_number')
+        .eq('user_id', uid)
+        .not('receipt_number', 'is', null)
+        .order('receipt_number', { ascending: false })
+        .limit(1);
+
+      if (topRow && topRow.length > 0 && topRow[0].receipt_number) {
+        todosOsRegistros.push(topRow[0]);
+      }
+
+      // 3.b) Busca lançamentos adicionais registrados para esta igreja/usuário
       const { data: dbLancamentos, error: dbError } = await supabase
         .from('lancamentos')
         .select('id, receipt_number, descricao, data, categoria, tipo')
@@ -2015,26 +2056,15 @@ export async function calculateNextReceiptNumber(
   }
 
   // -----------------------------------------------------------------
-  // 4. EXTRAI O MAIOR NÚMERO DE RECIBO EXISTENTE E SOMA +1
-  //    Exatamente conforme especificação da lógica:
-  //    const maiorNumero = registros.reduce((max, item) => {
-  //      const num = parseInt(item.numeroRecibo || item.id, 10);
-  //      return num > max ? num : max;
-  //    }, 0);
-  //    const novoNumeroRecibo = (maiorNumero + 1).toString().padStart(6, '0');
+  // 4. EXTRAI O MAIOR NÚMERO DE RECIBO EXISTENTE E SOMA +1 (#000001)
   // -----------------------------------------------------------------
   const maiorNumero = todosOsRegistros.reduce((max: number, item: any) => {
     const num = extractReceiptNumberFromItem(item);
     return num > max ? num : max;
   }, 0);
 
-  // Se for conta demo e ainda não houver nenhum registro, parte de 103 para exemplos elegantes
-  let baseNumero = maiorNumero;
-  if (uid === 'demo-user-session' && baseNumero < 103) {
-    baseNumero = 103;
-  }
-
-  const proximoNumero = baseNumero + 1;
+  // A sequência auto-incrementada inicia estritamente em 1 (#000001) se não houver registros anteriores
+  const proximoNumero = maiorNumero + 1;
 
   // Atualiza cache de sequência imediatamente
   try {
@@ -2363,10 +2393,11 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
     if (data) {
       const isSuper = isSuperAdmin(data.email);
       // Lê o valor das colunas de assinatura diretamente da tabela profiles do Supabase
+      const rawStatus = typeof data.status === 'string' ? data.status.trim().toLowerCase() : '';
       const rawSubStatus = typeof data.subscription_status === 'string' ? data.subscription_status.trim().toLowerCase() : '';
       const rawStatusAssinatura = typeof data.status_assinatura === 'string' ? data.status_assinatura.trim().toLowerCase() : '';
 
-      // 1. Verificação da data de expiração (dataAtual > dataExpiracaoAssinatura)
+      // 1. Verificação da data de expiração (subscription_expires_at < NOW())
       const rawExpiresAt = data.subscription_expires_at;
       let isExpiredByDate = false;
       if (rawExpiresAt && !isSuper) {
@@ -2389,6 +2420,11 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
 
       // 2. Status explícito de expiração/cancelamento/inativação
       const isExplicitlyExpired =
+        rawStatus.includes('expirad') ||
+        rawStatus.includes('cancelad') ||
+        rawStatus.includes('bloquead') ||
+        rawStatus === 'inativo' ||
+        rawStatus === 'inactive' ||
         rawStatusAssinatura.includes('expirad') ||
         rawSubStatus.includes('expirad') ||
         rawStatusAssinatura.includes('cancelad') ||
@@ -2403,14 +2439,15 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
       const isStatusActive =
         isSuper ||
         (!isExpiredByDate && !isExplicitlyExpired && (
-          rawStatusAssinatura === 'ativo' ||
+          (rawStatus === 'active' || rawStatus === 'ativo' || rawStatus === '') &&
+          (rawStatusAssinatura === 'ativo' ||
           rawStatusAssinatura === 'active' ||
           rawStatusAssinatura === 'pago' ||
           rawStatusAssinatura === 'aprovado' ||
           rawSubStatus === 'active' ||
           rawSubStatus === 'ativo' ||
           rawSubStatus === 'trialing' ||
-          rawSubStatus === 'pago'
+          rawSubStatus === 'pago')
         ));
 
       const subscriptionStatus = isStatusActive ? 'active' : 'inactive';
@@ -2427,6 +2464,7 @@ export async function fetchUserProfile(userId: string): Promise<User | null> {
         cargo: data.cargo || undefined,
         nomeIgreja: data.nome_igreja || undefined,
         hasPaid: Boolean(data.has_paid || (isStatusActive && !isExpiredByDate) || isSuper),
+        status: isStatusActive ? 'active' : 'inactive',
         statusAssinatura,
         subscriptionStatus,
         subscriptionPlan: isSuper ? 'pro_isento' : (data.subscription_plan || 'mensal'),

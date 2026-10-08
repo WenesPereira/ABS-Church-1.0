@@ -438,22 +438,30 @@ export const LancamentosView: React.FC<LancamentosViewProps> = ({
 
     // 3. Garantir que o número do recibo seja atribuído NO MOMENTO DO SALVAMENTO DO REGISTRO:
     // Busca SEMPRE no banco de dados e localStorage completo (sem aplicar filtros de mês, ano ou categoria)
-    // e extrai o MAIOR número existente somando +1.
-    let calculatedNumericReceipt: number | null = null;
+    // e garante uma sequência única auto-incrementada para evitar qualquer duplicidade no recibo (#000001).
+    let calculatedNumericReceipt: number | null = options?.numericReceiptNumber ?? null;
     if (finalTipo === 'entrada') {
-      const todosEmMemoria = [
-        ...(Array.isArray(fechamento.lancamentos) ? fechamento.lancamentos : []),
-        ...(Array.isArray(historico) ? historico.flatMap((h) => h.lancamentos || []) : []),
-      ];
+      if (!calculatedNumericReceipt && lancamentoToSave.receiptNumber) {
+        const parsed = parseInt(String(lancamentoToSave.receiptNumber).replace(/\D/g, ''), 10);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+          calculatedNumericReceipt = parsed;
+        }
+      }
 
-      const proximoNumero = await calculateNextReceiptNumber(currentUser?.id, todosEmMemoria);
-      calculatedNumericReceipt = proximoNumero;
-      const novoNumeroRecibo = proximoNumero.toString().padStart(6, '0');
+      if (!calculatedNumericReceipt) {
+        const todosEmMemoria = [
+          ...(Array.isArray(fechamento.lancamentos) ? fechamento.lancamentos : []),
+          ...(Array.isArray(historico) ? historico.flatMap((h) => h.lancamentos || []) : []),
+        ];
 
+        calculatedNumericReceipt = await calculateNextReceiptNumber(currentUser?.id, todosEmMemoria);
+      }
+
+      const novoNumeroRecibo = calculatedNumericReceipt.toString().padStart(6, '0');
       lancamentoToSave.receiptNumber = novoNumeroRecibo;
 
-      // Registra imediatamente no histórico do localStorage para garantir sincronismo
-      registerReceiptInLocalStorage(currentUser?.id, proximoNumero, lancamentoToSave);
+      // Registra imediatamente no histórico do localStorage para garantir integridade e sincronismo
+      registerReceiptInLocalStorage(currentUser?.id, calculatedNumericReceipt, lancamentoToSave);
     }
 
     // Caso de conta Demonstração

@@ -16,12 +16,34 @@ export const ALL_ENTRADA_CATEGORIES: CategoriaEntrada[] = [
  */
 export function extractLancamentoDate(item: any): string {
   if (!item) return '';
-  const raw = item.data || item.data_lancamento || item.created_at || item.criado_em;
-  if (!raw || typeof raw !== 'string' || !raw.trim()) return '';
 
+  const raw = item.data ?? item.data_lancamento ?? item.created_at ?? item.criado_em;
+  if (!raw) return '';
+
+  // 1. Instância de Date
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    const year = raw.getFullYear();
+    const month = String(raw.getMonth() + 1).padStart(2, '0');
+    const day = String(raw.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+
+  // 2. Timestamp numérico
+  if (typeof raw === 'number' && !isNaN(raw) && raw > 0) {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+  }
+
+  if (typeof raw !== 'string') return '';
   const trimmed = raw.trim();
+  if (!trimmed) return '';
 
-  // Formato brasileiro: DD/MM/YYYY ou DD/MM/YYYY HH:mm...
+  // 3. Formato brasileiro: DD/MM/YYYY ou DD/MM/YYYY HH:mm...
   const brMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (brMatch) {
     const day = brMatch[1].padStart(2, '0');
@@ -30,7 +52,7 @@ export function extractLancamentoDate(item: any): string {
     return `${year}-${month}-${day}`;
   }
 
-  // Formato ISO: YYYY-MM-DD ou YYYY-MM-DDTHH:mm...
+  // 4. Formato ISO: YYYY-MM-DD ou YYYY-MM-DDTHH:mm...
   const isoMatch = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (isoMatch) {
     const year = isoMatch[1];
@@ -39,6 +61,7 @@ export function extractLancamentoDate(item: any): string {
     return `${year}-${month}-${day}`;
   }
 
+  // 5. Fallback via Date parsing
   try {
     const d = new Date(trimmed);
     if (!isNaN(d.getTime())) {
@@ -53,9 +76,9 @@ export function extractLancamentoDate(item: any): string {
 }
 
 /**
- * Filtra lançamentos considerando EXCLUSIVAMENTE os registros cuja data
+ * Filtra lançamentos considerando RIGOROSAMENTE os registros cuja data
  * esteja DENTRO do intervalo selecionado:
- * Condição: registro.data >= dataInicio && registro.data <= dataFinal
+ * Condição estrita: registro.data >= dataInicio && registro.data <= dataFinal
  */
 export function filterLancamentosByPeriodo<T extends { data?: string }>(
   lancamentos: T[],
@@ -72,20 +95,24 @@ export function filterLancamentosByPeriodo<T extends { data?: string }>(
     return lancamentos;
   }
 
+  // Ordena min e max caso tenham sido preenchidos invertidos
+  const minDate = start && end && start > end ? end : start;
+  const maxDate = start && end && start > end ? start : end;
+
   return lancamentos.filter((registro) => {
     const regDate = extractLancamentoDate(registro);
     if (!regDate) {
       return false;
     }
 
-    if (start && end) {
-      return regDate >= start && regDate <= end;
+    if (minDate && maxDate) {
+      return regDate >= minDate && regDate <= maxDate;
     }
-    if (start) {
-      return regDate >= start;
+    if (minDate) {
+      return regDate >= minDate;
     }
-    if (end) {
-      return regDate <= end;
+    if (maxDate) {
+      return regDate <= maxDate;
     }
     return true;
   });

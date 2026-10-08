@@ -200,11 +200,50 @@ exports.handler = async function (event, context) {
           auth: { persistSession: false },
         });
 
-        // Configura expiração de 30 dias a partir da data atual
-        const expiresDate = new Date();
-        expiresDate.setDate(expiresDate.getDate() + 30);
-        const expiresIso = expiresDate.toISOString();
-        const nowIso = new Date().toISOString();
+        const targetUserId = externalRef ? String(externalRef).trim() : null;
+
+        // Tenta primeiro a função RPC segura com SECURITY DEFINER
+        if (targetUserId) {
+          try {
+            const { data: rpcExpires, error: rpcErr } = await supabase.rpc('renew_subscription', {
+              p_user_id: targetUserId,
+              p_days: 30,
+            });
+            if (!rpcErr && rpcExpires) {
+              console.log(`[Mercado Pago Webhook] [Passo 4/5] SUCESSO via RPC renew_subscription: ${rpcExpires} para ${targetUserId}`);
+              userUpdated = true;
+            }
+          } catch (rpcEx) {
+            console.warn('[Mercado Pago Webhook] RPC renew_subscription indisponível, aplicando fallback direto:', rpcEx);
+          }
+        }
+
+        // Se RPC não foi executada ou não encontrou, executa fallback direto:
+        // COALESCE(GREATEST(subscription_expires_at, NOW()), NOW()) + INTERVAL '30 days'
+        const now = new Date();
+        let baseDate = now;
+
+        try {
+          let checkQuery = supabase.from('profiles').select('subscription_expires_at');
+          if (targetUserId) {
+            checkQuery = checkQuery.or(`id.eq.${targetUserId},user_id.eq.${targetUserId}`);
+          } else if (payerEmail) {
+            checkQuery = checkQuery.eq('email', payerEmail.trim().toLowerCase());
+          }
+          const { data: currentRows } = await checkQuery.limit(1);
+          if (currentRows && currentRows[0]?.subscription_expires_at) {
+            const existingExp = new Date(currentRows[0].subscription_expires_at);
+            if (existingExp.getTime() > now.getTime()) {
+              baseDate = existingExp;
+            }
+          }
+        } catch (checkErr) {
+          console.warn('[Mercado Pago Webhook] Aviso ao verificar expiração existente:', checkErr);
+        }
+
+        // Adiciona 30 dias à maior data (agora ou expiração futura existente)
+        const expiresIso = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const nowIso = now.toISOString();
 
         const updatePayload = {
           has_paid: true,
@@ -216,12 +255,14 @@ exports.handler = async function (event, context) {
           updated_at: nowIso,
         };
 
-        const targetUserId = externalRef ? String(externalRef).trim() : null;
+        if (paymentId) {
+          updatePayload.mp_payment_id = String(paymentId);
+        }
 
-        console.log(`[Mercado Pago Webhook] [Passo 4/5] Atualizando Supabase para user_id="${targetUserId}"...`);
+        console.log(`[Mercado Pago Webhook] [Passo 4/5] Atualizando Supabase com validade até ${expiresIso} para user_id="${targetUserId}"...`);
 
         // 4.1: Executa UPDATE onde user_id = external_reference
-        if (targetUserId) {
+        if (targetUserId && !userUpdated) {
           const { data: updatedByUser, error: errUser } = await supabase
             .from('profiles')
             .update(updatePayload)

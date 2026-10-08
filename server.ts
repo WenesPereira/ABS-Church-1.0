@@ -42,8 +42,23 @@ async function activateUserSubscription(
     const now = new Date();
     let baseDate = now;
 
-    // Se tiver supabaseAdmin configurado, busca se a conta já possui uma data de expiração futura
+    // Se tiver supabaseAdmin configurado, tenta primeiro via RPC renew_subscription
     if (supabaseAdmin) {
+      if (userIdOrRef) {
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabaseAdmin.rpc("renew_subscription", {
+            p_user_id: String(userIdOrRef),
+            p_days: 30,
+          });
+          if (!rpcErr && rpcRes) {
+            console.log(`[Mercado Pago] Assinatura renovada via RPC renew_subscription para ${userIdOrRef}: ${rpcRes}`);
+            return true;
+          }
+        } catch (rpcEx) {
+          // prossegue para o fallback
+        }
+      }
+
       try {
         let query = supabaseAdmin.from("profiles").select("subscription_expires_at");
         if (userIdOrRef) {

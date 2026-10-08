@@ -138,10 +138,47 @@ exports.handler = async function (event, context) {
         auth: { persistSession: false, autoRefreshToken: false },
       });
 
-      const nowIso = new Date().toISOString();
-      const expiresDate = new Date();
-      expiresDate.setDate(expiresDate.getDate() + 30);
-      const expiresIso = expiresDate.toISOString();
+      const finalUserId = externalRef ? String(externalRef).trim() : (targetUserId || null);
+
+      // Tenta primeiro a função RPC segura com SECURITY DEFINER
+      if (finalUserId) {
+        try {
+          const { data: rpcExpires, error: rpcErr } = await supabase.rpc('renew_subscription', {
+            p_user_id: finalUserId,
+            p_days: 30,
+          });
+          if (!rpcErr && rpcExpires) {
+            console.log(`[Check Payment] Sucesso via RPC renew_subscription: ${rpcExpires} para ${finalUserId}`);
+            userUpdated = true;
+          }
+        } catch (rpcEx) {
+          console.warn('[Check Payment] RPC renew_subscription indisponível:', rpcEx);
+        }
+      }
+
+      const now = new Date();
+      let baseDate = now;
+
+      try {
+        let checkQuery = supabase.from('profiles').select('subscription_expires_at');
+        if (finalUserId) {
+          checkQuery = checkQuery.or(`id.eq.${finalUserId},user_id.eq.${finalUserId}`);
+        } else if (payerEmail) {
+          checkQuery = checkQuery.eq('email', payerEmail.trim().toLowerCase());
+        }
+        const { data: currentRows } = await checkQuery.limit(1);
+        if (currentRows && currentRows[0]?.subscription_expires_at) {
+          const existingExp = new Date(currentRows[0].subscription_expires_at);
+          if (existingExp.getTime() > now.getTime()) {
+            baseDate = existingExp;
+          }
+        }
+      } catch (checkErr) {
+        console.warn('[Check Payment] Aviso ao verificar expiração existente:', checkErr);
+      }
+
+      const expiresIso = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const nowIso = now.toISOString();
 
       const updatePayload = {
         has_paid: true,
@@ -153,9 +190,11 @@ exports.handler = async function (event, context) {
         updated_at: nowIso,
       };
 
-      const finalUserId = externalRef ? String(externalRef).trim() : (targetUserId || null);
+      if (paymentId) {
+        updatePayload.mp_payment_id = String(paymentId);
+      }
 
-      if (finalUserId) {
+      if (finalUserId && !userUpdated) {
         // Tentativa 1: user_id = finalUserId
         const { data: updatedByUser, error: errUser } = await supabase
           .from('profiles')

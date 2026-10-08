@@ -716,17 +716,22 @@ export default function App() {
     );
   }
 
-  // BLOQUEIO TOTAL POR ASSINATURA EXPIRADA OU NÃO ATIVA:
-  // Se dataAtual > dataExpiracaoAssinatura (ou status !== 'ativo'), redireciona automaticamente para tela de renovação
+  // BLOQUEIO TOTAL POR ASSINATURA EXPIRADA OU NÃO ATIVA (AUTH GUARD):
+  // Se subscription_expires_at < NOW() ou status !== 'active', bloqueia a navegação para rotas internas (lançamentos, fechamento, relatórios)
+  // e redireciona obrigatoriamente para a tela de Renovação de Assinatura.
   if (!isSubscriptionActive(currentUser)) {
     return (
       <SubscriptionGateView
         currentUser={currentUser}
         globalConfig={globalConfig}
         onLogout={handleLogout}
-        onStatusUpdated={(updated) => {
+        onStatusUpdated={async (updated) => {
           setCurrentUser(updated);
           if (isSubscriptionActive(updated)) {
+            if (updated.id) {
+              await loadUserDataFromSupabase(updated.id, updated);
+            }
+            setActiveTab('fechamento');
             setIsPaymentSuccessModalOpen(true);
           }
         }}

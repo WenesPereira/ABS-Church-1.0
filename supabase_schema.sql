@@ -430,3 +430,78 @@ ALTER TABLE IF EXISTS public.configuracao_igreja
     ADD COLUMN IF NOT EXISTS aplicar_prebenda BOOLEAN DEFAULT false,
     ADD COLUMN IF NOT EXISTS logo_url TEXT;
 
+
+-- ==============================================================================
+-- 4. RENOVAÇÃO AUTOMÁTICA DE ASSINATURA (SECURITY DEFINER - BYPASS RLS)
+-- ==============================================================================
+-- Atualização: status = 'active' e subscription_expires_at = COALESCE(GREATEST(subscription_expires_at, NOW()), NOW()) + INTERVAL '30 days'
+CREATE OR REPLACE FUNCTION public.renew_subscription(p_user_id TEXT, p_days INTEGER DEFAULT 30)
+RETURNS TIMESTAMPTZ AS $$
+DECLARE
+    new_expires TIMESTAMPTZ;
+BEGIN
+    UPDATE public.profiles
+    SET 
+        has_paid = true,
+        status = 'active',
+        subscription_status = 'active',
+        status_assinatura = 'ativo',
+        subscription_plan = 'mensal',
+        subscription_expires_at = COALESCE(GREATEST(subscription_expires_at, now()), now()) + (p_days || ' days')::INTERVAL,
+        updated_at = now()
+    WHERE user_id::TEXT = p_user_id OR id::TEXT = p_user_id
+    RETURNING subscription_expires_at INTO new_expires;
+
+    RETURN new_expires;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Permite execução anônima e autenticada da função de renovação via backend/Edge Functions
+GRANT EXECUTE ON FUNCTION public.renew_subscription(TEXT, INTEGER) TO authenticated, service_role, anon;
+
+
+-- ==============================================================================
+-- 5. SEQUÊNCIA GLOBAL AUTO-INCREMENTADA DE RECIBOS (#000001)
+-- ==============================================================================
+-- Garante sequência atômica estrita sem duplicidades em ambientes concorrentes
+CREATE TABLE IF NOT EXISTS public.receipt_sequences (
+    user_id UUID PRIMARY KEY,
+    last_receipt_number BIGINT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
+);
+
+ALTER TABLE public.receipt_sequences ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Usuários podem acessar sua sequência de recibos" ON public.receipt_sequences;
+CREATE POLICY "Usuários podem acessar sua sequência de recibos"
+    ON public.receipt_sequences FOR ALL
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE OR REPLACE FUNCTION public.get_next_receipt_number(p_user_id UUID)
+RETURNS BIGINT AS $$
+DECLARE
+    next_num BIGINT;
+    max_existing BIGINT;
+BEGIN
+    -- Sincroniza com o maior receipt_number existente na tabela de lançamentos se necessário
+    SELECT COALESCE(MAX(NULLIF(regexp_replace(receipt_number::TEXT, '\D', '', 'g'), '')::BIGINT), 0)
+    INTO max_existing
+    FROM public.lancamentos
+    WHERE user_id = p_user_id;
+
+    INSERT INTO public.receipt_sequences (user_id, last_receipt_number, updated_at)
+    VALUES (p_user_id, GREATEST(max_existing, 0) + 1, now())
+    ON CONFLICT (user_id)
+    DO UPDATE SET 
+        last_receipt_number = GREATEST(public.receipt_sequences.last_receipt_number, max_existing) + 1,
+        updated_at = now()
+    RETURNING last_receipt_number INTO next_num;
+
+    RETURN next_num;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.get_next_receipt_number(UUID) TO authenticated, service_role, anon;
+
+

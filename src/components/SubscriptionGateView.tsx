@@ -186,10 +186,10 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
       }
     });
 
-    // 3. Polling em tempo real a cada 4 segundos
+    // 3. Polling em tempo real a cada 3 segundos
     pollingRef.current = setInterval(() => {
       verifySupabaseProfile(true);
-    }, 4000);
+    }, 3000);
 
     return () => {
       isMountedRef.current = false;
@@ -359,7 +359,7 @@ export const SubscriptionGateView: React.FC<SubscriptionGateViewProps> = ({
             <div className="text-center md:text-right text-xs text-slate-400">
               <span className="text-emerald-400 font-bold block mb-0.5">Reativação Imediata</span>
               <span className="flex items-center justify-center md:justify-end gap-1.5 text-slate-400">
-                <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" /> Verificação ativa a cada 4s
+                <RefreshCw className="w-3 h-3 text-emerald-400 animate-spin" /> Verificação ativa a cada 3s
               </span>
             </div>
           </div>

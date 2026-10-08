@@ -89,13 +89,14 @@ export const FechamentoAtualView: React.FC<FechamentoAtualViewProps> = ({
 }) => {
   /*
    * 1. Extração padronizada do período de início e término selecionado pelo usuário.
+   * Filtra rigorosamente por dataInicio e dataFim.
    */
-  const dataInicio = fechamento.dataInicio
-    ? toLocalYMD(fechamento.dataInicio)
+  const dataInicio = fechamento.dataInicio !== undefined
+    ? (fechamento.dataInicio ? toLocalYMD(fechamento.dataInicio) : '')
     : (fechamento.data ? toLocalYMD(fechamento.data) : '');
 
-  const dataFim = fechamento.dataFim
-    ? toLocalYMD(fechamento.dataFim)
+  const dataFim = fechamento.dataFim !== undefined
+    ? (fechamento.dataFim ? toLocalYMD(fechamento.dataFim) : '')
     : (fechamento.data ? toLocalYMD(fechamento.data) : '');
 
   /*

@@ -135,6 +135,7 @@ export interface User {
   nomeIgreja?: string;
   createdAt: string;
   hasPaid?: boolean;
+  status?: 'active' | 'inactive' | 'ativo' | 'pendente' | string;
   statusAssinatura?: 'ativo' | 'pendente' | 'cancelado' | string;
   subscriptionStatus?: 'active' | 'inactive' | 'trialing' | 'cancelled' | string;
   subscriptionPlan?: string;
@@ -156,6 +157,7 @@ export interface SupabasePerfilUsuarioRow {
   cargo: string | null;
   nome_igreja: string | null;
   has_paid?: boolean | null;
+  status?: string | null;
   status_assinatura?: string | null;
   subscription_status?: string | null;
   subscription_plan?: string | null;
